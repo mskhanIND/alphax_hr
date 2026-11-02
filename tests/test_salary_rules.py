@@ -1,7 +1,5 @@
 from decimal import Decimal
 
-import pytest
-
 from alphax_hr.saudi.salary import from_basic, split_total
 
 
@@ -19,7 +17,9 @@ def test_split_total_adds_up_exactly():
 
 
 def test_split_total_rejects_bad_input():
-    with pytest.raises(ValueError):
-        split_total(0, 25, 10)
-    with pytest.raises(ValueError):
-        split_total(1000, 25, 10, other=2000)
+    for args in ((0, 25, 10), (1000, 25, 10, 2000)):
+        try:
+            split_total(*args)
+        except ValueError:
+            continue
+        raise AssertionError(f"expected ValueError for {args}")
