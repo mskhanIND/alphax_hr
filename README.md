@@ -1,0 +1,103 @@
+# AlphaX HR
+
+A modern, bilingual (English / العربية) HR experience for Saudi companies, built in React on top of **Frappe HRMS + ERPNext**.
+
+* **One system of record.** Every employee, leave, attendance, payroll and expense record lives in ERPNext/HRMS. AlphaX adds no parallel tables for them.
+* **Own route, no Desk for users.** The app lives at `/alphax` (Frappe HRMS already uses `/hr/*` for its Roster).
+* **No Desk for users.** Employees, managers and HR work entirely in `/alphax`. Desk stays for administrators.
+* **Saudi rules built in.** GOSI (date-effective, Legacy vs New system), end-of-service (Articles 84/85/87/80), annual and sick leave, Iqama and document expiry, Nitaqat estimate. These replace the CentralHRMS features for new KSA customers.
+
+```
+React SPA (/alphax)  ──►  alphax_hr API (permission-checked)  ──►  Frappe HRMS + ERPNext (data)
+                       └─ alphax_hr.saudi (pure rules engine, unit-tested)
+```
+
+| HR home | Compliance (Arabic) | Employee on phone (Arabic) |
+|---|---|---|
+| ![HR home](docs/screenshots/09-hr-home.png) | ![Compliance](docs/screenshots/ar-compliance.png) | ![Phone](docs/screenshots/05-arabic-phone-home.png) |
+
+## Modules (v0.1)
+
+| Area | Who | What |
+|---|---|---|
+| Self-service | Every employee | Check in/out (with location), leave balance and requests, attendance month view, payslips with PDF, profile and contact updates, upcoming holidays |
+| Approvals | Leave/expense approvers, HR | One inbox for Leave, Expense, Attendance, Shift and Compensatory requests; follows active Workflows; team leave calendar |
+| HR core | HR User / HR Manager | Employee directory and search (incl. Iqama), profile with Saudi tab, edit with stale-write protection, new employee, data issues per employee |
+| Payroll | HR | Payroll runs, month slip summary, GOSI register, end-of-service calculator |
+| Compliance | HR | Nitaqat estimate, Iqama/work permit/passport/contract expiry, data-readiness checks (holiday lists, approvers, GOSI dates, Iqama data …) |
+
+## Install
+
+Requirements: Frappe/ERPNext/HRMS v15 (v16 targeted), Node 18+ only if you rebuild the frontend.
+
+```bash
+cd frappe-bench
+bench get-app https://github.com/mskhanIND/alphax_hr
+bench --site YOUR_SITE install-app alphax_hr
+bench --site YOUR_SITE migrate
+```
+
+The built frontend is committed under `alphax_hr/public/frontend`, so no Node build is needed on servers. Open `https://YOUR_SITE/alphax`.
+
+**Make /alphax the landing page.** Set *System Settings → Default App* (or a user's *Default App*) to **AlphaX HR**. Users then land on `/alphax` after login.
+
+### First setup (5 minutes)
+
+1. **AlphaX HR Settings:** default company; map salary components to *GOSI Basic*, *GOSI Housing* and *EOSB Wage*; optional Saudization target.
+2. **GOSI Contribution Rate:** statutory rows are seeded (Legacy; New system 9% → 11% stepping each July 2025–2028; Non-Saudi 2% hazard). Edit them when GOSI publishes changes.
+3. **Employees → Saudi Compliance tab:** *Saudi National*, *First GOSI Registration Date* (decides Legacy vs New; not the hire date), Iqama number/expiry for non-Saudis.
+4. Open **Compliance** in `/alphax` and clear the data-readiness list.
+
+### Coming from CentralHRMS
+
+HR Manager → call `alphax_hr.api.compliance.import_legacy_fields` with `dry_run=1` to preview, then `dry_run=0`. It copies `custom_identity_number`, `custom_identity_valid_upto`, `custom_work_permit_expiry_date` and Saudi nationality into the AlphaX fields, only filling blanks.
+
+## Security model
+
+* No guest endpoints. Every API checks login, then server-side roles (never a role sent by the browser).
+* Reads use permission-aware `frappe.get_list` / `check_permission`; writes go through `insert/save/submit`, so HRMS validations, Workflows and User Permissions remain authoritative.
+* Employee self-service is always scoped to the employee linked to the signed-in user.
+* Employee edits use optimistic locking (`modified`).
+
+## Develop
+
+```bash
+# backend rules engine tests (no Frappe needed)
+python -m unittest discover -s tests
+
+# frontend
+cd frontend
+npm install
+VITE_FRAPPE_URL=http://hr.test:8000 npm run dev   # proxies /api to your bench
+npm run build                                      # outputs to alphax_hr/public/frontend
+```
+
+For local dev against a bench, sign in at the bench URL first and set `"ignore_csrf": 1` in that **development** site's `site_config.json`.
+
+## Tests
+
+| Suite | What | Run |
+|---|---|---|
+| Rules engine | 18 tests: GOSI Legacy/New/Non-Saudi rates by period, cap, EOSB Art. 84/85/87/80, annual and sick leave, Nitaqat, document buckets | `python -m unittest discover -s tests` |
+| API integration | 21 tests on a real Frappe + ERPNext + HRMS site, as Guest, Employee, second Employee, Manager and HR: data isolation, role checks, approvals (incl. a Workflow action literally named "Submit"), stale-write rejection, GOSI/EOSB, compliance | `tests/integration/run_frappe_tests.py SITE` |
+| Browser E2E | 17 checks driving `/alphax` in Chromium: apply → approve leave, attendance, people edit, compliance, GOSI, EOSB, Arabic RTL on a phone, no console errors | `node tests/e2e/smoke.mjs URL` |
+| Frontend | Riyadh-time dates, and every UI string has an Arabic translation | `cd frontend && npx vitest run` |
+
+All four run in GitHub Actions (`.github/workflows/ci.yml`).
+
+## Layout
+
+```
+alphax_hr/
+  api/            whitelisted API (session, ess, approvals, hr, payroll, compliance)
+  saudi/          pure-Python Saudi rules (gosi, eosb, leave, nitaqat, documents)
+  alphax_hr/      DocTypes (AlphaX HR Settings, GOSI Contribution Rate) + Employee custom fields
+  www/alphax.*    serves the SPA at /alphax
+  public/frontend built React app
+frontend/         React 19 + TypeScript + Vite + TanStack Query + Tailwind
+tests/            rules-engine tests and Frappe integration tests
+```
+
+Nitaqat figures are an internal estimate; Qiwa remains the official source.
+
+License: MIT

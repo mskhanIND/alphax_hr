@@ -1,0 +1,82 @@
+name: CI
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  rules-and-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Saudi rules engine tests
+        run: python -m unittest discover -s tests -v
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - name: Frontend typecheck, tests, build
+        working-directory: frontend
+        run: |
+          npm ci
+          npx tsc -b
+          npx vitest run
+          npm run build
+      - name: Committed build is up to date
+        run: git diff --exit-code -- alphax_hr/public/frontend || (echo "Run 'npm run build' in frontend/ and commit the output" && exit 1)
+
+  frappe-integration:
+    runs-on: ubuntu-latest
+    needs: rules-and-frontend
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: alphax_hr }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: System packages
+        run: sudo apt-get update && sudo apt-get install -y mariadb-client libmariadb-dev pkg-config
+      - name: Bench with Frappe, ERPNext, HRMS (v15)
+        run: |
+          pip install frappe-bench
+          npm i -g yarn
+          bench init --frappe-branch version-15 --skip-assets --skip-redis-config-generation --python "$(which python)" ~/bench
+          cd ~/bench
+          bench set-config -g redis_cache redis://127.0.0.1:6379
+          bench set-config -g redis_queue redis://127.0.0.1:6379
+          bench set-config -g redis_socketio redis://127.0.0.1:6379
+          bench get-app --branch version-15 --skip-assets erpnext
+          bench get-app --branch version-15 --skip-assets hrms
+          bench get-app --skip-assets "$GITHUB_WORKSPACE/alphax_hr"
+          bench new-site hr.test --db-host 127.0.0.1 --db-root-password root --admin-password admin --install-app erpnext
+          bench --site hr.test install-app hrms
+          bench --site hr.test install-app alphax_hr
+      - name: API integration tests (all personas + security cases)
+        working-directory: /home/runner/bench/sites
+        run: ../env/bin/python ../apps/alphax_hr/tests/integration/run_frappe_tests.py hr.test
+      - name: Browser E2E (English, Arabic RTL, phone)
+        run: |
+          cd ~/bench
+          ln -sfn ~/bench/apps/alphax_hr/alphax_hr/public sites/assets/alphax_hr
+          echo "127.0.0.1 hr.test" | sudo tee -a /etc/hosts
+          bench --site hr.test set-config host_name http://hr.test:8000
+          (bench serve --port 8000 > /tmp/serve.log 2>&1 &)
+          sleep 8
+          npm i playwright@1 && npx playwright install --with-deps chromium
+          node apps/alphax_hr/tests/e2e/smoke.mjs http://hr.test:8000 /tmp/screens
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: screenshots, path: /tmp/screens }

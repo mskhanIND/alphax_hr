@@ -1,0 +1,31 @@
+app_name = "alphax_hr"
+app_title = "AlphaX HR"
+app_publisher = "Neotec Integrated Solutions"
+app_description = "AlphaX HR — a modern Saudi HR experience on Frappe HRMS and ERPNext"
+app_email = "support@neotec.ai"
+app_license = "MIT"
+
+# Frappe HRMS + ERPNext remain the system of record. This app never duplicates
+# their data: it adds an API layer, Saudi rules and the /hr web experience.
+required_apps = ["erpnext", "hrms"]
+
+add_to_apps_screen = [
+	{
+		"name": "alphax_hr",
+		"logo": "/assets/alphax_hr/frontend/logo.svg",
+		"title": "AlphaX HR",
+		"route": "/alphax",
+		"has_permission": "alphax_hr.api.session.has_app_permission",
+	}
+]
+
+website_route_rules = [
+	{"from_route": "/alphax/<path:app_path>", "to_route": "alphax"},
+]
+
+after_install = "alphax_hr.install.after_install"
+after_migrate = "alphax_hr.install.after_migrate"
+
+scheduler_events = {
+	"daily": ["alphax_hr.tasks.notify_expiring_documents"],
+}

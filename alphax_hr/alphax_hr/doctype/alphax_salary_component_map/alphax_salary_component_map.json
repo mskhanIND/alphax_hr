@@ -1,0 +1,39 @@
+{
+ "doctype": "DocType",
+ "name": "AlphaX Salary Component Map",
+ "module": "AlphaX HR",
+ "custom": 0,
+ "engine": "InnoDB",
+ "creation": "2026-11-02 00:00:00.000000",
+ "modified": "2026-11-02 00:00:00.000000",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "field_order": [
+  "salary_component",
+  "purpose"
+ ],
+ "fields": [
+  {
+   "fieldname": "salary_component",
+   "fieldtype": "Link",
+   "label": "Salary Component",
+   "options": "Salary Component",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "purpose",
+   "fieldtype": "Select",
+   "label": "Used For",
+   "options": "GOSI Basic\nGOSI Housing\nEOSB Wage\nNitaqat Wage",
+   "reqd": 1,
+   "in_list_view": 1
+  }
+ ],
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 1,
+ "editable_grid": 1
+}

@@ -1,0 +1,140 @@
+{
+ "doctype": "DocType",
+ "name": "AlphaX HR Settings",
+ "module": "AlphaX HR",
+ "custom": 0,
+ "engine": "InnoDB",
+ "creation": "2026-11-02 00:00:00.000000",
+ "modified": "2026-11-02 00:00:00.000000",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "field_order": [
+  "general_section",
+  "default_company",
+  "portal_title",
+  "default_language",
+  "gosi_section",
+  "gosi_enabled",
+  "gosi_wage_cap",
+  "gosi_wage_floor",
+  "component_map",
+  "nitaqat_section",
+  "nitaqat_full_count_wage",
+  "nitaqat_partial_weight",
+  "nitaqat_target_percent",
+  "documents_section",
+  "document_alert_days"
+ ],
+ "fields": [
+  {
+   "fieldname": "general_section",
+   "fieldtype": "Section Break",
+   "label": "General"
+  },
+  {
+   "fieldname": "default_company",
+   "fieldtype": "Link",
+   "label": "Default Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "portal_title",
+   "fieldtype": "Data",
+   "label": "Portal Title",
+   "default": "AlphaX HR"
+  },
+  {
+   "fieldname": "default_language",
+   "fieldtype": "Select",
+   "label": "Default Language",
+   "options": "en\nar",
+   "default": "en"
+  },
+  {
+   "fieldname": "gosi_section",
+   "fieldtype": "Section Break",
+   "label": "GOSI"
+  },
+  {
+   "fieldname": "gosi_enabled",
+   "fieldtype": "Check",
+   "label": "Enable GOSI Calculations",
+   "default": "1"
+  },
+  {
+   "fieldname": "gosi_wage_cap",
+   "fieldtype": "Currency",
+   "label": "Contributory Wage Cap",
+   "default": "45000"
+  },
+  {
+   "fieldname": "gosi_wage_floor",
+   "fieldtype": "Currency",
+   "label": "Contributory Wage Floor",
+   "default": "0"
+  },
+  {
+   "fieldname": "component_map",
+   "fieldtype": "Table",
+   "label": "Salary Component Mapping",
+   "options": "AlphaX Salary Component Map",
+   "description": "Tell AlphaX which salary components are Basic, Housing and the EOSB wage."
+  },
+  {
+   "fieldname": "nitaqat_section",
+   "fieldtype": "Section Break",
+   "label": "Nitaqat (internal estimate)"
+  },
+  {
+   "fieldname": "nitaqat_full_count_wage",
+   "fieldtype": "Currency",
+   "label": "Saudi Counts Fully From Wage",
+   "default": "4000"
+  },
+  {
+   "fieldname": "nitaqat_partial_weight",
+   "fieldtype": "Float",
+   "label": "Weight Below That Wage",
+   "default": "0.5"
+  },
+  {
+   "fieldname": "nitaqat_target_percent",
+   "fieldtype": "Percent",
+   "label": "Target Saudization %"
+  },
+  {
+   "fieldname": "documents_section",
+   "fieldtype": "Section Break",
+   "label": "Documents"
+  },
+  {
+   "fieldname": "document_alert_days",
+   "fieldtype": "Int",
+   "label": "Alert Before Expiry (days)",
+   "default": "60"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1
+  },
+  {
+   "role": "HR Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1
+  },
+  {
+   "role": "HR User",
+   "read": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1,
+ "states": [],
+ "issingle": 1
+}

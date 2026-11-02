@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.DS_Store
+node_modules/
+frontend/dist/
+.env
+*.log
+frontend/node_modules/
+dump.rdb

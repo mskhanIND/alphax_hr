@@ -1,0 +1,182 @@
+{
+  "_LinkInput-zaFz4-g9.js": {
+    "file": "assets/LinkInput-zaFz4-g9.js",
+    "name": "LinkInput",
+    "imports": [
+      "index.html"
+    ]
+  },
+  "_arrow-left-CJQ4qmBx.js": {
+    "file": "assets/arrow-left-CJQ4qmBx.js",
+    "name": "arrow-left",
+    "imports": [
+      "index.html"
+    ]
+  },
+  "_chevron-left-CMrRibKl.js": {
+    "file": "assets/chevron-left-CMrRibKl.js",
+    "name": "chevron-left",
+    "imports": [
+      "index.html"
+    ]
+  },
+  "_download-Bg8ifDDd.js": {
+    "file": "assets/download-Bg8ifDDd.js",
+    "name": "download",
+    "imports": [
+      "index.html"
+    ]
+  },
+  "index.html": {
+    "file": "assets/index-CGIBG4U0.js",
+    "name": "index",
+    "src": "index.html",
+    "isEntry": true,
+    "dynamicImports": [
+      "src/pages/MyLeave.tsx",
+      "src/pages/MyAttendance.tsx",
+      "src/pages/MyPayslips.tsx",
+      "src/pages/MyProfile.tsx",
+      "src/pages/Approvals.tsx",
+      "src/pages/TeamCalendar.tsx",
+      "src/pages/People.tsx",
+      "src/pages/EmployeeDetail.tsx",
+      "src/pages/NewEmployee.tsx",
+      "src/pages/Compliance.tsx",
+      "src/pages/Payroll.tsx",
+      "src/pages/Gosi.tsx",
+      "src/pages/Eosb.tsx"
+    ],
+    "css": [
+      "assets/index-DFYAwDf7.css"
+    ]
+  },
+  "src/pages/Approvals.tsx": {
+    "file": "assets/Approvals-Bf4xNWMD.js",
+    "name": "Approvals",
+    "src": "src/pages/Approvals.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html"
+    ]
+  },
+  "src/pages/Compliance.tsx": {
+    "file": "assets/Compliance-Dr_jfO34.js",
+    "name": "Compliance",
+    "src": "src/pages/Compliance.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html"
+    ]
+  },
+  "src/pages/EmployeeDetail.tsx": {
+    "file": "assets/EmployeeDetail-BBN2Uz27.js",
+    "name": "EmployeeDetail",
+    "src": "src/pages/EmployeeDetail.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_LinkInput-zaFz4-g9.js",
+      "_arrow-left-CJQ4qmBx.js"
+    ]
+  },
+  "src/pages/Eosb.tsx": {
+    "file": "assets/Eosb-CstWpfS3.js",
+    "name": "Eosb",
+    "src": "src/pages/Eosb.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_LinkInput-zaFz4-g9.js"
+    ]
+  },
+  "src/pages/Gosi.tsx": {
+    "file": "assets/Gosi-DztKo_6d.js",
+    "name": "Gosi",
+    "src": "src/pages/Gosi.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_chevron-left-CMrRibKl.js",
+      "_download-Bg8ifDDd.js"
+    ]
+  },
+  "src/pages/MyAttendance.tsx": {
+    "file": "assets/MyAttendance-CxpyUA5P.js",
+    "name": "MyAttendance",
+    "src": "src/pages/MyAttendance.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_chevron-left-CMrRibKl.js"
+    ]
+  },
+  "src/pages/MyLeave.tsx": {
+    "file": "assets/MyLeave-6zuFTTnU.js",
+    "name": "MyLeave",
+    "src": "src/pages/MyLeave.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html"
+    ]
+  },
+  "src/pages/MyPayslips.tsx": {
+    "file": "assets/MyPayslips-B6c5Y-UW.js",
+    "name": "MyPayslips",
+    "src": "src/pages/MyPayslips.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_download-Bg8ifDDd.js"
+    ]
+  },
+  "src/pages/MyProfile.tsx": {
+    "file": "assets/MyProfile-CS1dF0xa.js",
+    "name": "MyProfile",
+    "src": "src/pages/MyProfile.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html"
+    ]
+  },
+  "src/pages/NewEmployee.tsx": {
+    "file": "assets/NewEmployee-DestfGZ_.js",
+    "name": "NewEmployee",
+    "src": "src/pages/NewEmployee.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_LinkInput-zaFz4-g9.js",
+      "_arrow-left-CJQ4qmBx.js"
+    ]
+  },
+  "src/pages/Payroll.tsx": {
+    "file": "assets/Payroll--uvVFSfn.js",
+    "name": "Payroll",
+    "src": "src/pages/Payroll.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_chevron-left-CMrRibKl.js"
+    ]
+  },
+  "src/pages/People.tsx": {
+    "file": "assets/People-Brk7W0Id.js",
+    "name": "People",
+    "src": "src/pages/People.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html"
+    ]
+  },
+  "src/pages/TeamCalendar.tsx": {
+    "file": "assets/TeamCalendar-DgwsHlhd.js",
+    "name": "TeamCalendar",
+    "src": "src/pages/TeamCalendar.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_chevron-left-CMrRibKl.js"
+    ]
+  }
+}
