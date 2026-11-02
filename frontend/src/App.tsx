@@ -26,6 +26,13 @@ const AttendancePage = lazy(() => import('./pages/Attendance'))
 const Payroll = lazy(() => import('./pages/Payroll'))
 const Gosi = lazy(() => import('./pages/Gosi'))
 const Eosb = lazy(() => import('./pages/Eosb'))
+const MyRequests = lazy(() => import('./pages/MyRequests'))
+const Requests = lazy(() => import('./pages/Requests'))
+const Penalties = lazy(() => import('./pages/Penalties'))
+const MyPenalties = lazy(() => import('./pages/MyPenalties'))
+const Settlements = lazy(() => import('./pages/Settlements'))
+const Appraisals = lazy(() => import('./pages/Appraisals'))
+const Cutover = lazy(() => import('./pages/Cutover'))
 
 function Guard({ when, children }: { when: (s: ReturnType<typeof useSession>) => boolean; children: ReactNode }) {
   const s = useSession()
@@ -48,6 +55,10 @@ export default function App() {
             <Route path="/me/leave" element={<Guard when={emp}><MyLeave /></Guard>} />
             <Route path="/me/attendance" element={<Guard when={emp}><MyAttendance /></Guard>} />
             <Route path="/me/payslips" element={<Guard when={emp}><MyPayslips /></Guard>} />
+            <Route path="/me/requests" element={<Guard when={emp}><MyRequests /></Guard>} />
+            <Route path="/penalties" element={<Guard when={hr}><Penalties /></Guard>} />
+            <Route path="/me/warnings" element={<Guard when={emp}><MyPenalties /></Guard>} />
+            <Route path="/requests" element={<Guard when={hr}><Requests /></Guard>} />
             <Route path="/me/profile" element={<Guard when={emp}><MyProfile /></Guard>} />
             <Route path="/approvals" element={<Guard when={mgr}><Approvals /></Guard>} />
             <Route path="/team" element={<Guard when={mgr}><TeamCalendar /></Guard>} />
@@ -65,6 +76,9 @@ export default function App() {
             <Route path="/attendance" element={<Guard when={hr}><AttendancePage /></Guard>} />
             <Route path="/payroll" element={<Guard when={hr}><Payroll /></Guard>} />
             <Route path="/payroll/gosi" element={<Guard when={hr}><Gosi /></Guard>} />
+            <Route path="/payroll/settlements" element={<Guard when={hr}><Settlements /></Guard>} />
+            <Route path="/appraisals" element={<Guard when={hr}><Appraisals /></Guard>} />
+            <Route path="/cutover" element={<Guard when={(x: any) => x.persona.hr_manager}><Cutover /></Guard>} />
             <Route path="/payroll/eosb" element={<Guard when={hr}><Eosb /></Guard>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

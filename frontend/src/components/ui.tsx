@@ -56,7 +56,7 @@ export function Badge({ tone = 'gray', children }: { tone?: keyof typeof tones |
 
 export function statusTone(status?: string | null) {
   const s = (status ?? '').toLowerCase()
-  if (/approved|present|submitted|paid|valid|active/.test(s)) return 'green'
+  if (/approved|present|submitted|paid|valid|active|completed/.test(s)) return 'green'
   if (/reject|absent|cancel|expired|left/.test(s)) return 'red'
   if (/open|pending|draft|half|within_30|late/.test(s)) return 'amber'
   if (/leave|within_60|within_90/.test(s)) return 'blue'
@@ -139,10 +139,15 @@ export function Field({ label, children, hint, error }: { label: string; childre
 
 const inputCls = 'h-10 w-full rounded-xl border border-line bg-white px-3 text-sm text-ink outline-none transition placeholder:text-slate-400 focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:bg-surface'
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={clsx(inputCls, props.className)} />
+  return <input {...props} className={clsx(sized(props.className), props.className)} />
 }
+/** The base input classes, without w-full when the caller sets its own width. */
+function sized(className?: string) {
+  return /(^|\s)(w-|min-w-|max-w-)/.test(className ?? '') ? inputCls.replace('w-full ', '') : inputCls
+}
+
 export function Select({ children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} className={clsx(inputCls, props.className)}>{children}</select>
+  return <select {...props} className={clsx(sized(props.className), props.className)}>{children}</select>
 }
 export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return <textarea {...props} className={clsx(inputCls, 'h-auto min-h-20 py-2', props.className)} />

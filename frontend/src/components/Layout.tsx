@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import {
-  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History, Network, CalendarCheck, Activity, ChevronDown } from 'lucide-react'
+  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History, Network, CalendarCheck, Activity, ChevronDown, Inbox, Gavel, ShieldAlert, Receipt, Star, ArrowRightLeft } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { NavLink, Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -22,6 +22,8 @@ export function useNav(): { group: string; items: NavItem[] }[] {
       items: [
         { to: '/me/leave', label: t('My Leave'), icon: <CalendarDays className="size-5" /> },
         { to: '/me/attendance', label: t('My Attendance'), icon: <Clock className="size-5" /> },
+        { to: '/me/requests', label: t('My Requests'), icon: <Inbox className="size-5" /> },
+        { to: '/me/warnings', label: t('My warnings'), icon: <ShieldAlert className="size-5" /> },
         { to: '/me/payslips', label: t('My Payslips'), icon: <Wallet className="size-5" /> },
         { to: '/me/profile', label: t('My Profile'), icon: <User className="size-5" /> },
       ],
@@ -40,6 +42,9 @@ export function useNav(): { group: string; items: NavItem[] }[] {
       items: [
         { to: '/people', label: t('Employees'), icon: <Users className="size-5" /> },
         { to: '/people?view=org', label: t('Org chart'), icon: <Network className="size-5" /> },
+        { to: '/requests', label: t('Requests'), icon: <Inbox className="size-5" /> },
+        { to: '/penalties', label: t('Warnings & penalties'), icon: <Gavel className="size-5" /> },
+        { to: '/appraisals', label: t('Appraisals'), icon: <Star className="size-5" /> },
         { to: '/compliance', label: t('Compliance'), icon: <ShieldCheck className="size-5" /> },
       ],
     })
@@ -59,7 +64,8 @@ export function useNav(): { group: string; items: NavItem[] }[] {
     groups.push({
       group: t('Payroll'),
       items: [
-        { to: '/payroll', label: t('Payroll runs'), icon: <Landmark className="size-5" /> },
+        { to: '/payroll', label: t('Payroll control centre'), icon: <Landmark className="size-5" /> },
+        { to: '/payroll/settlements', label: t('Final settlements'), icon: <Receipt className="size-5" /> },
         { to: '/payroll/gosi', label: t('GOSI Register'), icon: <FileText className="size-5" /> },
         { to: '/payroll/eosb', label: t('End of Service'), icon: <Scale className="size-5" /> },
       ],
@@ -70,6 +76,7 @@ export function useNav(): { group: string; items: NavItem[] }[] {
         ...(s.persona.hr_manager || s.persona.system_manager
           ? [{ to: '/setup', label: t('HR status & setup'), icon: <Activity className="size-5" /> }] : []),
         { to: '/leave-setup', label: t('Leave setup'), icon: <Settings2 className="size-5" /> },
+        ...(s.persona.hr_manager ? [{ to: '/cutover', label: t('Cut-over readiness'), icon: <ArrowRightLeft className="size-5" /> }] : []),
         { to: '/activity', label: t('Activity log'), icon: <History className="size-5" /> },
       ],
     })

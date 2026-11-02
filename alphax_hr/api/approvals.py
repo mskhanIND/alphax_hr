@@ -56,6 +56,16 @@ SOURCES = {
 		"fields": ["employee", "employee_name", "leave_type", "work_from_date", "work_end_date", "reason"],
 		"submit_on_decision": True,
 	},
+	# AlphaX's own requests run on alphax_hr.api.requests (not docstatus based).
+	"AlphaX Request": {
+		"engine": True,
+		"approver_field": "approver",
+		"open": {"status": ["in", ["Pending Manager", "Pending HR", "Approved"]]},
+		"status_field": "status",
+		"values": {"Approve": None, "Reject": None},
+		"fields": ["employee", "employee_name", "request_type", "status", "due_on", "reason", "details"],
+		"submit_on_decision": False,
+	},
 }
 
 
@@ -72,6 +82,10 @@ def _row_fields(dt):
 
 
 def _actions_for(doc, user, workflow):
+	if SOURCES[doc.doctype].get("engine"):
+		from alphax_hr.api.requests import actions_for
+
+		return [a for a in actions_for(doc, user) if a != "Cancel"]
 	if workflow:
 		return [t.action for t in get_transitions(doc)]
 	conf = SOURCES[doc.doctype]
@@ -96,7 +110,13 @@ def inbox(doctype=None, limit=100):
 		workflow = get_workflow_name(dt)
 		filters = {"docstatus": 0}
 		conf = SOURCES[dt]
-		if not workflow:
+		if conf.get("engine"):
+			workflow = None
+			filters.update(conf["open"])
+			if not is_hr(user):
+				filters["approver"] = user
+				filters["status"] = "Pending Manager"
+		elif not workflow:
 			filters.update(conf["open"])
 			if conf["approver_field"] and not is_hr(user):
 				filters[conf["approver_field"]] = user
@@ -122,6 +142,10 @@ def act(doctype, name, action, comment=None):
 	user = login_required()
 	if doctype not in SOURCES:
 		frappe.throw(_("Unsupported request type."), frappe.PermissionError)
+	if SOURCES[doctype].get("engine"):
+		from alphax_hr.api.requests import decide
+
+		return decide(name, action, comment)
 	doc = frappe.get_doc(doctype, name)
 	doc.check_permission("read")
 	workflow = get_workflow_name(doctype)
@@ -151,6 +175,10 @@ def _who(user):
 
 def pending_with(doc):
 	"""Who the request is waiting for: workflow roles, the named approver, or HR."""
+	if SOURCES.get(doc.doctype, {}).get("engine"):
+		if doc.status == "Pending Manager" and doc.approver:
+			return [_who(doc.approver)]
+		return [{"role": "HR Manager"}] if doc.status in ("Pending HR", "Approved") else []
 	if doc.docstatus != 0:
 		return []
 	workflow = get_workflow_name(doc.doctype)
@@ -182,8 +210,8 @@ def decided(doctype=None, limit=50):
 	for dt in ([doctype] if doctype in SOURCES else list(SOURCES)):
 		if not _installed(dt) or not frappe.has_permission(dt, "read"):
 			continue
-		filters = {"docstatus": ["in", [1, 2]]}
 		conf = SOURCES[dt]
+		filters = {"status": ["in", ["Completed", "Rejected", "Cancelled"]]} if conf.get("engine") else {"docstatus": ["in", [1, 2]]}
 		if conf["approver_field"] and not is_hr(user):
 			filters[conf["approver_field"]] = user
 		rows = frappe.get_list(dt, filters=filters, fields=list(dict.fromkeys(_row_fields(dt))),

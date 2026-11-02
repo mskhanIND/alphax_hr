@@ -183,6 +183,49 @@ export const api = {
   updateAnnualSettings: (data: Record<string, unknown>) => call(A + 'leave_setup.update_annual_settings', { data }),
   annualAllocation: (apply = 0) => call(A + 'leave_setup.annual_allocation', { apply }),
   expiring: (days: number) => call(A + 'compliance.expiring_documents', { days }),
+  // employee requests
+  requestTypes: (include_disabled = 0) => call<RequestType[]>(A + 'requests.types', { include_disabled }),
+  createRequest: (request_type: string, details: Record<string, unknown>, reason?: string, employee?: string) =>
+    call<{ name: string; status: string }>(A + 'requests.create', { request_type, details, reason, employee }),
+  myAlphaxRequests: () => call<any[]>(A + 'requests.mine'),
+  cancelRequest: (name: string) => call(A + 'requests.cancel', { name }),
+  allRequests: (args: Record<string, unknown>) => call<{ rows: any[]; counts: Record<string, number> }>(A + 'requests.all_requests', args),
+  updateRequestType: (name: string, data: Record<string, unknown>) => call<RequestType>(A + 'requests.update_type', { name, data }),
+  // penalties
+  violationTypes: (include_disabled = 0) => call<any[]>(A + 'penalties.violation_types', { include_disabled }),
+  saveViolationType: (name: string, data: Record<string, unknown>) => call(A + 'penalties.save_violation_type', { name, data }),
+  penaltyPreview: (args: Record<string, unknown>) => call<any>(A + 'penalties.preview', args),
+  createPenalty: (args: Record<string, unknown>) => call<any>(A + 'penalties.create', args),
+  issuePenalty: (name: string) => call<any>(A + 'penalties.issue_penalty', { name }),
+  cancelPenalty: (name: string, reason: string) => call<any>(A + 'penalties.cancel_penalty', { name, reason }),
+  penalties: (args: Record<string, unknown>) => call<any[]>(A + 'penalties.penalties', args),
+  penaltySuggestions: (month: string) => call<any[]>(A + 'penalties.suggestions', { month }),
+  myPenalties: () => call<any[]>(A + 'penalties.mine'),
+  respondPenalty: (name: string, action: string, reply?: string) => call<any>(A + 'penalties.respond', { name, action, reply }),
+  // payroll control & final settlement
+  payrollCompanies: () => call<string[]>(A + 'payroll_control.companies'),
+  payrollPeriod: (company: string, month: string) => call<any>(A + 'payroll_control.period', { company, month }),
+  payrollAdvance: (company: string, month: string, step: string, note?: string, override = 0) =>
+    call<any>(A + 'payroll_control.advance', { company, month, step, note, override }),
+  payrollSubmitSlips: (company: string, month: string) => call<any>(A + 'payroll_control.submit_slips', { company, month }),
+  payrollAddOvertime: (company: string, month: string) => call<any>(A + 'payroll_control.add_overtime', { company, month }),
+  settlements: (status?: string) => call<any[]>(A + 'settlements.settlements', { status }),
+  prepareSettlement: (args: Record<string, unknown>) => call<any>(A + 'settlements.prepare', args),
+  approveSettlement: (name: string) => call<any>(A + 'settlements.approve', { name }),
+  paySettlement: (name: string, paid_on?: string) => call<any>(A + 'settlements.mark_paid', { name, paid_on }),
+  cancelSettlement: (name: string, reason: string) => call<any>(A + 'settlements.cancel', { name, reason }),
+  // appraisals & cut-over
+  appraisalCycles: () => call<any>(A + 'appraisals.cycles'),
+  appraisals: (cycle?: string) => call<any[]>(A + 'appraisals.appraisals', { cycle }),
+  myAppraisals: () => call<any[]>(A + 'appraisals.mine'),
+  cutoverReadiness: () => call<any>(A + 'cutover.readiness'),
+  importLegacy: (kind: string, dry_run: number) => call<any>(A + 'cutover.import_legacy', { kind, dry_run }),
+}
+
+export interface RequestField { fieldname: string; label: string; label_ar?: string; type: string; reqd?: number; options?: string[] }
+export interface RequestType {
+  name: string; title: string; title_ar?: string; category: string; description?: string; needs_manager: number; needs_hr: number
+  requires_attachment: number; non_saudi_only: number; sla_days: number; output?: string; enabled: number; fields: RequestField[]
 }
 
 /** Attach a file to a document through Frappe's standard (permission-checked) upload. */

@@ -101,6 +101,23 @@ try {
       if (await dialog.isVisible().catch(() => false)) await page.keyboard.press('Escape')
     })
 
+    await step('employee raises a salary certificate request', async () => {
+      await page.goto(`${BASE}/alphax/me/requests`)
+      await page.getByRole('button', { name: 'New request' }).first().click()
+      const dlg = page.getByRole('dialog')
+      await dlg.locator('select').first().selectOption('Salary Certificate')
+      await dlg.locator('input[type=text]').first().fill('Al Rajhi Bank')
+      await dlg.locator('select').nth(1).selectOption('Bank')
+      await page.screenshot({ path: `${OUT}/20-new-request.png` })
+      await dlg.getByRole('button', { name: 'Submit request' }).click()
+      await dlg.waitFor({ state: 'detached' })
+      await page.getByText('Pending HR').first().waitFor()
+      await page.screenshot({ path: `${OUT}/20b-my-requests.png`, fullPage: true })
+    })
+    await step('my warnings page', async () => {
+      await page.goto(`${BASE}/alphax/me/warnings`)
+      await page.getByRole('heading', { name: 'My warnings' }).waitFor()
+    })
     await step('HR pages are not reachable by URL', async () => {
       await page.goto(`${BASE}/alphax/people`)
       await page.waitForURL(/\/alphax\/?$/)
@@ -289,6 +306,44 @@ try {
       await page.screenshot({ path: `${OUT}/11b-leave-setup.png`, fullPage: true })
     })
 
+    await step('HR completes the request and the letter is issued', async () => {
+      await page.goto(`${BASE}/alphax/requests`)
+      await page.locator('select').first().selectOption('Salary Certificate')
+      await page.getByRole('button', { name: 'Approve', exact: true }).first().click()
+      await page.getByRole('dialog').getByRole('button', { name: 'Approve', exact: true }).click()
+      await page.getByRole('dialog').waitFor({ state: 'detached' })
+      await page.getByRole('button', { name: 'Completed' }).click()
+      await page.getByRole('link', { name: 'Letter' }).first().waitFor()
+      await page.screenshot({ path: `${OUT}/21-requests-hr.png`, fullPage: true })
+      await page.getByRole('tab', { name: 'Request types' }).click()
+      await page.getByText('Exit & Re-entry Visa').waitFor()
+    })
+    await step('penalties: schedule and new penalty preview', async () => {
+      await page.goto(`${BASE}/alphax/penalties`)
+      await page.getByRole('tab', { name: 'Violations schedule' }).click()
+      await page.getByText('Late arrival up to 15 minutes').waitFor()
+      await page.screenshot({ path: `${OUT}/22-violations.png`, fullPage: true })
+      await page.getByRole('tab', { name: 'Penalties' }).click()
+      await page.screenshot({ path: `${OUT}/22b-penalties.png`, fullPage: true })
+    })
+    await step('payroll control centre with checklist', async () => {
+      await page.goto(`${BASE}/alphax/payroll`)
+      await page.getByText('Payroll checklist').waitFor()
+      await page.getByText('No salary structure').first().waitFor()
+      await page.screenshot({ path: `${OUT}/23-payroll-control.png`, fullPage: true })
+    })
+    await step('final settlements page', async () => {
+      await page.goto(`${BASE}/alphax/payroll/settlements`)
+      await page.getByRole('heading', { name: 'Final settlements' }).waitFor()
+      await page.screenshot({ path: `${OUT}/24-settlements.png`, fullPage: true })
+    })
+    await step('appraisals and cut-over readiness', async () => {
+      await page.goto(`${BASE}/alphax/appraisals`)
+      await page.getByRole('heading', { name: 'Appraisals' }).waitFor()
+      await page.goto(`${BASE}/alphax/cutover`)
+      await page.getByText('Employee requests to import').waitFor()
+      await page.screenshot({ path: `${OUT}/25-cutover.png`, fullPage: true })
+    })
     await step('GOSI register', async () => {
       await page.goto(`${BASE}/alphax/payroll/gosi`)
       await page.getByText('Employer share').first().waitFor()

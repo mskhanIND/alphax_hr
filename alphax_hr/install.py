@@ -18,6 +18,12 @@ def after_migrate():
 	from alphax_hr.api.salary import seed_components
 
 	seed_components()
+	from alphax_hr.api.requests import seed_types
+
+	seed_types()
+	from alphax_hr.api.penalties import seed_violations
+
+	seed_violations()
 
 
 # AlphaX's own Employee columns and the width they really need. Sites with many

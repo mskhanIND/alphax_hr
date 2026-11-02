@@ -1,0 +1,343 @@
+"""Employee requests: one engine for letters, government services, finance, travel, assets and separation.
+
+Request types are configuration (fields, approvals, SLA, letter). A request moves
+Pending Manager -> Pending HR -> Approved (-> Completed), or Rejected / Cancelled.
+"""
+from __future__ import annotations
+
+import json
+
+import frappe
+from frappe import _
+from frappe.utils import add_days, cint, flt, getdate, now_datetime, nowdate
+
+from alphax_hr.api._common import current_employee, is_hr, login_required, parse_json, require_hr, require_hr_manager
+
+OPEN = ("Pending Manager", "Pending HR")
+FIELD_TYPES = {"Data", "Date", "Int", "Currency", "Select", "Text", "Check"}
+
+# Seeded on install; HR can edit or add types afterwards.
+DEFAULT_TYPES = [
+	{"request_type_name": "Salary Certificate", "title_ar": "تعريف بالراتب", "category": "Letter", "needs_manager": 0, "output": "Letter",
+	 "sla_days": 2, "fields": [{"fieldname": "addressed_to", "label": "Addressed to", "label_ar": "موجه إلى", "type": "Data", "reqd": 1},
+							   {"fieldname": "purpose", "label": "Purpose", "label_ar": "الغرض", "type": "Select",
+								"options": ["Bank", "Embassy", "Government", "Other"], "reqd": 1}],
+	 "letter_title": "Salary Certificate", "letter_body":
+		"This is to certify that {{ employee.employee_name }} ({{ employee.nationality }}, ID {{ employee.id }}) has been working with "
+		"{{ company }} as {{ employee.designation }} since {{ employee.date_of_joining }}{% if salary %}, with a total monthly salary of "
+		"{{ salary.gross }} {{ salary.currency }}{% endif %}. This certificate is issued at the employee's request to {{ details.addressed_to }} "
+		"without any liability on the company.",
+	 "letter_body_ar":
+		"تشهد {{ company }} بأن {{ employee.employee_name }} (الهوية {{ employee.id }}) يعمل لديها بوظيفة {{ employee.designation }} منذ "
+		"{{ employee.date_of_joining }}{% if salary %} براتب شهري إجمالي قدره {{ salary.gross }} {{ salary.currency }}{% endif %}، "
+		"وقد أُعطيت له هذه الشهادة بناءً على طلبه لتقديمها إلى {{ details.addressed_to }} دون أدنى مسؤولية على الشركة."},
+	{"request_type_name": "Employment Letter", "title_ar": "خطاب تعريف", "category": "Letter", "needs_manager": 0, "output": "Letter",
+	 "sla_days": 2, "fields": [{"fieldname": "addressed_to", "label": "Addressed to", "label_ar": "موجه إلى", "type": "Data", "reqd": 1}],
+	 "letter_title": "Employment Letter", "letter_body":
+		"This is to certify that {{ employee.employee_name }}, ID {{ employee.id }}, is employed by {{ company }} as {{ employee.designation }} "
+		"since {{ employee.date_of_joining }}. Issued at the employee's request to {{ details.addressed_to }}.",
+	 "letter_body_ar": "تشهد {{ company }} بأن {{ employee.employee_name }} (الهوية {{ employee.id }}) يعمل لديها بوظيفة {{ employee.designation }} "
+					   "منذ {{ employee.date_of_joining }}، وأُعطيت له هذه الشهادة بناءً على طلبه لتقديمها إلى {{ details.addressed_to }}."},
+	{"request_type_name": "Experience Letter", "title_ar": "شهادة خبرة", "category": "Letter", "needs_manager": 0, "output": "Letter", "sla_days": 3,
+	 "fields": [], "letter_title": "Experience Certificate", "letter_body":
+		"This is to certify that {{ employee.employee_name }} worked with {{ company }} as {{ employee.designation }} from "
+		"{{ employee.date_of_joining }}{% if employee.relieving_date %} to {{ employee.relieving_date }}{% endif %}.",
+	 "letter_body_ar": "تشهد {{ company }} بأن {{ employee.employee_name }} عمل لديها بوظيفة {{ employee.designation }} منذ {{ employee.date_of_joining }}"
+					   "{% if employee.relieving_date %} حتى {{ employee.relieving_date }}{% endif %}."},
+	{"request_type_name": "Exit & Re-entry Visa", "title_ar": "تأشيرة خروج وعودة", "category": "Government", "non_saudi_only": 1, "sla_days": 3,
+	 "fields": [{"fieldname": "visa_type", "label": "Visa type", "label_ar": "نوع التأشيرة", "type": "Select", "options": ["Single", "Multiple"], "reqd": 1},
+				{"fieldname": "from_date", "label": "Travel date", "label_ar": "تاريخ السفر", "type": "Date", "reqd": 1},
+				{"fieldname": "to_date", "label": "Return date", "label_ar": "تاريخ العودة", "type": "Date", "reqd": 1},
+				{"fieldname": "destination", "label": "Destination", "label_ar": "الوجهة", "type": "Data"}]},
+	{"request_type_name": "Final Exit Visa", "title_ar": "تأشيرة خروج نهائي", "category": "Government", "non_saudi_only": 1, "sla_days": 5,
+	 "fields": [{"fieldname": "exit_date", "label": "Exit date", "label_ar": "تاريخ الخروج", "type": "Date", "reqd": 1}]},
+	{"request_type_name": "Iqama Renewal", "title_ar": "تجديد الإقامة", "category": "Government", "non_saudi_only": 1, "needs_manager": 0,
+	 "sla_days": 5, "fields": []},
+	{"request_type_name": "Salary Advance", "title_ar": "سلفة على الراتب", "category": "Finance", "sla_days": 3,
+	 "fields": [{"fieldname": "amount", "label": "Amount", "label_ar": "المبلغ", "type": "Currency", "reqd": 1},
+				{"fieldname": "months", "label": "Repay over (months)", "label_ar": "السداد خلال (أشهر)", "type": "Int", "reqd": 1}]},
+	{"request_type_name": "Business Trip", "title_ar": "انتداب / رحلة عمل", "category": "Travel", "sla_days": 2,
+	 "fields": [{"fieldname": "destination", "label": "Destination", "label_ar": "الوجهة", "type": "Data", "reqd": 1},
+				{"fieldname": "from_date", "label": "From", "label_ar": "من", "type": "Date", "reqd": 1},
+				{"fieldname": "to_date", "label": "To", "label_ar": "إلى", "type": "Date", "reqd": 1},
+				{"fieldname": "purpose", "label": "Purpose", "label_ar": "الغرض", "type": "Text", "reqd": 1}]},
+	{"request_type_name": "Asset Request", "title_ar": "طلب عهدة", "category": "Asset", "sla_days": 3,
+	 "fields": [{"fieldname": "asset_type", "label": "Asset", "label_ar": "العهدة", "type": "Select",
+				 "options": ["Laptop", "Mobile phone", "SIM card", "Vehicle", "Access card", "Other"], "reqd": 1}]},
+	{"request_type_name": "Passport Release", "title_ar": "تسليم الجواز", "category": "Document", "non_saudi_only": 1, "sla_days": 2,
+	 "fields": [{"fieldname": "from_date", "label": "Needed from", "label_ar": "مطلوب من", "type": "Date", "reqd": 1},
+				{"fieldname": "to_date", "label": "Return by", "label_ar": "الإرجاع بتاريخ", "type": "Date"}]},
+	{"request_type_name": "Resignation", "title_ar": "استقالة", "category": "Separation", "sla_days": 5,
+	 "fields": [{"fieldname": "last_working_day", "label": "Last working day", "label_ar": "آخر يوم عمل", "type": "Date", "reqd": 1}]},
+	{"request_type_name": "General Request", "title_ar": "طلب عام", "category": "Other", "sla_days": 3, "fields": []},
+]
+
+
+def seed_types():
+	if not frappe.db.exists("DocType", "AlphaX Request Type"):
+		return
+	for t in DEFAULT_TYPES:
+		if frappe.db.exists("AlphaX Request Type", t["request_type_name"]):
+			continue
+		doc = {k: v for k, v in t.items() if k != "fields"}
+		doc.update({"doctype": "AlphaX Request Type", "fields_json": json.dumps(t["fields"], ensure_ascii=False)})
+		frappe.get_doc(doc).insert(ignore_permissions=True)
+
+
+def _type_dict(t):
+	return {"name": t.name, "title": t.request_type_name, "title_ar": t.title_ar, "category": t.category,
+			"description": t.description, "needs_manager": cint(t.needs_manager), "needs_hr": cint(t.needs_hr),
+			"requires_attachment": cint(t.requires_attachment), "non_saudi_only": cint(t.non_saudi_only),
+			"sla_days": cint(t.sla_days), "output": t.output, "enabled": cint(t.enabled),
+			"fields": parse_json(t.fields_json, []) or []}
+
+
+@frappe.whitelist()
+def types(include_disabled=0):
+	login_required()
+	filters = {} if cint(include_disabled) and is_hr() else {"enabled": 1}
+	rows = frappe.get_all("AlphaX Request Type", filters=filters, fields=["*"], order_by="category asc, request_type_name asc")
+	return [_type_dict(t) for t in rows]
+
+
+def _clean_details(spec, details):
+	out = {}
+	for f in spec:
+		v = details.get(f["fieldname"])
+		if f.get("reqd") and v in (None, "", []):
+			frappe.throw(_("Please fill in: {0}").format(f.get("label")), title=_("Missing information"))
+		if v in (None, ""):
+			continue
+		if f.get("type") == "Select" and f.get("options") and v not in f["options"]:
+			frappe.throw(_("Invalid value for {0}.").format(f.get("label")))
+		if f.get("type") in ("Int",):
+			v = cint(v)
+		elif f.get("type") == "Currency":
+			v = flt(v, 2)
+			if v <= 0:
+				frappe.throw(_("{0} must be more than zero.").format(f.get("label")))
+		elif f.get("type") == "Date":
+			v = str(getdate(v))
+		elif f.get("type") == "Check":
+			v = 1 if cint(v) else 0
+		else:
+			v = str(v)[:2000]
+		out[f["fieldname"]] = v
+	if out.get("from_date") and out.get("to_date") and getdate(out["to_date"]) < getdate(out["from_date"]):
+		frappe.throw(_("The end date is before the start date."))
+	return out
+
+
+def _manager(employee):
+	e = frappe.db.get_value("Employee", employee, ["leave_approver", "reports_to"], as_dict=True)
+	if e.reports_to:
+		user = frappe.db.get_value("Employee", e.reports_to, "user_id")
+		if user:
+			return user
+	return e.leave_approver
+
+
+@frappe.whitelist(methods=["POST"])
+def create(request_type, details=None, reason=None, employee=None):
+	"""Raise a request (for yourself; HR may raise one for any employee)."""
+	user = login_required()
+	if employee and employee != current_employee(required=False):
+		require_hr()
+	employee = employee or current_employee()
+	t = frappe.get_doc("AlphaX Request Type", request_type)
+	if not cint(t.enabled):
+		frappe.throw(_("This request type is not available."))
+	if cint(t.non_saudi_only) and cint(frappe.db.get_value("Employee", employee, "alphax_is_saudi")):
+		frappe.throw(_("{0} is only for non-Saudi employees.").format(t.request_type_name))
+	data = _clean_details(parse_json(t.fields_json, []) or [], parse_json(details, {}) or {})
+	if t.request_type_name == "Resignation":
+		_check_resignation(employee, data)
+	approver = _manager(employee) if cint(t.needs_manager) else None
+	if approver == user:
+		approver = None  # a manager's own request skips their own approval
+	status = "Pending Manager" if approver else ("Pending HR" if cint(t.needs_hr) else "Approved")
+	doc = frappe.get_doc({"doctype": "AlphaX Request", "employee": employee, "request_type": request_type, "status": status,
+						  "approver": approver, "details": json.dumps(data, ensure_ascii=False), "reason": (reason or "")[:2000],
+						  "due_on": add_days(nowdate(), cint(t.sla_days) or 3)})
+	doc.flags.alphax_engine = True
+	doc.insert()
+	if status == "Approved":
+		_on_approved(doc, t)
+	return {"name": doc.name, "status": doc.status}
+
+
+def _check_resignation(employee, data):
+	notice = cint(frappe.db.get_value("Employee", employee, "notice_number_of_days")) or 30
+	lwd = getdate(data["last_working_day"])
+	if lwd < getdate(nowdate()):
+		frappe.throw(_("The last working day cannot be in the past."))
+	if (lwd - getdate(nowdate())).days + 1 < notice:
+		data["short_notice"] = _("Shorter than the {0}-day notice period (Art. 75).").format(notice)
+
+
+def actions_for(doc, user):
+	"""Approve / Reject / Complete / Cancel available to this user for one request."""
+	hr = is_hr(user)
+	acts = []
+	if doc.status == "Pending Manager" and (doc.approver == user or hr):
+		acts = ["Approve", "Reject"]
+	elif doc.status == "Pending HR" and hr:
+		acts = ["Approve", "Reject"]
+	elif doc.status == "Approved" and hr:
+		acts = ["Complete"]
+	own = frappe.db.get_value("Employee", {"user_id": user}, "name")
+	if doc.status in OPEN and doc.employee == own:
+		acts.append("Cancel")
+	return acts
+
+
+def decide(name, action, comment=None):
+	user = login_required()
+	doc = frappe.get_doc("AlphaX Request", name)
+	if action not in actions_for(doc, user):
+		frappe.throw(_("You cannot perform '{0}' on this request.").format(action), frappe.PermissionError)
+	t = frappe.get_doc("AlphaX Request Type", doc.request_type)
+	if comment:
+		doc.add_comment("Comment", frappe.utils.escape_html(str(comment)[:2000]))
+	if action == "Reject":
+		doc.status = "Rejected"
+	elif action == "Cancel":
+		doc.status = "Cancelled"
+	elif action == "Complete":
+		doc.status = "Completed"
+		if comment:
+			doc.hr_note = str(comment)[:2000]
+	elif action == "Approve":
+		if cint(t.requires_attachment) and not frappe.db.exists("File", {"attached_to_doctype": "AlphaX Request", "attached_to_name": name}):
+			frappe.throw(_("{0} needs a supporting document before approval.").format(t.request_type_name))
+		doc.status = "Pending HR" if doc.status == "Pending Manager" and cint(t.needs_hr) else "Approved"
+	if action != "Cancel":
+		doc.decided_by, doc.decided_on = user, now_datetime()
+	doc.flags.alphax_engine = True
+	doc.save(ignore_permissions=True)  # permission checked above via actions_for
+	if doc.status == "Approved":
+		_on_approved(doc, t)
+	return {"name": doc.name, "status": doc.status}
+
+
+def _on_approved(doc, t):
+	details = parse_json(doc.details, {}) or {}
+	if t.output == "Letter":
+		doc.letter = _make_letter(doc, t, details)
+		doc.status = "Completed"
+		doc.flags.alphax_engine = True
+		doc.save(ignore_permissions=True)
+	if t.request_type_name == "Resignation":
+		emp = frappe.get_doc("Employee", doc.employee)
+		emp.resignation_letter_date = getdate(doc.creation)
+		emp.relieving_date = details.get("last_working_day")
+		emp.flags.ignore_mandatory = True
+		emp.save(ignore_permissions=True)
+
+
+def _letter_context(doc, details):
+	from alphax_hr.api.contract import contract_data
+
+	data = contract_data(doc.employee)
+	emp = frappe.get_doc("Employee", doc.employee)
+	return {"employee": {"employee_name": emp.employee_name, "id": data["employee"]["id"], "nationality": data["employee"]["nationality"],
+						 "designation": emp.designation or "", "date_of_joining": frappe.utils.formatdate(emp.date_of_joining),
+						 "relieving_date": frappe.utils.formatdate(emp.relieving_date) if emp.relieving_date else ""},
+			"company": data["company"]["name"], "company_ar": data["company"]["name_ar"], "details": frappe._dict(details),
+			"salary": frappe._dict({"gross": f"{data['salary']['gross']:,.2f}", "currency": data["salary"]["currency"]}) if data["salary"] else None,
+			"today": frappe.utils.formatdate(nowdate())}
+
+
+def _make_letter(doc, t, details):
+	from frappe.utils.pdf import get_pdf
+
+	ctx = _letter_context(doc, details)
+	body = frappe.render_template(t.letter_body or "", ctx)
+	body_ar = frappe.render_template(t.letter_body_ar or "", ctx)
+	html = frappe.render_template("alphax_hr/templates/alphax/letter.html",
+								  {**ctx, "title": t.letter_title or t.request_type_name, "title_ar": t.title_ar or "",
+								   "body": body, "body_ar": body_ar, "ref": doc.name})
+	f = frappe.get_doc({"doctype": "File", "file_name": f"{doc.name}.pdf", "content": get_pdf(html), "is_private": 1,
+						"attached_to_doctype": "AlphaX Request", "attached_to_name": doc.name}).insert(ignore_permissions=True)
+	return f.file_url
+
+
+def _row(r):
+	return {**r, "details": parse_json(r.get("details"), {}) or {}, "overdue": bool(r.get("due_on") and r.status in OPEN
+																					  and getdate(r.due_on) < getdate(nowdate()))}
+
+
+FIELDS = ["name", "employee", "employee_name", "request_type", "status", "approver", "due_on", "creation", "details", "reason",
+		  "letter", "decided_by", "decided_on", "department"]
+
+
+@frappe.whitelist()
+def mine(limit=50):
+	employee = current_employee()
+	return [_row(r) for r in frappe.get_list("AlphaX Request", filters={"employee": employee}, fields=FIELDS,
+											  order_by="creation desc", page_length=min(cint(limit) or 50, 200))]
+
+
+@frappe.whitelist()
+def all_requests(status=None, request_type=None, department=None, overdue=0, limit=200):
+	require_hr()
+	filters = {}
+	if status == "open":
+		filters["status"] = ["in", list(OPEN)]
+	elif status:
+		filters["status"] = status
+	if request_type:
+		filters["request_type"] = request_type
+	if department:
+		filters["department"] = department
+	rows = [_row(r) for r in frappe.get_list("AlphaX Request", filters=filters, fields=FIELDS, order_by="creation desc",
+											 page_length=min(cint(limit) or 200, 1000))]
+	if cint(overdue):
+		rows = [r for r in rows if r["overdue"]]
+	counts = {}
+	for r in frappe.get_list("AlphaX Request", fields=["status", "count(name) as n"], group_by="status"):
+		counts[r.status] = r.n
+	return {"rows": rows, "counts": counts}
+
+
+@frappe.whitelist(methods=["POST"])
+def update_type(name, data):
+	require_hr_manager()
+	payload = parse_json(data, {})
+	t = frappe.get_doc("AlphaX Request Type", name)
+	for k in ("enabled", "needs_manager", "needs_hr", "requires_attachment", "non_saudi_only", "sla_days", "description",
+			  "title_ar", "letter_body", "letter_body_ar", "letter_title"):
+		if k in payload:
+			t.set(k, payload[k])
+	if "fields" in payload:
+		spec = payload["fields"] or []
+		for fdef in spec:
+			if not fdef.get("fieldname") or fdef.get("type") not in FIELD_TYPES:
+				frappe.throw(_("Each field needs a fieldname and a type ({0}).").format(", ".join(sorted(FIELD_TYPES))))
+		t.fields_json = json.dumps(spec, ensure_ascii=False)
+	t.save()
+	return _type_dict(t)
+
+
+def query_conditions(user=None):
+	"""Employees see their own requests and the ones waiting on them; HR sees all."""
+	user = user or frappe.session.user
+	if user == "Administrator" or is_hr(user):
+		return ""
+	emp = frappe.db.get_value("Employee", {"user_id": user}, "name") or ""
+	return "(`tabAlphaX Request`.employee = {0} or `tabAlphaX Request`.approver = {1})".format(
+		frappe.db.escape(emp), frappe.db.escape(user))
+
+
+def has_permission(doc, ptype=None, user=None):
+	user = user or frappe.session.user
+	if user == "Administrator" or is_hr(user):
+		return True
+	emp = frappe.db.get_value("Employee", {"user_id": user}, "name")
+	return bool((emp and doc.employee == emp) or doc.approver == user)
+
+
+@frappe.whitelist(methods=["POST"])
+def cancel(name):
+	"""The employee withdraws an open request."""
+	return decide(name, "Cancel")

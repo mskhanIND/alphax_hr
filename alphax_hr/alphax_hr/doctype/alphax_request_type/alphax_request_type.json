@@ -1,0 +1,168 @@
+{
+ "doctype": "DocType",
+ "name": "AlphaX Request Type",
+ "module": "AlphaX HR",
+ "custom": 0,
+ "engine": "InnoDB",
+ "creation": "2026-11-02 00:00:00.000000",
+ "modified": "2026-11-02 00:00:00.000000",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "field_order": [
+  "request_type_name",
+  "title_ar",
+  "category",
+  "enabled",
+  "description",
+  "cb1",
+  "needs_manager",
+  "needs_hr",
+  "requires_attachment",
+  "non_saudi_only",
+  "sla_days",
+  "output",
+  "fields_section",
+  "fields_json",
+  "letter_section",
+  "letter_title",
+  "letter_body",
+  "letter_body_ar"
+ ],
+ "fields": [
+  {
+   "fieldname": "request_type_name",
+   "fieldtype": "Data",
+   "label": "Request Type",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "title_ar",
+   "fieldtype": "Data",
+   "label": "Name (Arabic)"
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Select",
+   "label": "Category",
+   "options": "Letter\nDocument\nGovernment\nFinance\nTravel\nAsset\nSeparation\nOther",
+   "default": "Other",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "needs_manager",
+   "fieldtype": "Check",
+   "label": "Manager Approval",
+   "default": "1"
+  },
+  {
+   "fieldname": "needs_hr",
+   "fieldtype": "Check",
+   "label": "HR Approval",
+   "default": "1"
+  },
+  {
+   "fieldname": "requires_attachment",
+   "fieldtype": "Check",
+   "label": "Attachment Required"
+  },
+  {
+   "fieldname": "non_saudi_only",
+   "fieldtype": "Check",
+   "label": "Only for Non-Saudis"
+  },
+  {
+   "fieldname": "sla_days",
+   "fieldtype": "Int",
+   "label": "Target Days",
+   "default": "3"
+  },
+  {
+   "fieldname": "output",
+   "fieldtype": "Select",
+   "label": "Output",
+   "options": "\nLetter",
+   "description": "Letter: a bilingual PDF is generated when approved."
+  },
+  {
+   "fieldname": "fields_section",
+   "fieldtype": "Section Break",
+   "label": "Form"
+  },
+  {
+   "fieldname": "fields_json",
+   "fieldtype": "Code",
+   "label": "Fields (JSON)",
+   "options": "JSON",
+   "description": "List of {\"fieldname\",\"label\",\"label_ar\",\"type\": Data|Date|Int|Currency|Select|Text|Check,\"options\":[...],\"reqd\":1}"
+  },
+  {
+   "fieldname": "letter_section",
+   "fieldtype": "Section Break",
+   "label": "Letter"
+  },
+  {
+   "fieldname": "letter_title",
+   "fieldtype": "Data",
+   "label": "Letter Title"
+  },
+  {
+   "fieldname": "letter_body",
+   "fieldtype": "Text",
+   "label": "Letter Body (English)",
+   "description": "Jinja; variables: employee, details, salary, company, today"
+  },
+  {
+   "fieldname": "letter_body_ar",
+   "fieldtype": "Text",
+   "label": "Letter Body (Arabic)"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "HR Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "HR User",
+   "read": 1
+  },
+  {
+   "role": "Employee",
+   "read": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1,
+ "states": [],
+ "autoname": "field:request_type_name",
+ "title_field": "request_type_name"
+}

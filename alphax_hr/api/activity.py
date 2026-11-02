@@ -18,7 +18,7 @@ AUDITED = (
 	"Employee", "Leave Application", "Leave Allocation", "Leave Type", "Leave Policy Assignment", "Compensatory Leave Request",
 	"Attendance", "Attendance Request", "Employee Checkin", "Shift Type", "Shift Assignment", "Shift Request",
 	"Holiday List", "Expense Claim", "Employee Advance", "Salary Structure Assignment", "Salary Slip", "Payroll Entry",
-	"Additional Salary", "Employee Separation", "Full and Final Statement", "AlphaX HR Settings",
+	"Additional Salary", "Employee Separation", "AlphaX Request", "AlphaX Request Type", "AlphaX Penalty", "AlphaX Violation Type", "AlphaX Payroll Period", "AlphaX Final Settlement", "Appraisal", "Appraisal Cycle", "Full and Final Statement", "AlphaX HR Settings",
 )
 SKIP_FIELDS = {"modified", "modified_by", "idx", "lft", "rgt", "old_parent", "_user_tags", "_comments", "_assign",
 			   "_liked_by", "_seen"}

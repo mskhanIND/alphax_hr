@@ -16,7 +16,7 @@ React SPA (/alphax)  ──►  alphax_hr API (permission-checked)  ──►  F
 |---|---|---|
 | ![HR home](docs/screenshots/09-hr-home.png) | ![Compliance](docs/screenshots/ar-compliance.png) | ![Phone](docs/screenshots/05-arabic-phone-home.png) |
 
-## Modules (v0.7)
+## Modules (v0.9)
 
 | Area | Who | What |
 |---|---|---|
@@ -29,7 +29,13 @@ React SPA (/alphax)  ──►  alphax_hr API (permission-checked)  ──►  F
 | HR status & setup | HR Managers (System tab: System Managers) | Overall HR status — data gaps, expired/expiring documents, employees without salary or mandatory data, approvals waiting, leave and payroll setup — each with a Fix panel (bulk-set approver, manager, holiday list); all AlphaX settings; the site's Employee field map |
 | Salary | HR | New-employee Salary step (total package split into basic/housing/transport by %, or component amounts; GOSI employee share for Saudis) creating the employee's own Salary Structure + Assignment (CentralHRMS approach); Change salary from a date on the profile |
 | Record view | Everyone (per permissions) | Any HR record opens inside AlphaX (/alphax/r/DocType/name) with every field, tables, attachments, workflow actions and activity — no Frappe desk needed |
-| Payroll | HR | Payroll runs, month slip summary, GOSI register, end-of-service calculator |
+| Employee requests | Every employee, managers, HR | One engine for letters (salary certificate, employment, experience — bilingual PDF issued on approval), exit & re-entry / final exit visas, Iqama renewal, salary advance, business trip, assets, passport release, resignation (sets the relieving date) and general requests; each type has its own fields, manager and/or HR approval, target days and attachment rule; HR can raise requests for employees; requests flow through the Approvals inbox |
+| Warnings & penalties | HR, every employee | Violations schedule (MHRSD model regulations as a starting point) with the penalty growing on each repeat within 180 days; 5 days' wage per violation and per month caps; no penalty for violations discovered more than 30 days earlier; deductions go to payroll as Additional Salary; suggestions from the attendance register; employees acknowledge or object within 15 days; cancelling reverses the deduction |
+| Payroll control centre | HR (approval: HR Manager) | One tracked month per company: Prepare → Review → Approve → Process (HRMS Payroll Entry + salary slips) → Close, with who/when and a checklist behind every step — pending leave/attendance/shift/advance requests, attendance gaps, absences, unpaid and reduced sick pay, penalties, overtime (add Art. 107 pay in one click), bonuses/deductions, advances and loans, joiners and leavers, missing salary/bank/GOSI data, appraisals; blocking items need fixing or an HR Manager override with a note |
+| Final settlement | HR (approval: HR Manager) | End-of-service award (Art. 84/85/87/80), unused-leave encashment, final salary, advances and other items; paid with the final payroll (Additional Salary) or separately; bilingual statement PDF |
+| Payroll reports | HR | GOSI register, end-of-service calculator |
+| Appraisals | HR | HRMS appraisal cycles and scores, opened inside AlphaX |
+| Cut-over | HR Manager | Readiness page before uninstalling CentralHRMS: legacy requests, warning letters and Iqama data to import (dry run, then once), legacy fields that still hold data, active workflows, and what AlphaX needs to run alone |
 | Saudi leave engine | HR, every employee | Statutory leave rules checked on every request (maternity 84, paternity 3, marriage 5, bereavement 5/3, Iddah 130/15, exam, Hajj once after 2 years), sick-leave pay tiers 30/60/30 with certificate before approval, annual leave 21/30 days allocated per service year, escalation of leave requests left pending |
 | Employee rules | HR | National ID / Iqama / border number checks (Saudi flag set from the ID), duplicate IDs, Saudi IBAN check, minimum age, probation end date |
 | Compliance | HR | Nitaqat estimate, Iqama/work permit/passport/contract expiry, data-readiness checks (holiday lists, approvers, GOSI dates, Iqama data …) |
@@ -67,7 +73,7 @@ Settings for probation days, minimum age and IBAN checking are in *AlphaX HR Set
 
 ### Coming from CentralHRMS
 
-HR Manager → call `alphax_hr.api.compliance.import_legacy_fields` with `dry_run=1` to preview, then `dry_run=0`. It copies `custom_identity_number`, `custom_identity_valid_upto`, `custom_work_permit_expiry_date` and Saudi nationality into the AlphaX fields, only filling blanks.
+HR Manager → **Administration → Cut-over readiness**. Preview and import legacy requests (Letters, Exit Re-Entry, Final Exit, Business Travel, Assets, Housing Advance, Contract Termination, Iqama and other requests become AlphaX requests), Warning Letters (become acknowledged warnings) and Iqama/ID values (only blanks are filled). Imports are idempotent and never change the old app. When every item is green, CentralHRMS can be uninstalled.
 
 ## Security model
 

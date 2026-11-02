@@ -26,7 +26,7 @@ def check(name, fn):
     except Exception as exc:  # noqa: BLE001
         FAILED.append(name)
         print(f"  FAIL  {name}: {type(exc).__name__}: {exc}")
-        traceback.print_exc(limit=3)
+        traceback.print_exc(limit=-8)
     finally:
         frappe.set_user("Administrator")
         frappe.db.rollback() if False else None
@@ -1130,6 +1130,263 @@ def run(site):
             frappe.set_user(f["emp"])
             expect_error(lambda: contract.html(f["e_emp"]), frappe.PermissionError)
         check("bilingual employment contract: HTML + PDF saved to the employee (HR only)", employment_contract)
+
+        print("\n== Employee requests")
+        def request_engine():
+            from alphax_hr.api import requests as rq, approvals
+            frappe.db.delete("AlphaX Request", {"employee": ["in", [f["e_emp"], f["e_emp2"]]]})
+            frappe.set_user(f["emp"])
+            names = {t["name"] for t in rq.types()}
+            assert {"Salary Certificate", "Exit & Re-entry Visa", "Resignation"} <= names
+            expect_error(lambda: rq.create("Salary Certificate", {"purpose": "Bank"}), frappe.ValidationError)  # addressed_to missing
+            expect_error(lambda: rq.create("Business Trip", {"destination": "Jeddah", "from_date": "2026-05-10",
+                                                             "to_date": "2026-05-01", "purpose": "x"}), frappe.ValidationError)
+            # Letter: manager not needed -> HR approves -> PDF letter attached, completed
+            r = rq.create("Salary Certificate", {"addressed_to": "Al Rajhi Bank", "purpose": "Bank"})
+            assert r["status"] == "Pending HR", r
+            # Visa: manager first, then HR
+            v = rq.create("Exit & Re-entry Visa", {"visa_type": "Single", "from_date": add_days(nowdate(), 10),
+                                                    "to_date": add_days(nowdate(), 30)})
+            assert v["status"] == "Pending Manager"
+            assert {x["name"] for x in rq.mine()} >= {r["name"], v["name"]}
+            # Employee cannot approve own request or tamper through the REST layer
+            expect_error(lambda: approvals.act("AlphaX Request", v["name"], "Approve"), frappe.PermissionError)
+            d = frappe.get_doc("AlphaX Request", v["name"]); d.status = "Approved"
+            expect_error(lambda: d.save(), frappe.PermissionError)
+            # Another employee cannot read it
+            frappe.set_user(f["emp2"])
+            assert v["name"] not in {x.name for x in frappe.get_list("AlphaX Request")}
+            expect_error(lambda: rq.all_requests(), frappe.PermissionError)
+            # Manager sees it in the inbox and approves -> Pending HR
+            frappe.set_user(f["mgr"])
+            items = approvals.inbox("AlphaX Request")["items"]
+            assert [i for i in items if i["name"] == v["name"]] and not [i for i in items if i["name"] == r["name"]]
+            assert approvals.act("AlphaX Request", v["name"], "Approve", "ok")["status"] == "Pending HR"
+            frappe.set_user(f["hr"])
+            listing = rq.all_requests(status="open")
+            assert {r["name"], v["name"]} <= {x["name"] for x in listing["rows"]}
+            assert approvals.act("AlphaX Request", v["name"], "Approve")["status"] == "Approved"
+            assert approvals.act("AlphaX Request", v["name"], "Complete", "Visa issued")["status"] == "Completed"
+            out = approvals.act("AlphaX Request", r["name"], "Approve")
+            doc = frappe.get_doc("AlphaX Request", r["name"])
+            assert doc.status == "Completed" and doc.letter, (out, doc.status)
+            fdoc = frappe.get_doc("File", {"file_url": doc.letter})
+            assert fdoc.get_content()[:4] == b"%PDF"
+            from alphax_hr.api.activity import trail
+            assert trail("AlphaX Request", v["name"])["events"]
+            # Non-Saudi-only type refused for a Saudi; resignation updates the employee
+            frappe.set_user(f["mgr"])
+            expect_error(lambda: rq.create("Iqama Renewal", {}), frappe.ValidationError)
+            frappe.set_user(f["emp2"])
+            res = rq.create("Resignation", {"last_working_day": add_days(nowdate(), 5)})
+            assert "short_notice" in frappe.get_doc("AlphaX Request", res["name"]).details
+            frappe.set_user(f["emp2"]); c = rq.create("General Request", {}, reason="test cancel")
+            assert approvals.act("AlphaX Request", c["name"], "Cancel") if False else rq.decide(c["name"], "Cancel")["status"] == "Cancelled"
+            frappe.set_user(f["mgr"]); approvals.act("AlphaX Request", res["name"], "Approve")
+            frappe.set_user(f["hr"]); approvals.act("AlphaX Request", res["name"], "Approve")
+            assert str(frappe.db.get_value("Employee", f["e_emp2"], "relieving_date")) == str(add_days(nowdate(), 5))
+            frappe.db.set_value("Employee", f["e_emp2"], {"relieving_date": None, "resignation_letter_date": None})
+            # HR configures a type
+            t = rq.update_type("General Request", {"sla_days": 1, "fields": [{"fieldname": "topic", "label": "Topic", "type": "Data", "reqd": 1}]})
+            assert t["fields"][0]["fieldname"] == "topic"
+            expect_error(lambda: rq.update_type("General Request", {"fields": [{"fieldname": "x", "type": "Code"}]}), frappe.ValidationError)
+            rq.update_type("General Request", {"sla_days": 3, "fields": []})
+        check("employee requests: letters with PDF, manager -> HR flow, privacy, resignation, type settings", request_engine)
+
+        print("\n== Penalties and warnings")
+        def penalties_flow():
+            from alphax_hr.api import penalties as pen, salary
+            frappe.set_user("Administrator")
+            for p_ in frappe.get_all("AlphaX Penalty", filters={"employee": f["e_emp2"]}, fields=["name", "additional_salary"]):
+                if p_.additional_salary and frappe.db.get_value("Additional Salary", p_.additional_salary, "docstatus") == 1:
+                    frappe.get_doc("Additional Salary", p_.additional_salary).cancel()
+                frappe.delete_doc("AlphaX Penalty", p_.name, force=1, ignore_permissions=True)
+            if not frappe.db.exists("Salary Structure Assignment", {"employee": f["e_emp2"], "docstatus": 1}):
+                salary.assign(f["e_emp2"], {"mode": "total", "total": 9000}, "2025-03-01")
+            daily = round(pen.monthly_wage(f["e_emp2"]) / 30, 2)
+            assert daily > 0
+            frappe.set_user(f["emp2"])
+            expect_error(lambda: pen.create(f["e_emp2"], "Late arrival up to 15 minutes", nowdate(), "x"), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            names = {v["name"] for v in pen.violation_types()}
+            assert "Absence without excuse (1 day)" in names and len(names) >= 9
+            late = "Late arrival up to 15 minutes"
+            a = pen.create(f["e_emp2"], late, add_days(nowdate(), -5), "Late 10 min", issue=1)
+            assert a["action"] == "Warning" and a["amount"] == 0 and a["status"] == "Issued" and not a["additional_salary"], a
+            b = pen.create(f["e_emp2"], late, add_days(nowdate(), -3), "Late 12 min", issue=1)
+            assert b["occurrence"] == 2 and b["action"] == "Deduction" and abs(b["amount"] - round(daily * 0.05, 2)) < 0.01, b
+            assert frappe.db.get_value("Additional Salary", b["additional_salary"], "docstatus") == 1
+            ab = "Absence without excuse (1 day)"
+            pen.create(f["e_emp2"], ab, add_days(nowdate(), -6), "Absent", issue=1)
+            pen.create(f["e_emp2"], ab, add_days(nowdate(), -4), "Absent", issue=1)
+            c = pen.preview(f["e_emp2"], ab, add_days(nowdate(), -2))
+            # 1 + 2 + 0.05 already used this month -> only 1.95 of the 3 days fit under the 5-day cap
+            assert c["occurrence"] == 3 and c["capped_note"] and abs(c["amount"] - round(daily * 1.95, 2)) < 0.02, c
+            d = pen.create(f["e_emp2"], ab, add_days(nowdate(), -40), "Old", discovered_on=add_days(nowdate(), -40))
+            expect_error(lambda: pen.issue_penalty(d["name"]), frappe.ValidationError)
+            assert not pen.create(f["e_emp2"], late, add_days(nowdate(), -1), "draft only")["additional_salary"]
+            expect_error(lambda: pen.create(f["e_emp2"], late, add_days(nowdate(), 2), "future"), frappe.ValidationError)
+            # employee sees issued ones only, acknowledges / objects
+            frappe.set_user(f["emp2"])
+            mine = pen.mine()
+            assert all(m["status"] != "Draft" for m in mine) and len(mine) == 4, [m["status"] for m in mine]
+            assert pen.respond(a["name"], "Acknowledge")["status"] == "Acknowledged"
+            expect_error(lambda: pen.respond(b["name"], "Object"), frappe.ValidationError)
+            assert pen.respond(b["name"], "Object", "I had a permission from my manager")["status"] == "Objected"
+            frappe.set_user(f["emp"])
+            assert not frappe.get_list("AlphaX Penalty", filters={"employee": f["e_emp2"]})
+            expect_error(lambda: pen.respond(a["name"], "Acknowledge"), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            expect_error(lambda: pen.cancel_penalty(b["name"], ""), frappe.ValidationError)
+            assert pen.cancel_penalty(b["name"], "Permission confirmed")["status"] == "Cancelled"
+            assert frappe.db.get_value("Additional Salary", b["additional_salary"], "docstatus") == 2
+            assert isinstance(pen.suggestions(nowdate()), list)
+            assert len(pen.penalties(employee=f["e_emp2"])) == 6
+        check("penalties: repeat escalation, 5-day monthly cap, 30-day limit, payroll deduction, acknowledge/object, cancel", penalties_flow)
+
+        print("\n== Payroll control and final settlement")
+        def payroll_control_flow():
+            from alphax_hr.api import payroll_control as pc
+            month = str(frappe.utils.get_first_day(nowdate()))
+            frappe.set_user("Administrator")
+            for per in frappe.get_all("AlphaX Payroll Period", filters={"company": COMPANY}, fields=["name", "payroll_entry"]):
+                if per.payroll_entry and frappe.db.exists("Payroll Entry", per.payroll_entry):
+                    for sl in frappe.get_all("Salary Slip", filters={"payroll_entry": per.payroll_entry}, fields=["name", "docstatus"]):
+                        if sl.docstatus == 1:
+                            frappe.get_doc("Salary Slip", sl.name).cancel()
+                        frappe.delete_doc("Salary Slip", sl.name, force=1, ignore_permissions=True)
+                    pe = frappe.get_doc("Payroll Entry", per.payroll_entry)
+                    if pe.docstatus == 1:
+                        pe.flags.ignore_links = True
+                        pe.cancel()
+                    frappe.delete_doc("Payroll Entry", pe.name, force=1, ignore_permissions=True)
+                frappe.delete_doc("AlphaX Payroll Period", per.name, force=1, ignore_permissions=True)
+            frappe.set_user(f["emp"])
+            expect_error(lambda: pc.period(COMPANY, month), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            p = pc.period(COMPANY, month)
+            keys = {c["key"] for c in p["checklist"]["checks"]}
+            assert {"pending_leave_application", "no_salary", "joiners", "leavers", "additional", "overtime"} <= keys, keys
+            assert p["status"] == "Open" and p["checklist"]["employees"] > 0
+            # a waiting leave request is a blocker
+            lt = f["lt"]
+            day = getdate(get_last_day(month))
+            while day.weekday() in (4, 5):
+                day = getdate(add_days(day, -1))
+            la = frappe.get_doc({"doctype": "Leave Application", "employee": f["e_emp"], "leave_type": lt, "from_date": day,
+                                 "to_date": day, "leave_approver": f["mgr"], "status": "Open"})
+            la.flags.ignore_permissions = True
+            la.insert()
+            cl = pc.checklist(COMPANY, month)
+            item = [c for c in cl["checks"] if c["key"] == "pending_leave_application"][0]
+            assert item["severity"] == "blocker" and any(i["name"] == la.name for i in item["items"]), item
+            expect_error(lambda: pc.advance(COMPANY, month, "prepare"), frappe.ValidationError)
+            expect_error(lambda: pc.advance(COMPANY, month, "approve"), frappe.ValidationError)  # wrong order
+            p = pc.advance(COMPANY, month, "prepare", "checked with finance", override=1)
+            assert p["status"] == "Prepared" and p["prepared_by"] == f["hr"]
+            p = pc.advance(COMPANY, month, "review")
+            p = pc.advance(COMPANY, month, "approve", "ok", override=1)
+            assert p["status"] == "Approved" and p["approved_by"] == f["hr"]
+            assert any(e.get("kind") == "comment" for e in p["trail"]), p["trail"]
+            p = pc.advance(COMPANY, month, "reopen", "redo")
+            assert p["status"] == "Open" and not p["approved_by"]
+            frappe.set_user("Administrator")
+            frappe.delete_doc("Leave Application", la.name, force=1, ignore_permissions=True)
+            frappe.set_user(f["hr"])
+            for st in ("prepare", "review", "approve"):
+                pc.advance(COMPANY, month, st, "go", override=1)
+            p = pc.advance(COMPANY, month, "process", "run", override=1)
+            assert p["status"] == "Processed" and p["payroll_entry"], p
+            assert frappe.db.get_value("Payroll Entry", p["payroll_entry"], "docstatus") == 1
+            expect_error(lambda: pc.advance(COMPANY, month, "reopen"), frappe.ValidationError)
+            assert isinstance(pc.add_overtime(COMPANY, month)["created"], list)
+        check("payroll control: checklist with records, blockers + manager override, prepare/review/approve/process, reopen", payroll_control_flow)
+
+        def final_settlement_flow():
+            from alphax_hr.api import settlements as fs
+            from alphax_hr.saudi import eosb as eosb_rules
+            frappe.set_user("Administrator")
+            for n in frappe.get_all("AlphaX Final Settlement", filters={"employee": f["e_emp"]}, fields=["name", "additional_salaries"]):
+                for add in (n.additional_salaries or "").split():
+                    if frappe.db.get_value("Additional Salary", add, "docstatus") == 1:
+                        frappe.get_doc("Additional Salary", add).cancel()
+                frappe.delete_doc("AlphaX Final Settlement", n.name, force=1, ignore_permissions=True)
+            frappe.set_user(f["emp"])
+            expect_error(lambda: fs.prepare(f["e_emp"], nowdate(), "Resignation"), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            exit_on = add_days(nowdate(), 20)
+            d = fs.prepare(f["e_emp"], exit_on, "Resignation", "With payroll", monthly_wage=12000, leave_days=10, other_deductions=500)
+            exp = eosb_rules.calculate(getdate(frappe.db.get_value("Employee", f["e_emp"], "date_of_joining")), getdate(exit_on), 12000, "Resignation")
+            assert abs(d["eosb_amount"] - float(exp.award)) < 0.01 and d["leave_amount"] == 4000 and d["status"] == "Draft", d
+            assert abs(d["net_amount"] - (float(exp.award) + 4000 - 500 - d["advances"])) < 0.01
+            expect_error(lambda: fs.prepare(f["e_emp"], exit_on, "Resignation"), frappe.ValidationError)  # one per employee
+            d = fs.prepare(f["e_emp"], exit_on, "Termination by employer", "With payroll", monthly_wage=12000, leave_days=10, name=d["name"])
+            assert d["eosb_factor"] == 1
+            fs.statement(d["name"])
+            assert frappe.response["type"] == "pdf" and frappe.response["filecontent"][:4] == b"%PDF"
+            frappe.response.pop("filecontent", None); frappe.response.pop("type", None)
+            a = fs.approve(d["name"])
+            adds = a["additional_salaries"].split()
+            assert a["status"] == "Approved" and len(adds) == 2, a
+            assert {frappe.db.get_value("Additional Salary", x, "salary_component") for x in adds} == {"End of Service Benefit", "Leave Encashment"}
+            assert str(frappe.db.get_value("Employee", f["e_emp"], "relieving_date")) == str(exit_on)
+            fs.cancel(d["name"], "test")
+            assert all(frappe.db.get_value("Additional Salary", x, "docstatus") == 2 for x in adds)
+            assert [s for s in fs.settlements() if s["name"] == d["name"]][0]["status"] == "Cancelled"
+            frappe.db.set_value("Employee", f["e_emp"], "relieving_date", None)
+        check("final settlement: EOS award + leave encashment, with payroll (Additional Salary), statement PDF, cancel", final_settlement_flow)
+
+        print("\n== Cut-over from CentralHRMS")
+        def cutover_flow():
+            from alphax_hr.api import cutover, appraisals
+            frappe.set_user("Administrator")
+            def legacy_dt(name, fields, submittable=0):
+                if frappe.db.exists("DocType", name):
+                    return
+                frappe.get_doc({"doctype": "DocType", "name": name, "module": "HR", "custom": 1, "is_submittable": submittable,
+                                "autoname": "hash", "fields": fields,
+                                "permissions": [{"role": "System Manager", "read": 1, "write": 1, "create": 1, "submit": submittable,
+                                                 "cancel": submittable}]}).insert(ignore_permissions=True)
+            legacy_dt("Letters Request", [{"fieldname": "employee", "fieldtype": "Link", "options": "Employee", "label": "Employee"},
+                                          {"fieldname": "reason", "fieldtype": "Small Text", "label": "Reason"},
+                                          {"fieldname": "job_title", "fieldtype": "Data", "label": "Job Title"}], 1)
+            legacy_dt("Warning Letter", [{"fieldname": "employee", "fieldtype": "Link", "options": "Employee", "label": "Employee"},
+                                         {"fieldname": "warning_date", "fieldtype": "Date", "label": "Warning Date"},
+                                         {"fieldname": "reason", "fieldtype": "Small Text", "label": "Reason"},
+                                         {"fieldname": "number_of_warnings", "fieldtype": "Int", "label": "Warnings"}], 1)
+            frappe.db.delete("AlphaX Request", {"legacy_ref": ["is", "set"]})
+            frappe.db.delete("AlphaX Penalty", {"source_ref": ["like", "Warning Letter:%"]})
+            frappe.db.delete("Letters Request"); frappe.db.delete("Warning Letter")
+            a = frappe.get_doc({"doctype": "Letters Request", "employee": f["e_emp"], "reason": "Bank", "job_title": "Engineer"}).insert()
+            a.submit()
+            frappe.get_doc({"doctype": "Letters Request", "employee": f["e_emp2"], "reason": "Embassy"}).insert()
+            w = frappe.get_doc({"doctype": "Warning Letter", "employee": f["e_emp2"], "warning_date": add_days(nowdate(), -100),
+                                "reason": "Late", "number_of_warnings": 2}).insert()
+            w.submit()
+            frappe.set_user(f["emp"])
+            expect_error(lambda: cutover.readiness(), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            r = cutover.readiness()
+            req = [i for i in r["items"] if i["key"] == "requests"][0]
+            assert req["status"] == "todo" and req["count"] == 2, req
+            plan = cutover.import_legacy("requests", 1)
+            assert plan["dry_run"] and plan["count"] == 2 and not frappe.db.count("AlphaX Request", {"legacy_ref": ["is", "set"]})
+            assert cutover.import_legacy("requests", 0)["count"] == 2
+            assert cutover.import_legacy("requests", 0)["count"] == 0  # idempotent
+            imp = frappe.get_doc("AlphaX Request", {"legacy_ref": f"Letters Request:{a.name}"})
+            assert imp.status == "Completed" and imp.request_type == "Employment Letter" and "Engineer" in imp.details and imp.reason == "Bank"
+            assert frappe.db.get_value("AlphaX Request", {"legacy_ref": ["like", "Letters Request:%"], "employee": f["e_emp2"]}, "status") == "Pending HR"
+            assert cutover.import_legacy("warnings", 0)["count"] == 1
+            pw = frappe.get_doc("AlphaX Penalty", {"source_ref": f"Warning Letter:{w.name}"})
+            assert pw.status == "Acknowledged" and pw.action == "Warning" and pw.occurrence == 2 and not pw.amount
+            r = cutover.readiness()
+            assert [i for i in r["items"] if i["key"] == "requests"][0]["status"] == "ok"
+            assert [i for i in r["items"] if i["key"] == "warnings"][0]["status"] == "ok"
+            assert cutover.import_legacy("identity", 1)["dry_run"]
+            assert isinstance(appraisals.cycles()["cycles"], list) and isinstance(appraisals.appraisals(), list)
+            frappe.set_user(f["emp"])
+            assert isinstance(appraisals.mine(), list)
+        check("cut-over: readiness, dry-run and idempotent import of legacy requests and warning letters; appraisals", cutover_flow)
 
         print("\n== /alphax page")
         def www_page():

@@ -1,0 +1,33 @@
+<!doctype html><html><head><meta charset="utf-8"><title>{{ d.name }}</title>
+<style>
+ body{font-family:"Noto Naskh Arabic","Noto Sans",Tahoma,Arial,sans-serif;color:#111;font-size:12.5px}
+ .page{max-width:780px;margin:0 auto;padding:24px} h1{font-size:17px;text-align:center;margin:14px 0}
+ .head{display:flex;justify-content:space-between;border-bottom:2px solid #0f4c3a;padding-bottom:8px}
+ table{width:100%;border-collapse:collapse;margin:10px 0} td{border:1px solid #ccc;padding:6px 8px}
+ .ar{direction:rtl;text-align:right} .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+ .total td{font-weight:bold;background:#f2f6f4} .sig{display:flex;justify-content:space-between;margin-top:50px}
+</style></head><body><div class="page">
+<div class="head"><b>{{ company }}</b><b class="ar">{{ company_ar }}</b></div>
+<h1>Final Settlement Statement · مخالصة نهائية</h1>
+<table>
+ <tr><td>Employee</td><td>{{ d.employee_name }} ({{ d.employee }})</td><td class="ar">الموظف</td></tr>
+ <tr><td>Joining date</td><td>{{ d.date_of_joining }}</td><td class="ar">تاريخ المباشرة</td></tr>
+ <tr><td>Last working day</td><td>{{ d.exit_date }}</td><td class="ar">آخر يوم عمل</td></tr>
+ <tr><td>Reason</td><td>{{ d.reason }}</td><td class="ar">سبب انتهاء العلاقة</td></tr>
+ <tr><td>Service (years)</td><td>{{ "%.2f"|format(d.service_years or 0) }}</td><td class="ar">مدة الخدمة (سنوات)</td></tr>
+ <tr><td>Monthly wage</td><td class="num">{{ fmt(d.monthly_wage) }}</td><td class="ar">الأجر الشهري</td></tr>
+</table>
+<table>
+ <tr><td>End-of-service award (factor {{ d.eosb_factor }})</td><td class="num">{{ fmt(d.eosb_amount) }}</td><td class="ar">مكافأة نهاية الخدمة</td></tr>
+ <tr><td>Unused annual leave ({{ d.leave_days }} days)</td><td class="num">{{ fmt(d.leave_amount) }}</td><td class="ar">بدل الإجازات غير المستخدمة</td></tr>
+ {% if d.unpaid_salary %}<tr><td>Unpaid salary ({{ d.unpaid_days }} days)</td><td class="num">{{ fmt(d.unpaid_salary) }}</td><td class="ar">رواتب مستحقة</td></tr>{% endif %}
+ {% if d.other_earnings %}<tr><td>Other earnings</td><td class="num">{{ fmt(d.other_earnings) }}</td><td class="ar">مستحقات أخرى</td></tr>{% endif %}
+ {% if d.advances %}<tr><td>Less: advances / loans</td><td class="num">-{{ fmt(d.advances) }}</td><td class="ar">يخصم: السلف والقروض</td></tr>{% endif %}
+ {% if d.other_deductions %}<tr><td>Less: other deductions</td><td class="num">-{{ fmt(d.other_deductions) }}</td><td class="ar">يخصم: استقطاعات أخرى</td></tr>{% endif %}
+ <tr class="total"><td>Net settlement</td><td class="num">{{ fmt(d.net_amount) }}</td><td class="ar">صافي المخالصة</td></tr>
+</table>
+<p>{% if d.mode == "With payroll" %}Paid with the final salary of {{ d.exit_date }}.{% else %}Paid separately from payroll.{% endif %}
+ Ref {{ d.name }} · {{ today }}</p>
+<p class="ar">أقر أنا الموظف الموقع أدناه باستلامي كامل مستحقاتي المذكورة أعلاه وأنه لا يحق لي المطالبة بأي مستحقات أخرى.</p>
+<div class="sig"><div>Employee signature / توقيع الموظف</div><div>HR / الموارد البشرية</div></div>
+</div></body></html>
