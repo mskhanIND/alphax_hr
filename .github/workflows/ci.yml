@@ -73,7 +73,7 @@ jobs:
       - name: Browser E2E (English, Arabic RTL, phone)
         run: |
           cd ~/bench
-          ln -sfn ~/bench/apps/alphax_hr/alphax_hr/public sites/assets/alphax_hr
+          mkdir -p sites/assets && ln -sfn ~/bench/apps/alphax_hr/alphax_hr/public sites/assets/alphax_hr
           echo "127.0.0.1 hr.test" | sudo tee -a /etc/hosts
           bench --site hr.test set-config host_name http://hr.test:8000
           (bench serve --port 8000 > /tmp/serve.log 2>&1 &)
