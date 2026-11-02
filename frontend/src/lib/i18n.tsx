@@ -202,6 +202,7 @@ const ar: Record<string, string> = {
   'These fields are mandatory in your HR setup.': 'هذه الحقول إلزامية حسب إعدادات الموارد البشرية لديكم.',
   'Please fill in': 'يرجى تعبئة',
   'Required': 'مطلوب',
+  'Also filled automatically': 'تُعبأ تلقائيًا أيضًا',
   'Saving this employee needs these mandatory fields first': 'لحفظ بيانات هذا الموظف يجب أولًا تعبئة الحقول الإلزامية التالية',
   'salary_slip': 'آخر قسيمة راتب',
   'salary_structure_assignment': 'الراتب الأساسي في هيكل الرواتب',

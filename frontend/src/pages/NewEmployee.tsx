@@ -10,14 +10,16 @@ import { useI18n } from '../lib/i18n'
 import { useSession } from '../lib/session'
 
 const SAUDI_ONLY = new Set(['alphax_gosi_registration_date'])
-const FOREIGN_ONLY = new Set(['alphax_iqama_number', 'alphax_iqama_expiry'])
+const FOREIGN_ONLY = new Set(['alphax_iqama_expiry']) // the ID number applies to Saudis too (National ID)
 const CORE_REQUIRED = new Set(['first_name', 'gender', 'date_of_birth', 'company', 'date_of_joining'])
+
+interface Spec extends FieldSpec { mirrors?: string }
 
 export default function NewEmployee() {
   const { t } = useI18n()
   const s = useSession()
   const nav = useNavigate()
-  const form = useQuery<{ core: FieldSpec[]; required: FieldSpec[] }>({ queryKey: ['newEmployeeForm'], queryFn: api.newEmployeeForm })
+  const form = useQuery<{ core: FieldSpec[]; required: Spec[] }>({ queryKey: ['newEmployeeForm'], queryFn: api.newEmployeeForm })
   const [f, setF] = useState<Record<string, any>>({ company: s.company ?? '', date_of_joining: todayISO(), alphax_is_saudi: 0 })
   const [tried, setTried] = useState(false)
   useEffect(() => {
@@ -35,8 +37,12 @@ export default function NewEmployee() {
   if (form.isLoading) return <Spinner />
   if (form.error) return <ErrorBox error={form.error} onRetry={() => form.refetch()} />
   const core = form.data!.core.filter((c) => (f.alphax_is_saudi ? !FOREIGN_ONLY.has(c.fieldname) : !SAUDI_ONLY.has(c.fieldname)))
-  const required = form.data!.required.filter((c) => c.fieldname !== 'custom_saudinonsaudi') // follows the Saudi checkbox
-  const missing = [...core.filter((c) => CORE_REQUIRED.has(c.fieldname)), ...required].filter((c) => isEmpty(f[c.fieldname]))
+  // Legacy fields that mirror an AlphaX field (e.g. 'Identity Number' = Iqama) are filled automatically.
+  const mirrored = form.data!.required.filter((c) => c.mirrors && core.some((k) => k.fieldname === c.mirrors))
+  const required = form.data!.required.filter((c) => !mirrored.includes(c))
+  const mirrorSources = new Set(mirrored.map((c) => c.mirrors).filter((m) => m !== 'alphax_is_saudi'))
+  const coreRequired = (name: string) => CORE_REQUIRED.has(name) || mirrorSources.has(name)
+  const missing = [...core.filter((c) => coreRequired(c.fieldname)), ...required].filter((c) => isEmpty(f[c.fieldname]))
   const submit = () => {
     setTried(true)
     if (missing.length) return
@@ -60,9 +66,12 @@ export default function NewEmployee() {
               <label key="saudi" className="flex items-center gap-2 self-end pb-2 text-sm font-medium">
                 <FieldInput spec={spec} value={f.alphax_is_saudi} onChange={(v) => set('alphax_is_saudi', v)} /> {t('Saudi')}
               </label>
-            ) : render(spec, CORE_REQUIRED.has(spec.fieldname)))}
+            ) : render(spec, coreRequired(spec.fieldname)))}
           </div>
         </Card>
+        {mirrored.length > 0 && (
+          <p className="-mt-2 text-xs text-muted">{t('Also filled automatically')}: {mirrored.map((m) => m.label).join(', ')}</p>
+        )}
         {required.length > 0 && (
           <Card title={t('Required by your company')} subtitle={t('These fields are mandatory in your HR setup.')}>
             <div className="grid gap-4 sm:grid-cols-2">{required.map((spec) => render(spec, true))}</div>

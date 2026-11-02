@@ -374,6 +374,11 @@ def run(site):
                                     "label": "Insurance Class", "fieldtype": "Link", "options": "Branch",
                                     "reqd": 1, "insert_after": "gender"}).insert(ignore_permissions=True)
                     made.append(("Custom Field", "Employee-custom_insurance_class"))
+                for fn, label in (("custom_identity_number", "Identity Number"), ("iqama_national_id", "National ID / Iqama / Border No")):
+                    if not frappe.db.exists("Custom Field", "Employee-" + fn):
+                        frappe.get_doc({"doctype": "Custom Field", "dt": "Employee", "fieldname": fn, "label": label,
+                                        "fieldtype": "Data", "reqd": 1, "insert_after": "gender"}).insert(ignore_permissions=True)
+                        made.append(("Custom Field", "Employee-" + fn))
                 ensure("Branch", {"branch": "AXT VIP"}, {})
                 from frappe.custom.doctype.property_setter.property_setter import make_property_setter
                 make_property_setter("Employee", "marital_status", "reqd", 1, "Check")
@@ -387,6 +392,7 @@ def run(site):
                 assert {"custom_saudinonsaudi", "custom_insurance_class", "marital_status"} <= set(req), list(req)
                 assert req["marital_status"]["options"][1:] == ["Single", "Married", "Divorced", "Widowed"], req["marital_status"]
                 assert req["custom_insurance_class"]["options"] == "Branch"
+                assert req["custom_identity_number"].get("mirrors") == "alphax_iqama_number", req["custom_identity_number"]
                 assert hr.lookup("Branch", "AXT"), "link lookup must allow site-specific Employee links"
 
                 base = {"first_name": "Mandatory", "last_name": "Check", "gender": "Male", "date_of_birth": "1990-01-01",
@@ -398,7 +404,11 @@ def run(site):
                     frappe.clear_messages()
                     msg = str(exc)
                     assert "Insurance Class" in msg and "Marital Status" in msg and "Saudi/Non-Saudi" not in msg, msg
-                created = hr.create_employee({**base, "custom_insurance_class": "AXT VIP", "marital_status": "Single"})
+                    assert "Identity Number" in msg, "without an Iqama the mirrored field is still missing"
+                created = hr.create_employee({**base, "custom_insurance_class": "AXT VIP", "marital_status": "Single",
+                                              "alphax_iqama_number": "2398765432"})
+                assert frappe.db.get_value("Employee", created["name"], "custom_identity_number") == "2398765432"
+                assert frappe.db.get_value("Employee", created["name"], "iqama_national_id") == "2398765432"
                 made.append(("Employee", created["name"]))
                 assert frappe.db.get_value("Employee", created["name"], "custom_saudinonsaudi") == "Non-Saudi"
                 assert created["sections"]["company_required"]["custom_insurance_class"] == "AXT VIP"
@@ -406,12 +416,17 @@ def run(site):
 
                 # An older record missing the new mandatory fields is flagged, and can be fixed in one save.
                 frappe.set_user("Administrator")
+                # Deleted custom fields keep their DB column: clear leftovers from earlier runs.
+                frappe.db.set_value("Employee", f["e_emp2"], {"custom_insurance_class": None, "marital_status": None,
+                                                              "custom_identity_number": None, "iqama_national_id": None},
+                                    update_modified=False)
                 old = frappe.get_doc("Employee", f["e_emp2"])
                 frappe.set_user(f["hr"])
                 d = hr.employee(old.name)
                 assert "Insurance Class" in d["missing_required"], d["missing_required"]
                 fixed = hr.update_employee(old.name, {"custom_insurance_class": "AXT VIP", "marital_status": "Married",
-                                                      "custom_saudinonsaudi": "Non-Saudi"}, d["modified"])
+                                                      "custom_saudinonsaudi": "Non-Saudi", "custom_identity_number": "2311112222",
+                                                      "iqama_national_id": "2311112222"}, d["modified"])
                 assert "Insurance Class" not in fixed["missing_required"]
             finally:
                 frappe.set_user("Administrator")

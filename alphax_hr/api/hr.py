@@ -65,17 +65,45 @@ def _editable(meta):
 	return EDITABLE | {df.fieldname for df in _site_required_fields(meta)}
 
 
-def _sync_legacy_saudi_flag(doc, payload):
-	"""Keep CentralHRMS-style 'Saudi/Non-Saudi' selects in step with alphax_is_saudi."""
-	for fieldname in ("custom_saudinonsaudi",):
-		df = doc.meta.get_field(fieldname)
-		if not df or doc.get(fieldname) or fieldname in payload or "alphax_is_saudi" not in payload:
-			continue
+# Legacy (CentralHRMS / IRSAA) Employee fields that hold the same data as an
+# AlphaX field. AlphaX fills them so HR never types the same number twice.
+MIRRORS = {
+	"custom_identity_number": "alphax_iqama_number",
+	"iqama_national_id": "alphax_iqama_number",
+	"custom_identity_valid_upto": "alphax_iqama_expiry",
+	"iqama_expiry_date": "alphax_iqama_expiry",
+	"custom_work_permit_expiry_date": "alphax_work_permit_expiry",
+	"custom_saudinonsaudi": "alphax_is_saudi",
+}
+
+
+def _mirror_value(df, source_value):
+	if df.fieldname == "custom_saudinonsaudi":
 		options = [o for o in (df.options or "").split("\n") if o]
-		want = "saudi" if cint(payload.get("alphax_is_saudi")) else "non"
-		match = next((o for o in options if (want == "non") == ("non" in o.lower())), None)
-		if match:
-			doc.set(fieldname, match)
+		want_non = not cint(source_value)
+		return next((o for o in options if ("non" in o.lower()) == want_non), None)
+	return source_value
+
+
+def _sync_legacy_saudi_flag(doc, payload):
+	"""Fill empty legacy fields from their AlphaX equivalents (and vice versa)."""
+	for legacy, source in MIRRORS.items():
+		df = doc.meta.get_field(legacy)
+		if not df or not doc.meta.has_field(source):
+			continue
+		if legacy not in payload and source in payload and doc.get(legacy) in (None, ""):
+			value = _mirror_value(df, payload.get(source))
+			if value not in (None, ""):
+				doc.set(legacy, value)
+		elif legacy in payload and source != "alphax_is_saudi" and doc.get(source) in (None, ""):
+			doc.set(source, payload.get(legacy))
+
+
+def _mirrored(meta, payload, fieldname):
+	"""True when a legacy field will be filled from an AlphaX field in the payload."""
+	source = MIRRORS.get(fieldname)
+	return bool(source and meta.has_field(source) and (source in payload) and
+				(payload.get(source) not in (None, "") or source == "alphax_is_saudi"))
 
 
 def _fields(meta, names):
@@ -190,7 +218,14 @@ def new_employee_form():
 	meta = frappe.get_meta("Employee")
 	core = [_field_spec(meta.get_field(f)) for f in NEW_EMPLOYEE_CORE if meta.get_field(f)]
 	core_names = {f["fieldname"] for f in core}
-	required = [_field_spec(df) for df in _site_required_fields(meta) if df.fieldname not in core_names]
+	required = []
+	for df in _site_required_fields(meta):
+		if df.fieldname in core_names:
+			continue
+		spec = _field_spec(df)
+		if MIRRORS.get(df.fieldname) in core_names:
+			spec["mirrors"] = MIRRORS[df.fieldname]  # filled from the AlphaX field; not shown twice
+		required.append(spec)
 	return {"core": core, "required": required}
 
 
@@ -202,7 +237,7 @@ def create_employee(data):
 	allowed = _editable(meta) | set(NEW_EMPLOYEE_CORE)
 	missing = [_(df.label) for df in _site_required_fields(meta)
 			   if payload.get(df.fieldname) in (None, "") and not df.default
-			   and not (df.fieldname == "custom_saudinonsaudi" and "alphax_is_saudi" in payload)]
+			   and not _mirrored(meta, payload, df.fieldname)]
 	if missing:
 		frappe.throw(_("Please fill in: {0}").format(", ".join(missing)), title=_("Missing information"))
 	doc = frappe.new_doc("Employee")
