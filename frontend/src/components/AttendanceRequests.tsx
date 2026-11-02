@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { CalendarClock, ClipboardCheck } from 'lucide-react'
+import { CalendarClock, ClipboardCheck, LogOut, Timer } from 'lucide-react'
+import { RequestForm } from './RequestForm'
 import { useState } from 'react'
 import { api } from '../lib/api'
 import { fmtDate, todayISO } from '../lib/format'
@@ -60,14 +61,17 @@ export function AttendanceRequests() {
   const { t, lang } = useI18n()
   const qc = useQueryClient()
   const [open, setOpen] = useState<'correction' | 'shift' | null>(null)
+  const [permit, setPermit] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
   const q = useQuery<any[]>({ queryKey: ['myRequests'], queryFn: api.myRequests })
   const done = () => { setOpen(null); setSent(true); qc.invalidateQueries({ queryKey: ['myRequests'] }) }
   return (
     <Card title={t('Requests')}
-      action={<div className="flex gap-2">
+      action={<div className="flex flex-wrap gap-2">
         <Button size="sm" variant="secondary" onClick={() => { setSent(false); setOpen('correction') }}><ClipboardCheck className="size-4" />{t('Correct attendance')}</Button>
         <Button size="sm" variant="secondary" onClick={() => { setSent(false); setOpen('shift') }}><CalendarClock className="size-4" />{t('Change shift')}</Button>
+        <Button size="sm" variant="secondary" onClick={() => setPermit('Late Arrival Permission')}><Timer className="size-4" />{t('Late arrival')}</Button>
+        <Button size="sm" variant="secondary" onClick={() => setPermit('Early Exit Permission')}><LogOut className="size-4" />{t('Early exit')}</Button>
       </div>}>
       {sent && <p className="mb-2 text-sm text-emerald-700">{t('Request sent to your approver.')}</p>}
       {q.error ? <ErrorBox error={q.error} /> : !(q.data ?? []).length ? <p className="text-sm text-muted">{t('No requests yet.')}</p> : (
@@ -75,7 +79,7 @@ export function AttendanceRequests() {
           {(q.data ?? []).slice(0, 8).map((r) => (
             <li key={r.name} className="flex items-center justify-between gap-3 py-2">
               <span>
-                <span className="font-medium">{r.type === 'Shift Request' ? `${t('Shift')}: ${r.shift_type}` : t(r.reason === 'On Duty' ? 'Missed punch / on duty' : r.reason)}</span>
+                <span className="font-medium">{r.type === 'Shift Request' ? `${t('Shift')}: ${r.shift_type}` : r.type === 'Permission' ? `${t(r.request_type)}${r.time ? ` · ${r.time}` : ''}` : t(r.reason === 'On Duty' ? 'Missed punch / on duty' : r.reason)}</span>
                 <span className="block text-xs text-muted">{fmtDate(r.from_date, lang)}{r.to_date && r.to_date !== r.from_date ? ` → ${fmtDate(r.to_date, lang)}` : ''}</span>
               </span>
               <StatusBadge status={r.status === 'Draft' ? 'Open' : r.status} />
@@ -84,6 +88,7 @@ export function AttendanceRequests() {
         </ul>
       )}
       <Modal open={open === 'correction'} onClose={() => setOpen(null)} title={t('Correct attendance')}><CorrectionForm onDone={done} /></Modal>
+      <RequestForm open={!!permit} initialType={permit ?? undefined} category="Attendance" onClose={() => setPermit(null)} />
       <Modal open={open === 'shift'} onClose={() => setOpen(null)} title={t('Change shift')}><ShiftForm onDone={done} /></Modal>
     </Card>
   )

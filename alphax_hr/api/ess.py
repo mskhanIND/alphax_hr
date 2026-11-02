@@ -291,6 +291,13 @@ def my_requests(limit=30):
 						  fields=["name", "reason", "from_date", "to_date", "explanation", "docstatus", "creation"])
 	rows = [{**r, "type": "Shift Request"} for r in shifts] + [
 		{**r, "type": "Attendance Request", "status": {0: "Open", 1: "Approved", 2: "Cancelled"}[r.docstatus]} for r in att]
+	if frappe.db.exists("DocType", "AlphaX Request") and frappe.get_meta("AlphaX Request Type").has_field("effect"):
+		permit_types = frappe.get_all("AlphaX Request Type", filters={"effect": ["is", "set"]}, pluck="name")
+		for r in frappe.get_list("AlphaX Request", filters={"employee": employee, "request_type": ["in", permit_types or [""]]},
+								 fields=["name", "request_type", "status", "details", "creation"], order_by="creation desc", page_length=limit):
+			d = frappe.parse_json(r.details or "{}") or {}
+			rows.append({"name": r.name, "type": "Permission", "request_type": r.request_type, "status": r.status,
+						 "from_date": d.get("date"), "to_date": d.get("date"), "time": d.get("time"), "creation": r.creation})
 	rows.sort(key=lambda r: str(r["creation"]), reverse=True)
 	return rows[:limit]
 
@@ -359,3 +366,118 @@ def upcoming_holidays(days=60):
 		order_by="holiday_date asc",
 	)
 	return {"holiday_list": holiday_list, "holidays": rows}
+
+
+# --------------------------------------------------------------- expense claims
+@frappe.whitelist()
+def expense_types():
+	current_employee()
+	if not frappe.db.exists("DocType", "Expense Claim Type"):
+		return []
+	return frappe.get_all("Expense Claim Type", fields=["name", "description"], order_by="name asc")
+
+
+def _expense_approver(emp):
+	if emp.get("expense_approver"):
+		return emp.expense_approver
+	if emp.reports_to:
+		user = frappe.db.get_value("Employee", emp.reports_to, "user_id")
+		if user:
+			return user
+	return emp.leave_approver
+
+
+@frappe.whitelist(methods=["POST"])
+def submit_expense(expense_type, amount, expense_date, description=None):
+	"""File an expense claim for yourself; it goes to your expense approver (Approvals inbox)."""
+	employee = current_employee()
+	emp = frappe.get_doc("Employee", employee)
+	amount = flt(amount, 2)
+	if amount <= 0:
+		frappe.throw(_("The amount must be more than zero."))
+	if getdate(expense_date) > getdate(nowdate()):
+		frappe.throw(_("The expense date cannot be in the future."))
+	if not frappe.db.exists("Expense Claim Type", expense_type):
+		frappe.throw(_("Unknown expense type."))
+	doc = frappe.get_doc({
+		"doctype": "Expense Claim", "employee": employee, "company": emp.company, "posting_date": nowdate(),
+		"expense_approver": _expense_approver(emp), "approval_status": "Draft",
+		"payable_account": frappe.get_cached_value("Company", emp.company, "default_expense_claim_payable_account"),
+		"expenses": [{"expense_date": expense_date, "expense_type": expense_type, "amount": amount, "sanctioned_amount": amount,
+					  "description": (description or "")[:1000]}],
+	})
+	doc.flags.ignore_permissions = True  # the employee is the claimant; approver and accounts are set here, not by them
+	doc.insert()
+	return {"name": doc.name, "approver": doc.expense_approver}
+
+
+@frappe.whitelist(methods=["POST"])
+def withdraw_expense(name):
+	employee = current_employee()
+	doc = frappe.get_doc("Expense Claim", name)
+	if doc.employee != employee or doc.docstatus != 0 or doc.approval_status != "Draft":
+		frappe.throw(_("Only your own claims that are still waiting can be withdrawn."))
+	frappe.delete_doc("Expense Claim", name, ignore_permissions=True)
+	return {"ok": True}
+
+
+# --------------------------------------------------------------- documents
+DOCUMENT_FIELDS = (("alphax_iqama_expiry", "Iqama / ID"), ("valid_upto", "Passport"), ("alphax_work_permit_expiry", "Work permit"),
+				   ("contract_end_date", "Contract"), ("alphax_insurance_expiry", "Medical insurance"))
+
+
+@frappe.whitelist()
+def my_documents():
+	"""My document expiry dates, files on my employee record and letters issued to me."""
+	employee = current_employee()
+	emp = frappe.get_doc("Employee", employee)
+	today = getdate(nowdate())
+	docs = []
+	for field, label in DOCUMENT_FIELDS:
+		if emp.meta.has_field(field) and emp.get(field):
+			days = (getdate(emp.get(field)) - today).days
+			docs.append({"document": label, "expiry": str(emp.get(field)), "days_left": days,
+						 "state": "expired" if days < 0 else "soon" if days <= 60 else "valid"})
+	files = frappe.get_all("File", filters={"attached_to_doctype": "Employee", "attached_to_name": employee, "is_folder": 0},
+						   fields=["name", "file_name", "file_url", "creation"], order_by="creation desc", limit_page_length=100)
+	letters = []
+	if frappe.db.exists("DocType", "AlphaX Request"):
+		letters = frappe.get_all("AlphaX Request", filters={"employee": employee, "letter": ["is", "set"]},
+								 fields=["name", "request_type", "letter", "modified"], order_by="modified desc")
+	return {"documents": docs, "files": [{**f, "creation": str(f.creation)} for f in files],
+			"letters": [{**r, "modified": str(r.modified)} for r in letters]}
+
+
+# --------------------------------------------------------------- my team
+@frappe.whitelist()
+def my_team():
+	"""People who report to me (or whose leave I approve) and where they are today."""
+	user = frappe.session.user
+	me = frappe.db.get_value("Employee", {"user_id": user}, "name")
+	or_filters = {"leave_approver": user}
+	if me:
+		or_filters["reports_to"] = me
+	team = frappe.get_all("Employee", filters={"status": "Active"}, or_filters=or_filters,
+						  fields=["name", "employee_name", "designation", "department", "image", "cell_number", "user_id"],
+						  order_by="employee_name asc")
+	if not team:
+		return {"team": [], "summary": {}}
+	ids = [t.name for t in team]
+	today = nowdate()
+	on_leave = {r.employee: r.leave_type for r in frappe.get_all("Leave Application", filters={
+		"employee": ["in", ids], "docstatus": 1, "status": "Approved", "from_date": ["<=", today], "to_date": [">=", today]},
+		fields=["employee", "leave_type"])}
+	checkins = {}
+	for c in frappe.get_all("Employee Checkin", filters={"employee": ["in", ids], "time": ["between", [f"{today} 00:00:00", f"{today} 23:59:59"]]},
+							fields=["employee", "time", "log_type"], order_by="time asc"):
+		checkins.setdefault(c.employee, []).append(c)
+	pending = frappe.db.count("Leave Application", {"employee": ["in", ids], "docstatus": 0, "status": "Open"})
+	out = []
+	for t in team:
+		logs = checkins.get(t.name, [])
+		state = "on_leave" if t.name in on_leave else ("in" if logs and logs[-1].log_type != "OUT" else "out" if logs else "not_in")
+		out.append({**t, "state": state, "leave_type": on_leave.get(t.name),
+					"first_in": str(logs[0].time) if logs else None, "last": str(logs[-1].time) if logs else None})
+	summary = {k: sum(1 for r in out if r["state"] == k) for k in ("in", "out", "on_leave", "not_in")}
+	summary["pending_leave"] = pending
+	return {"team": out, "summary": summary}

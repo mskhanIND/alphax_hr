@@ -1,1 +1,23 @@
-{"name":"AlphaX HR","short_name":"AlphaX HR","start_url":"/alphax","display":"standalone","background_color":"#f6f7f4","theme_color":"#0f5132","icons":[{"src":"/assets/alphax_hr/frontend/logo.svg","sizes":"any","type":"image/svg+xml"}]}
+{
+  "id": "/alphax/",
+  "name": "AlphaX HR",
+  "short_name": "AlphaX HR",
+  "description": "Leave, attendance, payslips and HR services",
+  "start_url": "/alphax/",
+  "scope": "/alphax",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f7f4",
+  "theme_color": "#0f5132",
+  "dir": "auto",
+  "icons": [
+    { "src": "/assets/alphax_hr/frontend/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/alphax_hr/frontend/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/alphax_hr/frontend/icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Check in", "short_name": "Check in", "url": "/alphax/?checkin=1", "icons": [{ "src": "/assets/alphax_hr/frontend/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Apply for leave", "short_name": "Leave", "url": "/alphax/me/leave", "icons": [{ "src": "/assets/alphax_hr/frontend/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Services", "short_name": "Services", "url": "/alphax/me/services", "icons": [{ "src": "/assets/alphax_hr/frontend/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

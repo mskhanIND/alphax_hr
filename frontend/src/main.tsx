@@ -5,6 +5,9 @@ import { BrowserRouter } from 'react-router-dom'
 import { I18nProvider } from './lib/i18n'
 import App from './App'
 import './index.css'
+import { registerServiceWorker } from './lib/pwa'
+
+registerServiceWorker()
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1, refetchOnWindowFocus: false } },

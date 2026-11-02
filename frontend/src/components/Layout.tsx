@@ -1,12 +1,13 @@
 import clsx from 'clsx'
 import {
-  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History, Network, CalendarCheck, Activity, ChevronDown, Inbox, Gavel, ShieldAlert, Receipt, Star, ArrowRightLeft } from 'lucide-react'
+  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History, Network, CalendarCheck, Activity, ChevronDown, Inbox, Gavel, ShieldAlert, Receipt, Star, ArrowRightLeft, LayoutGrid, Folder, Download } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { NavLink, Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 import { useSession } from '../lib/session'
+import { useInstall } from '../lib/pwa'
 import { Avatar } from './ui'
 
 interface NavItem { to: string; label: string; icon: ReactNode; badge?: number }
@@ -20,12 +21,16 @@ export function useNav(): { group: string; items: NavItem[] }[] {
     groups.push({
       group: t('My Space'),
       items: [
+        { to: '/me/services', label: t('Services'), icon: <LayoutGrid className="size-5" /> },
         { to: '/me/leave', label: t('My Leave'), icon: <CalendarDays className="size-5" /> },
         { to: '/me/attendance', label: t('My Attendance'), icon: <Clock className="size-5" /> },
         { to: '/me/requests', label: t('My Requests'), icon: <Inbox className="size-5" /> },
+        { to: '/me/expenses', label: t('My expenses'), icon: <Receipt className="size-5" /> },
+        { to: '/me/documents', label: t('My documents'), icon: <Folder className="size-5" /> },
         { to: '/me/warnings', label: t('My warnings'), icon: <ShieldAlert className="size-5" /> },
         { to: '/me/payslips', label: t('My Payslips'), icon: <Wallet className="size-5" /> },
         { to: '/me/profile', label: t('My Profile'), icon: <User className="size-5" /> },
+        { to: '/me/performance', label: t('My performance'), icon: <Star className="size-5" /> },
       ],
     })
   if (s.persona.approver || s.persona.hr)
@@ -33,6 +38,7 @@ export function useNav(): { group: string; items: NavItem[] }[] {
       group: t('Manager'),
       items: [
         { to: '/approvals', label: t('Approvals'), icon: <BadgeCheck className="size-5" />, badge: (inbox.data as any)?.total },
+        { to: '/my-team', label: t('My team'), icon: <Users className="size-5" /> },
         { to: '/team', label: t('Team Calendar'), icon: <CalendarRange className="size-5" /> },
       ],
     })
@@ -153,6 +159,46 @@ function Brand() {
   )
 }
 
+/** Phone tab bar: the employee's daily destinations, thumb-reachable. */
+function TabBar() {
+  const { t } = useI18n()
+  const s = useSession()
+  const inbox = useQuery({ queryKey: ['inbox'], queryFn: api.inbox, enabled: s.persona.approver || s.persona.hr, refetchInterval: 120_000 })
+  const tabs = [
+    { to: '/', label: t('Home'), icon: <Home className="size-5" /> },
+    ...(s.persona.employee ? [
+      { to: '/me/services', label: t('Services'), icon: <LayoutGrid className="size-5" /> },
+      { to: '/me/leave', label: t('Leave'), icon: <CalendarDays className="size-5" /> },
+      { to: '/me/attendance', label: t('Attendance'), icon: <Clock className="size-5" /> },
+    ] : []),
+    ...(s.persona.approver || s.persona.hr
+      ? [{ to: '/approvals', label: t('Approvals'), icon: <BadgeCheck className="size-5" />, badge: (inbox.data as any)?.total }]
+      : s.persona.employee ? [{ to: '/me/profile', label: t('Profile'), icon: <User className="size-5" /> }] : []),
+  ]
+  if (tabs.length < 3) return null
+  return (
+    <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur print:hidden lg:hidden" aria-label={t('Main')}>
+      <ul className="grid" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
+        {tabs.map((tab) => (
+          <li key={tab.to}>
+            <NavLink to={tab.to} end={tab.to === '/'} className={({ isActive }) => clsx('relative flex flex-col items-center gap-0.5 py-2 text-[11px]', isActive ? 'font-semibold text-brand' : 'text-muted')}>
+              {tab.icon}<span>{tab.label}</span>
+              {!!(tab as any).badge && <span className="absolute top-1 ms-6 rounded-full bg-gold px-1.5 text-[10px] font-semibold text-brand-700">{(tab as any).badge}</span>}
+            </NavLink>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  )
+}
+
+function InstallButton() {
+  const { t } = useI18n()
+  const { canPrompt, install } = useInstall()
+  if (!canPrompt) return null
+  return <button onClick={install} className="flex items-center gap-1.5 rounded-lg bg-brand px-3 py-1.5 text-sm font-medium text-white"><Download className="size-4" />{t('Install app')}</button>
+}
+
 export function Layout({ children }: { children: ReactNode }) {
   const { t, lang, setLang } = useI18n()
   const s = useSession()
@@ -176,6 +222,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <header className="sticky top-0 z-30 flex h-16 print:hidden items-center gap-3 border-b border-line bg-white/90 px-4 backdrop-blur sm:px-6">
           <button className="rounded-lg p-2 hover:bg-surface lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu"><Menu /></button>
           <div className="flex-1" />
+          <InstallButton />
           <button
             onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
             className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium hover:bg-surface"
@@ -194,8 +241,9 @@ export function Layout({ children }: { children: ReactNode }) {
             <LogOut className="size-5 flip-rtl" />
           </a>
         </header>
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6">{children}</main>
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 pt-6 pb-24 sm:px-6 lg:pb-6">{children}</main>
       </div>
+      <TabBar />
     </div>
   )
 }

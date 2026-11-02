@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, BadgeCheck, CalendarDays, ChevronRight, ShieldCheck, Users } from 'lucide-react'
+import { AlertTriangle, BadgeCheck, CalendarDays, ChevronRight, LayoutGrid, Receipt, ShieldCheck, Smartphone, Users, Wallet, X } from 'lucide-react'
+import { useState } from 'react'
+import { useInstall } from '../lib/pwa'
 import { Link } from 'react-router-dom'
 import { CheckInCard } from '../components/CheckInCard'
 import { Badge, Card, Empty, ErrorBox, Spinner, Stat } from '../components/ui'
@@ -103,6 +105,41 @@ function HRSummary() {
   )
 }
 
+function InstallHint() {
+  const { t } = useI18n()
+  const { canPrompt, showIOSHint, install } = useInstall()
+  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem('alphax-install-hint') === 'off' } catch { return false } })
+  if (hidden || (!canPrompt && !showIOSHint)) return null
+  const close = () => { setHidden(true); try { localStorage.setItem('alphax-install-hint', 'off') } catch { /* blocked */ } }
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-brand/20 bg-brand/5 p-3 text-sm lg:hidden">
+      <Smartphone className="size-5 shrink-0 text-brand" />
+      <div className="flex-1">{canPrompt ? t('Install AlphaX HR on your phone for one-tap check-in.') : t('Install on iPhone: tap Share, then “Add to Home Screen”.')}</div>
+      {canPrompt && <button className="rounded-lg bg-brand px-3 py-1.5 font-medium text-white" onClick={install}>{t('Install')}</button>}
+      <button className="p-1 text-muted" onClick={close} aria-label={t('Close')}><X className="size-4" /></button>
+    </div>
+  )
+}
+
+function QuickServices() {
+  const { t } = useI18n()
+  const items = [
+    { to: '/me/services', label: t('Services'), icon: <LayoutGrid className="size-5" /> },
+    { to: '/me/leave', label: t('Leave'), icon: <CalendarDays className="size-5" /> },
+    { to: '/me/expenses', label: t('Expense claim'), icon: <Receipt className="size-5" /> },
+    { to: '/me/payslips', label: t('Payslips'), icon: <Wallet className="size-5" /> },
+  ]
+  return (
+    <div className="grid grid-cols-4 gap-2">
+      {items.map((i) => (
+        <Link key={i.to} to={i.to} className="flex flex-col items-center gap-1 rounded-2xl border border-line bg-white p-3 text-center text-xs font-medium hover:border-brand">
+          <span className="grid size-10 place-items-center rounded-xl bg-brand/10 text-brand">{i.icon}</span>{i.label}
+        </Link>
+      ))}
+    </div>
+  )
+}
+
 export default function Home() {
   const { t, lang } = useI18n()
   const s = useSession()
@@ -115,6 +152,8 @@ export default function Home() {
       {!s.persona.employee && !s.persona.hr && !s.persona.approver && (
         <Card><Empty title={t('Your user is not linked to an employee record.')} /></Card>
       )}
+      <InstallHint />
+      {s.persona.employee && <QuickServices />}
       {s.persona.employee && (
         <div className="grid gap-4 lg:grid-cols-2">
           <CheckInCard />

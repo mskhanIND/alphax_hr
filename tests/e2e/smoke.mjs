@@ -138,6 +138,47 @@ try {
       if (overflow) throw new Error('horizontal overflow on phone')
       await page.screenshot({ path: `${OUT}/05-arabic-phone-home.png`, fullPage: true })
     })
+    await step('phone: tab bar, services and a late-arrival permission (Arabic)', async () => {
+      await page.goto(`${BASE}/alphax`)
+      const tabs = page.getByRole('navigation', { name: 'الرئيسية' })
+      await tabs.waitFor()
+      await tabs.getByText('الخدمات').click()
+      await page.getByRole('heading', { name: 'الخدمات' }).waitFor()
+      await page.screenshot({ path: `${OUT}/26-phone-services.png`, fullPage: true })
+      await page.getByRole('button', { name: 'استئذان تأخير' }).click()
+      const dlg = page.getByRole('dialog')
+      const d = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10)
+      await dlg.locator('input[type=date]').fill(d)
+      await dlg.locator('input[type=time]').fill('09:45')
+      await dlg.getByRole('button', { name: 'إرسال الطلب' }).click()
+      await dlg.waitFor({ state: 'detached' })
+      await page.goto(`${BASE}/alphax/me/attendance`)
+      await page.getByText('استئذان تأخير').first().waitFor()
+      await page.screenshot({ path: `${OUT}/26b-phone-attendance.png`, fullPage: true })
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)
+      if (overflow) throw new Error('horizontal overflow on phone')
+    })
+    await step('phone: my documents and expenses', async () => {
+      await page.goto(`${BASE}/alphax/me/documents`)
+      await page.getByRole('heading', { name: 'مستنداتي' }).waitFor()
+      await page.goto(`${BASE}/alphax/me/expenses`)
+      await page.getByRole('heading', { name: 'مصروفاتي' }).waitFor()
+      await page.screenshot({ path: `${OUT}/26c-phone-expenses.png`, fullPage: true })
+    })
+    await step('installable: manifest and service worker', async () => {
+      const m = await page.request.get(`${BASE}/assets/alphax_hr/frontend/manifest.webmanifest`)
+      const j = await m.json()
+      if (j.scope !== '/alphax' || !j.icons.some((i) => i.purpose === 'maskable')) throw new Error('manifest')
+      const sw = await page.request.get(`${BASE}/api/method/alphax_hr.api.pwa.service_worker`)
+      if (!sw.headers()['content-type']?.includes('javascript') || sw.headers()['service-worker-allowed'] !== '/alphax') throw new Error('sw headers ' + JSON.stringify(sw.headers()))
+      // Service workers need HTTPS (or localhost); the test host is plain http, so only check where allowed.
+      const reg = await page.evaluate(async () => {
+        if (!window.isSecureContext || !navigator.serviceWorker) return 'insecure-context'
+        await new Promise((r) => setTimeout(r, 1500))
+        const r = await navigator.serviceWorker.getRegistration('/alphax'); return r ? r.scope : null
+      })
+      if (!reg) throw new Error('service worker not registered')
+    })
     await step('Arabic leave page on phone', async () => {
       await page.goto(`${BASE}/alphax/me/leave`)
       await page.getByText('طلباتي').waitFor()

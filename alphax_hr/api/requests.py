@@ -14,7 +14,8 @@ from frappe.utils import add_days, cint, flt, getdate, now_datetime, nowdate
 from alphax_hr.api._common import current_employee, is_hr, login_required, parse_json, require_hr, require_hr_manager
 
 OPEN = ("Pending Manager", "Pending HR")
-FIELD_TYPES = {"Data", "Date", "Int", "Currency", "Select", "Text", "Check"}
+FIELD_TYPES = {"Data", "Date", "Time", "Int", "Currency", "Select", "Text", "Check"}
+EFFECTS = ("Excuse late arrival", "Excuse early exit")
 
 # Seeded on install; HR can edit or add types afterwards.
 DEFAULT_TYPES = [
@@ -44,6 +45,16 @@ DEFAULT_TYPES = [
 		"{{ employee.date_of_joining }}{% if employee.relieving_date %} to {{ employee.relieving_date }}{% endif %}.",
 	 "letter_body_ar": "تشهد {{ company }} بأن {{ employee.employee_name }} عمل لديها بوظيفة {{ employee.designation }} منذ {{ employee.date_of_joining }}"
 					   "{% if employee.relieving_date %} حتى {{ employee.relieving_date }}{% endif %}."},
+	{"request_type_name": "Late Arrival Permission", "title_ar": "استئذان تأخير", "category": "Attendance", "needs_manager": 1, "needs_hr": 0,
+	 "sla_days": 1, "effect": "Excuse late arrival",
+	 "description": "Ask your manager to excuse arriving late on a day (before or after it happens).",
+	 "fields": [{"fieldname": "date", "label": "Date", "label_ar": "التاريخ", "type": "Date", "reqd": 1},
+				{"fieldname": "time", "label": "Expected arrival time", "label_ar": "وقت الحضور المتوقع", "type": "Time", "reqd": 1}]},
+	{"request_type_name": "Early Exit Permission", "title_ar": "استئذان خروج مبكر", "category": "Attendance", "needs_manager": 1, "needs_hr": 0,
+	 "sla_days": 1, "effect": "Excuse early exit",
+	 "description": "Ask your manager to leave before the end of your shift.",
+	 "fields": [{"fieldname": "date", "label": "Date", "label_ar": "التاريخ", "type": "Date", "reqd": 1},
+				{"fieldname": "time", "label": "Leaving at", "label_ar": "وقت الخروج", "type": "Time", "reqd": 1}]},
 	{"request_type_name": "Exit & Re-entry Visa", "title_ar": "تأشيرة خروج وعودة", "category": "Government", "non_saudi_only": 1, "sla_days": 3,
 	 "fields": [{"fieldname": "visa_type", "label": "Visa type", "label_ar": "نوع التأشيرة", "type": "Select", "options": ["Single", "Multiple"], "reqd": 1},
 				{"fieldname": "from_date", "label": "Travel date", "label_ar": "تاريخ السفر", "type": "Date", "reqd": 1},
@@ -88,7 +99,7 @@ def _type_dict(t):
 	return {"name": t.name, "title": t.request_type_name, "title_ar": t.title_ar, "category": t.category,
 			"description": t.description, "needs_manager": cint(t.needs_manager), "needs_hr": cint(t.needs_hr),
 			"requires_attachment": cint(t.requires_attachment), "non_saudi_only": cint(t.non_saudi_only),
-			"sla_days": cint(t.sla_days), "output": t.output, "enabled": cint(t.enabled),
+			"sla_days": cint(t.sla_days), "output": t.output, "enabled": cint(t.enabled), "effect": t.get("effect"),
 			"fields": parse_json(t.fields_json, []) or []}
 
 
@@ -118,6 +129,12 @@ def _clean_details(spec, details):
 				frappe.throw(_("{0} must be more than zero.").format(f.get("label")))
 		elif f.get("type") == "Date":
 			v = str(getdate(v))
+		elif f.get("type") == "Time":
+			v = str(v).strip()[:8]
+			parts = v.split(":")
+			if len(parts) < 2 or not all(p.isdigit() for p in parts) or not (0 <= int(parts[0]) < 24 and 0 <= int(parts[1]) < 60):
+				frappe.throw(_("Invalid time for {0} (use HH:MM).").format(f.get("label")))
+			v = f"{int(parts[0]):02d}:{int(parts[1]):02d}"
 		elif f.get("type") == "Check":
 			v = 1 if cint(v) else 0
 		else:
@@ -152,6 +169,8 @@ def create(request_type, details=None, reason=None, employee=None):
 	data = _clean_details(parse_json(t.fields_json, []) or [], parse_json(details, {}) or {})
 	if t.request_type_name == "Resignation":
 		_check_resignation(employee, data)
+	if t.get("effect"):
+		_check_permission(employee, t, data)
 	approver = _manager(employee) if cint(t.needs_manager) else None
 	if approver == user:
 		approver = None  # a manager's own request skips their own approval
@@ -173,6 +192,50 @@ def _check_resignation(employee, data):
 		frappe.throw(_("The last working day cannot be in the past."))
 	if (lwd - getdate(nowdate())).days + 1 < notice:
 		data["short_notice"] = _("Shorter than the {0}-day notice period (Art. 75).").format(notice)
+
+
+def _check_permission(employee, t, data):
+	"""Late/early permissions: one per day and type, within a week back / a month ahead, monthly limit."""
+	from alphax_hr.api._common import settings
+
+	day = getdate(data.get("date"))
+	if not data.get("date"):
+		frappe.throw(_("Please choose the date."))
+	if day < getdate(add_days(nowdate(), -7)) or day > getdate(add_days(nowdate(), 30)):
+		frappe.throw(_("Permissions can be requested up to 7 days after the day and 30 days before it."))
+	same_effect = frappe.get_all("AlphaX Request Type", filters={"effect": t.effect}, pluck="name")
+	active = frappe.get_all("AlphaX Request", filters={"employee": employee, "request_type": ["in", same_effect],
+													   "status": ["not in", ["Rejected", "Cancelled"]]}, fields=["details"])
+	days = [getdate((parse_json(r.details, {}) or {}).get("date")) for r in active if (parse_json(r.details, {}) or {}).get("date")]
+	if day in days:
+		frappe.throw(_("You already have a {0} for {1}.").format(t.request_type_name, frappe.utils.formatdate(day)))
+	limit = cint(settings().get("permissions_per_month"))
+	if limit:
+		all_types = frappe.get_all("AlphaX Request Type", filters={"effect": ["in", list(EFFECTS)]}, pluck="name")
+		month = [r for r in frappe.get_all("AlphaX Request", filters={"employee": employee, "request_type": ["in", all_types],
+																	 "status": ["not in", ["Rejected", "Cancelled"]]}, fields=["details"])
+				 if (d := (parse_json(r.details, {}) or {}).get("date")) and getdate(d).month == day.month and getdate(d).year == day.year]
+		if len(month) >= limit:
+			frappe.throw(_("You have used all {0} late/early permissions for this month.").format(limit))
+
+
+def excused(employees, start, end):
+	"""{(employee, date): {"late": "HH:MM" or True, "early": ...}} from approved permissions."""
+	types = {r.name: r.effect for r in frappe.get_all("AlphaX Request Type", filters={"effect": ["in", list(EFFECTS)]}, fields=["name", "effect"])} \
+		if frappe.db.exists("DocType", "AlphaX Request Type") and frappe.get_meta("AlphaX Request Type").has_field("effect") else {}
+	if not types or not employees:
+		return {}
+	out = {}
+	for r in frappe.get_all("AlphaX Request", filters={"employee": ["in", list(employees)], "request_type": ["in", list(types)],
+													   "status": ["in", ["Approved", "Completed"]]}, fields=["employee", "request_type", "details"]):
+		d = parse_json(r.details, {}) or {}
+		if not d.get("date"):
+			continue
+		day = getdate(d["date"])
+		if getdate(start) <= day <= getdate(end):
+			key = "late" if types[r.request_type] == "Excuse late arrival" else "early"
+			out.setdefault((r.employee, day), {})[key] = d.get("time") or True
+	return out
 
 
 def actions_for(doc, user):
@@ -222,6 +285,10 @@ def decide(name, action, comment=None):
 
 def _on_approved(doc, t):
 	details = parse_json(doc.details, {}) or {}
+	if t.get("effect"):
+		doc.status = "Completed"  # nothing for HR to do: the attendance register reads it
+		doc.flags.alphax_engine = True
+		doc.save(ignore_permissions=True)
 	if t.output == "Letter":
 		doc.letter = _make_letter(doc, t, details)
 		doc.status = "Completed"

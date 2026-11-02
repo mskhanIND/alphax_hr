@@ -33,6 +33,11 @@ const MyPenalties = lazy(() => import('./pages/MyPenalties'))
 const Settlements = lazy(() => import('./pages/Settlements'))
 const Appraisals = lazy(() => import('./pages/Appraisals'))
 const Cutover = lazy(() => import('./pages/Cutover'))
+const Services = lazy(() => import('./pages/Services'))
+const MyExpenses = lazy(() => import('./pages/MyExpenses'))
+const MyDocuments = lazy(() => import('./pages/MyDocuments'))
+const MyTeam = lazy(() => import('./pages/MyTeam'))
+const MyPerformance = lazy(() => import('./pages/MyPerformance'))
 
 function Guard({ when, children }: { when: (s: ReturnType<typeof useSession>) => boolean; children: ReactNode }) {
   const s = useSession()
@@ -55,6 +60,11 @@ export default function App() {
             <Route path="/me/leave" element={<Guard when={emp}><MyLeave /></Guard>} />
             <Route path="/me/attendance" element={<Guard when={emp}><MyAttendance /></Guard>} />
             <Route path="/me/payslips" element={<Guard when={emp}><MyPayslips /></Guard>} />
+            <Route path="/me/services" element={<Guard when={emp}><Services /></Guard>} />
+            <Route path="/me/expenses" element={<Guard when={emp}><MyExpenses /></Guard>} />
+            <Route path="/me/documents" element={<Guard when={emp}><MyDocuments /></Guard>} />
+            <Route path="/me/performance" element={<Guard when={emp}><MyPerformance /></Guard>} />
+            <Route path="/my-team" element={<Guard when={mgr}><MyTeam /></Guard>} />
             <Route path="/me/requests" element={<Guard when={emp}><MyRequests /></Guard>} />
             <Route path="/penalties" element={<Guard when={hr}><Penalties /></Guard>} />
             <Route path="/me/warnings" element={<Guard when={emp}><MyPenalties /></Guard>} />

@@ -1400,6 +1400,82 @@ def run(site):
             assert isinstance(appraisals.mine(), list)
         check("cut-over: readiness, dry-run and idempotent import of legacy requests and warning letters; appraisals", cutover_flow)
 
+        print("\n== ESS services, permissions, mobile app")
+        def permissions_flow():
+            from alphax_hr.api import requests as rq, approvals, attendance
+            frappe.db.delete("AlphaX Request", {"employee": f["e_emp"], "request_type": ["in", ["Late Arrival Permission", "Early Exit Permission"]]})
+            frappe.db.set_single_value("AlphaX HR Settings", "permissions_per_month", 2)
+            frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
+            frappe.set_user(f["emp"])
+            day = add_days(nowdate(), 1)
+            expect_error(lambda: rq.create("Late Arrival Permission", {"date": day, "time": "25:00"}), frappe.ValidationError)
+            expect_error(lambda: rq.create("Late Arrival Permission", {"date": add_days(nowdate(), -20), "time": "09:00"}), frappe.ValidationError)
+            a = rq.create("Late Arrival Permission", {"date": day, "time": "9:30"}, reason="Hospital appointment")
+            assert a["status"] == "Pending Manager"
+            assert frappe.parse_json(frappe.db.get_value("AlphaX Request", a["name"], "details"))["time"] == "09:30"
+            expect_error(lambda: rq.create("Late Arrival Permission", {"date": day, "time": "10:00"}), frappe.ValidationError)  # same day
+            b = rq.create("Early Exit Permission", {"date": day, "time": "15:00"})
+            expect_error(lambda: rq.create("Early Exit Permission", {"date": add_days(day, 1), "time": "15:00"}), frappe.ValidationError)  # limit 2
+            from alphax_hr.api import ess
+            assert any(r["type"] == "Permission" for r in ess.my_requests())
+            frappe.set_user(f["mgr"])
+            assert approvals.act("AlphaX Request", a["name"], "Approve")["status"] == "Completed"  # no HR step
+            frappe.set_user("Administrator")
+            ex = rq.excused([f["e_emp"]], nowdate(), add_days(nowdate(), 5))
+            assert ex[(f["e_emp"], getdate(day))] == {"late": "09:30"}, ex  # the early exit is not approved yet
+            st = frappe._dict(start_time="08:00:00", end_time="17:00:00")
+            assert attendance._permit_minutes(getdate(day), st, "09:30", True) == 90
+            assert attendance._permit_minutes(getdate(day), st, "15:00", False) == 120
+            assert attendance._permit_minutes(getdate(day), st, True, True) is None
+            frappe.db.set_single_value("AlphaX HR Settings", "permissions_per_month", 3)
+        check("late arrival / early exit permissions: limits, manager approval, excused minutes", permissions_flow)
+
+        def ess_services():
+            from alphax_hr.api import ess
+            frappe.set_user("Administrator")
+            payable = frappe.db.get_value("Account", {"company": COMPANY, "account_type": "Payable", "is_group": 0})
+            if not frappe.db.get_value("Company", COMPANY, "default_expense_claim_payable_account"):
+                frappe.db.set_value("Company", COMPANY, "default_expense_claim_payable_account", payable)
+            exp_acc = frappe.db.get_value("Account", {"company": COMPANY, "root_type": "Expense", "is_group": 0})
+            if not frappe.db.exists("Expense Claim Type", "AXT Travel"):
+                frappe.get_doc({"doctype": "Expense Claim Type", "expense_type": "AXT Travel",
+                                "accounts": [{"company": COMPANY, "default_account": exp_acc}]}).insert(ignore_permissions=True)
+            frappe.set_user(f["emp"])
+            assert any(t.name == "AXT Travel" for t in ess.expense_types())
+            expect_error(lambda: ess.submit_expense("AXT Travel", 0, nowdate()), frappe.ValidationError)
+            expect_error(lambda: ess.submit_expense("AXT Travel", 50, add_days(nowdate(), 3)), frappe.ValidationError)
+            r = ess.submit_expense("AXT Travel", 120.5, nowdate(), "Taxi to client")
+            assert r["approver"] == f["mgr"], r
+            assert any(c.name == r["name"] for c in ess.my_expense_claims())
+            frappe.set_user(f["mgr"])
+            from alphax_hr.api import approvals
+            assert any(i["name"] == r["name"] for i in approvals.inbox("Expense Claim")["items"])
+            frappe.set_user(f["emp2"])
+            expect_error(lambda: ess.withdraw_expense(r["name"]), frappe.ValidationError)
+            frappe.set_user(f["emp"])
+            ess.withdraw_expense(r["name"])
+            assert not frappe.db.exists("Expense Claim", r["name"])
+            d = ess.my_documents()
+            assert any(x["document"] == "Iqama / ID" for x in d["documents"]) and isinstance(d["files"], list)
+            assert ess.my_team()["team"] == []
+            frappe.set_user(f["mgr"])
+            team = ess.my_team()
+            assert {m["name"] for m in team["team"]} >= {f["e_emp"], f["e_emp2"]} and "in" in team["summary"], team
+        check("ESS: expense claims to the approver, withdraw, my documents, my team", ess_services)
+
+        def pwa_service_worker():
+            from alphax_hr.api import pwa
+            frappe.set_user("Guest")
+            pwa.service_worker()
+            assert "alphax-" in frappe.response["filecontent"] and frappe.response["type"] == "binary"
+            frappe.response.pop("filecontent", None); frappe.response.pop("type", None)
+            from werkzeug.wrappers import Response
+            resp = Response("x", headers={"Content-Disposition": "attachment"})
+            pwa.after_request(resp, frappe._dict(path="/api/method/alphax_hr.api.pwa.service_worker"))
+            assert resp.mimetype == "application/javascript" and resp.headers["Service-Worker-Allowed"] == "/alphax"
+            assert "Content-Disposition" not in resp.headers
+        check("mobile app: service worker served as a script for the /alphax scope", pwa_service_worker)
+
         print("\n== /alphax page")
         def www_page():
             from alphax_hr.www import alphax as page

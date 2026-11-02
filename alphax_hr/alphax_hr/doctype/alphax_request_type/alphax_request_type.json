@@ -21,6 +21,7 @@
   "non_saudi_only",
   "sla_days",
   "output",
+  "effect",
   "fields_section",
   "fields_json",
   "letter_section",
@@ -46,7 +47,7 @@
    "fieldname": "category",
    "fieldtype": "Select",
    "label": "Category",
-   "options": "Letter\nDocument\nGovernment\nFinance\nTravel\nAsset\nSeparation\nOther",
+   "options": "Letter\nAttendance\nDocument\nGovernment\nFinance\nTravel\nAsset\nSeparation\nOther",
    "default": "Other",
    "in_list_view": 1
   },
@@ -100,6 +101,13 @@
    "label": "Output",
    "options": "\nLetter",
    "description": "Letter: a bilingual PDF is generated when approved."
+  },
+  {
+   "fieldname": "effect",
+   "fieldtype": "Select",
+   "label": "Effect on Attendance",
+   "options": "\nExcuse late arrival\nExcuse early exit",
+   "description": "Approved requests excuse the late arrival / early exit on that date in the attendance register and penalties."
   },
   {
    "fieldname": "fields_section",

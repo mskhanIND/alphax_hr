@@ -86,7 +86,7 @@ export default function Attendance() {
                           {r.cells.map((c: any) => (
                             <td key={c.date} className="border-t border-line px-0.5 py-1 text-center"
                               title={[t(CODE_LABEL[c.code] ?? ''), c.shift, c.first_in && `${t('In')} ${c.first_in.slice(11, 16)}`, c.last_out && `${t('Out')} ${c.last_out.slice(11, 16)}`,
-                                c.late && `${t('Late')} ${c.late} ${t('min')}`, c.early && `${t('Left early')} ${c.early} ${t('min')}`, c.overtime && `${t('Overtime')} ${c.overtime} h`,
+                                c.late && `${t('Late')} ${c.late} ${t('min')}`, (c.late_excused || c.early_excused) && `${t('Excused by permission')} ${(c.late_excused || 0) + (c.early_excused || 0)} ${t('min')}`, c.early && `${t('Left early')} ${c.early} ${t('min')}`, c.overtime && `${t('Overtime')} ${c.overtime} h`,
                                 c.leave, c.holiday && c.holiday !== 'weekly_off' ? c.holiday : null].filter(Boolean).join(' · ')}>
                               <span className={clsx('relative mx-auto grid h-6 w-7 place-items-center rounded font-semibold', CODE_STYLE[c.code])}>
                                 {c.code}

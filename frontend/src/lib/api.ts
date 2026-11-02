@@ -218,6 +218,11 @@ export const api = {
   appraisalCycles: () => call<any>(A + 'appraisals.cycles'),
   appraisals: (cycle?: string) => call<any[]>(A + 'appraisals.appraisals', { cycle }),
   myAppraisals: () => call<any[]>(A + 'appraisals.mine'),
+  expenseTypes: () => call<any[]>(A + 'ess.expense_types'),
+  submitExpense: (args: Record<string, unknown>) => call<{ name: string; approver?: string }>(A + 'ess.submit_expense', args),
+  withdrawExpense: (name: string) => call(A + 'ess.withdraw_expense', { name }),
+  myDocuments: () => call<any>(A + 'ess.my_documents'),
+  myTeam: () => call<any>(A + 'ess.my_team'),
   cutoverReadiness: () => call<any>(A + 'cutover.readiness'),
   importLegacy: (kind: string, dry_run: number) => call<any>(A + 'cutover.import_legacy', { kind, dry_run }),
 }

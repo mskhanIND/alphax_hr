@@ -16,11 +16,13 @@ React SPA (/alphax)  ──►  alphax_hr API (permission-checked)  ──►  F
 |---|---|---|
 | ![HR home](docs/screenshots/09-hr-home.png) | ![Compliance](docs/screenshots/ar-compliance.png) | ![Phone](docs/screenshots/05-arabic-phone-home.png) |
 
-## Modules (v0.9)
+## Modules (v0.10)
 
 | Area | Who | What |
 |---|---|---|
-| Self-service | Every employee | Check in/out (with location), leave balance and requests, attendance month view, payslips with PDF, profile and contact updates, upcoming holidays |
+| Self-service | Every employee | Services hub (every request in one place); check in/out (with location); leave balance and requests; attendance month view with corrections, shift changes and late-arrival / early-exit permissions (manager approves, monthly limit in settings, excused minutes drop out of lateness and penalties); expense claims with receipt photo to the expense approver; my documents (ID/passport/contract expiry, files, letters); payslips with PDF; my warnings; my performance; profile and contact updates; upcoming holidays |
+| Mobile app | Every user | Installable on Android and iPhone from the browser (Install app button / Add to Home Screen): app icon, full-screen, bottom tab bar, home shortcuts (check in, leave, services), opens offline to the last loaded screen. Needs the site on HTTPS |
+| Managers | Approvers | My team: who is checked in, not in yet or on leave today, with call buttons; approvals inbox; team leave calendar |
 | Approvals | Leave/expense approvers, HR | One inbox for Leave, Expense, Attendance, Shift and Compensatory requests; follows active Workflows; team leave calendar |
 | HR core | HR User / HR Manager | People as list, table or organisation chart (from *Reports to*); department/status/nationality filters; quick view; Excel/CSV export; full profile with Print/PDF; missing mandatory fields highlighted with a popup; new employee as a step-by-step wizard (one ID field — the site's other ID fields are filled from it; Saudi/non-Saudi read from the ID) |
 | Shifts & attendance | HR, every employee | Roster grid with per-employee week-offs (stored in the employee's own holiday list, so leave, attendance and payroll follow them) (week/2/4 weeks) with bulk shift assignment (overlaps refused per employee); monthly attendance register from check-ins, attendance, leave and holidays (present, absent, late with minutes, missing punch, overtime) with Excel export; overtime per Art. 107 (hourly wage + 50% of hourly basic); employees request attendance corrections and shift changes, approved in the AlphaX inbox |

@@ -35,6 +35,7 @@
   "leave_escalation_hours",
   "employee_section",
   "probation_days",
+  "permissions_per_month",
   "min_employee_age",
   "validate_iban",
   "passport_non_saudi_only",
@@ -209,6 +210,13 @@
    "label": "Probation Period (days)",
    "default": "90",
    "description": "Saudi Labor Law allows up to 180 days."
+  },
+  {
+   "fieldname": "permissions_per_month",
+   "fieldtype": "Int",
+   "label": "Late/Early Permissions per Month",
+   "default": "3",
+   "description": "How many late-arrival / early-exit permissions an employee may request in a month. 0 = no limit."
   },
   {
    "fieldname": "min_employee_age",

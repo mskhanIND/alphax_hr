@@ -61,6 +61,9 @@ def month_data(month=None, department=None, company=None):
 	leaves = sh.approved_leaves(ids, start, end)
 	logs = _checkins(ids, start, end)
 	marked = _attendance(ids, start, end)
+	from alphax_hr.api.requests import excused as _excused
+
+	permits = _excused(ids, start, end)
 	days = [getdate(add_days(start, i)) for i in range((end - start).days + 1)]
 	rows = []
 	for e in emps:
@@ -91,6 +94,16 @@ def month_data(month=None, department=None, company=None):
 				ot = round(worked, 2)  # work on a rest day / public holiday is all overtime
 			if att and att.late_entry and not late:
 				late = int(st.late_entry_grace_period or 0) + 1 if st else 1  # marked late by HRMS
+			permit = permits.get((e.name, d))
+			late_excused = early_excused = 0
+			if permit and late and permit.get("late"):
+				allowed = _permit_minutes(d, st, permit["late"], start_side=True) if st else None
+				late_excused = late if allowed is None else min(late, allowed)
+				late -= late_excused
+			if permit and early and permit.get("early"):
+				allowed = _permit_minutes(d, st, permit["early"], start_side=False) if st else None
+				early_excused = early if allowed is None else min(early, allowed)
+				early -= early_excused
 			totals[code] += 1
 			totals["late_count"] += 1 if late else 0
 			totals["late_minutes"] += late
@@ -98,7 +111,9 @@ def month_data(month=None, department=None, company=None):
 			totals["early_minutes"] += early
 			totals["overtime_hours"] += ot
 			totals["worked_hours"] += worked
+			totals["excused_minutes"] += late_excused + early_excused
 			cells.append({"date": str(d), "code": code, "shift": shift, "late": late, "early": early,
+						  "late_excused": late_excused, "early_excused": early_excused,
 						  "overtime": ot, "hours": worked, "leave": leaves.get(e.name, {}).get(d),
 						  "holiday": holiday, "first_in": str(day_logs.first_in) if day_logs and day_logs.first_in else None,
 						  "last_out": str(day_logs.last_out) if day_logs and day_logs.last_out else None})
@@ -106,6 +121,22 @@ def month_data(month=None, department=None, company=None):
 					 "cells": cells, "totals": {k: round(v, 2) for k, v in totals.items()}})
 	return {"month": str(start), "start": str(start), "end": str(end), "dates": [str(d) for d in days], "rows": rows,
 			"legend": {k: _(v) for k, v in CODES_LEGEND.items()}}
+
+
+def _permit_minutes(day, st, permitted, start_side):
+	"""Minutes a permission covers: shift start -> expected arrival, or leaving time -> shift end. None = whole."""
+	if permitted is True:
+		return None
+	try:
+		s, en = rules.shift_window(day, _time(st.start_time), _time(st.end_time))
+		hh, mm = (int(x) for x in str(permitted).split(":")[:2])
+		at = s.replace(hour=hh, minute=mm, second=0)
+		if not start_side and at < s:
+			at = at + __import__("datetime").timedelta(days=1)  # night shift
+		minutes = (at - s).total_seconds() / 60 if start_side else (en - at).total_seconds() / 60
+		return max(int(minutes), 0)
+	except Exception:  # noqa: BLE001 - a bad time never blocks the register
+		return None
 
 
 def _time(value):

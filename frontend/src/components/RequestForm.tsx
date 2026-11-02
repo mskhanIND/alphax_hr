@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api, uploadFile, type RequestField, type RequestType } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 import { Button, ErrorBox, Field, Input, Modal, Select, Spinner, Textarea } from './ui'
@@ -21,12 +21,12 @@ function Input1({ f, value, onChange }: { f: RequestField; value: any; onChange:
   )
   if (f.type === 'Text') return <Textarea value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
   if (f.type === 'Check') return <input type="checkbox" className="size-5" checked={!!value} onChange={(e) => onChange(e.target.checked ? 1 : 0)} />
-  const type = f.type === 'Date' ? 'date' : f.type === 'Int' || f.type === 'Currency' ? 'number' : 'text'
+  const type = f.type === 'Date' ? 'date' : f.type === 'Time' ? 'time' : f.type === 'Int' || f.type === 'Currency' ? 'number' : 'text'
   return <Input type={type} value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
 }
 
 /** New request: pick a type, fill the type's own fields, optionally attach a document. */
-export function RequestForm({ open, onClose, employee }: { open: boolean; onClose: () => void; employee?: string }) {
+export function RequestForm({ open, onClose, employee, initialType, category }: { open: boolean; onClose: () => void; employee?: string; initialType?: string; category?: string }) {
   const { t, lang } = useI18n()
   const qc = useQueryClient()
   const types = useQuery({ queryKey: ['request-types'], queryFn: () => api.requestTypes(), enabled: open })
@@ -34,6 +34,7 @@ export function RequestForm({ open, onClose, employee }: { open: boolean; onClos
   const [values, setValues] = useState<Record<string, any>>({})
   const [reason, setReason] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  useEffect(() => { if (open && initialType) { setType(initialType); setValues({}) } }, [open, initialType])
   const rt: RequestType | undefined = types.data?.find((x) => x.name === type)
   const reset = () => { setType(''); setValues({}); setReason(''); setFile(null) }
   const m = useMutation({
@@ -42,11 +43,14 @@ export function RequestForm({ open, onClose, employee }: { open: boolean; onClos
       if (file) await uploadFile('AlphaX Request', r.name, file)
       return r
     },
-    onSuccess: () => { reset(); onClose(); qc.invalidateQueries({ queryKey: ['my-requests'] }); qc.invalidateQueries({ queryKey: ['requests'] }) },
+    onSuccess: () => {
+      reset(); onClose()
+      for (const k of ['my-requests', 'requests', 'myRequests']) qc.invalidateQueries({ queryKey: [k] })
+    },
   })
   const missing = rt ? rt.fields.filter((f) => f.reqd && (values[f.fieldname] === undefined || values[f.fieldname] === '')) : []
   const groups: Record<string, RequestType[]> = {}
-  for (const x of types.data ?? []) (groups[x.category] ??= []).push(x)
+  for (const x of types.data ?? []) if (!category || x.category === category) (groups[x.category] ??= []).push(x)
   return (
     <Modal open={open} onClose={onClose} title={t('New request')}
       footer={<>
