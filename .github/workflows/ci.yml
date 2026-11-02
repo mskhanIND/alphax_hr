@@ -48,7 +48,10 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
       - name: System packages
-        run: sudo apt-get update && sudo apt-get install -y mariadb-client libmariadb-dev pkg-config
+        run: |
+          sudo apt-get update && sudo apt-get install -y mariadb-client libmariadb-dev pkg-config
+          # Newer MariaDB clients require TLS by default; the service container has none.
+          printf '[client]\nskip-ssl\n' > ~/.my.cnf
       - name: Bench with Frappe, ERPNext, HRMS (v15)
         run: |
           pip install frappe-bench
