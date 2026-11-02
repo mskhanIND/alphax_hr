@@ -413,6 +413,17 @@ try {
       await page.getByText('Away per week').or(page.getByText('No plans yet')).first().waitFor()
       await page.screenshot({ path: `${OUT}/29-vacation-planner.png`, fullPage: true })
     })
+    await step('contract preview and PDF download over HTTP', async () => {
+      const empId = await page.evaluate(async () => {
+        const r = await fetch('/api/method/alphax_hr.api.hr.employees', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Frappe-CSRF-Token': window.ALPHAX_BOOT.csrf_token }, body: JSON.stringify({ search: 'Eman' }) })
+        return (await r.json()).message.rows[0].name
+      })
+      await page.goto(`${BASE}/alphax/people/${empId}/contract`)
+      await page.getByRole('button', { name: 'Download PDF' }).waitFor()
+      const res = await page.request.get(`${BASE}/api/method/alphax_hr.api.contract.download?employee=${encodeURIComponent(empId)}`)
+      const body = await res.body()
+      if (!res.ok() || body.subarray(0, 4).toString() !== '%PDF') throw new Error('contract PDF ' + res.status())
+    })
     await step('GOSI register', async () => {
       await page.goto(`${BASE}/alphax/payroll/gosi`)
       await page.getByText('Employer share').first().waitFor()

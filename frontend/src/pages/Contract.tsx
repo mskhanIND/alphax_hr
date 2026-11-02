@@ -21,7 +21,7 @@ export default function Contract() {
       <PageHeader title={t('Employment contract')} subtitle={t('English and Arabic, in the layout of the Qiwa unified contract.')}
         actions={<div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={() => frame.current?.contentWindow?.print()}><Printer className="size-4" />{t('Print')}</Button>
-          <a href={downloadUrl('contract.pdf', { employee: id })}><Button variant="secondary"><Download className="size-4" />{t('Download PDF')}</Button></a>
+          <a href={downloadUrl('contract.download', { employee: id })}><Button variant="secondary"><Download className="size-4" />{t('Download PDF')}</Button></a>
           <Button loading={save.isPending} onClick={() => save.mutate()}><FileCheck2 className="size-4" />{t("Save to employee's file")}</Button>
         </div>} />
       {save.isSuccess && <p className="text-sm text-emerald-700">{t('Saved as an attachment on the employee.')}</p>}

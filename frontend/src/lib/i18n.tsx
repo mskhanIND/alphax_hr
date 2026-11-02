@@ -6,6 +6,9 @@ type Lang = 'en' | 'ar'
 // English is the key. Arabic uses Saudi HR terminology.
 const ar: Record<string, string> = {
   'Home': 'الرئيسية',
+  'Employee values missing from their lists': 'قيم في ملفات الموظفين غير موجودة في قوائمها',
+  'Create missing values': 'إنشاء القيم الناقصة',
+  'Needs the desk': 'يتطلب لوحة النظام',
   'Vacation plan': 'خطة الإجازة السنوية',
   'Vacation planner': 'مخطط الإجازات',
   'Attendance exceptions': 'استثناءات الحضور',

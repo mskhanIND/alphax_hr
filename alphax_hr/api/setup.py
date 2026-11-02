@@ -113,6 +113,69 @@ def _hr_checks(rows):
 	year = today.year
 	rates = frappe.db.count("GOSI Contribution Rate", {"effective_from": ["<=", today]}) if frappe.db.exists("DocType", "GOSI Contribution Rate") else 0
 	_check(rows, g, "gosi_rates", OK if rates else ERROR, rates, None if rates else _("No GOSI rates in effect for {0}.").format(year))
+	broken = broken_employee_links()
+	n = sum(len(b["employees"]) for b in broken)
+	_check(rows, g, "broken_links", WARN if broken else OK, n,
+		   "; ".join(f"{b['label']} → {b['doctype']}: {', '.join(b['values'][:6])}{' …' if len(b['values']) > 6 else ''}" for b in broken) or None,
+		   None, fix="create_missing_links" if any(b["creatable"] for b in broken) else None)
+
+
+def _creatable_by_name(doctype):
+	"""Field to set when a record of ``doctype`` can be created from its name alone (simple master lists)."""
+	meta = frappe.get_meta(doctype)
+	if meta.istable or meta.issingle or meta.is_submittable or meta.is_tree:
+		return None
+	reqd = [df.fieldname for df in meta.fields if df.reqd and not df.default]
+	autoname = (meta.autoname or "").strip()
+	if autoname.startswith("field:"):
+		field = autoname.split(":", 1)[1]
+		return field if set(reqd) <= {field} else None
+	if autoname.lower() == "prompt" and not reqd:
+		return "__name"
+	return None
+
+
+def broken_employee_links():
+	"""Employee Link fields holding values that do not exist (e.g. a nationality removed from its list).
+	Such records cannot be saved until the value exists again, so every edit of the employee fails."""
+	meta = frappe.get_meta("Employee")
+	out = []
+	for df in meta.fields:
+		if df.fieldtype != "Link" or not df.options or not frappe.db.has_column("Employee", df.fieldname):
+			continue
+		if not frappe.db.exists("DocType", df.options):
+			continue
+		table = f"tab{df.options}"
+		rows = frappe.db.sql(f"""select e.`{df.fieldname}` v, group_concat(e.name) emps from `tabEmployee` e
+			left join `{table}` t on t.name = e.`{df.fieldname}`
+			where ifnull(e.`{df.fieldname}`, '') != '' and t.name is null group by e.`{df.fieldname}`""", as_dict=True)
+		if rows:
+			out.append({"field": df.fieldname, "label": _(df.label or df.fieldname), "doctype": df.options,
+						"values": [r.v for r in rows], "employees": sorted({x for r in rows for x in (r.emps or "").split(",") if x}),
+						"creatable": bool(_creatable_by_name(df.options))})
+	return out
+
+
+@frappe.whitelist(methods=["POST"])
+def create_missing_links():
+	"""Create the missing master records (e.g. Employee Nationality "Egyptian") so those employees can be saved again."""
+	require_hr_manager()
+	created, skipped = [], []
+	for b in broken_employee_links():
+		field = _creatable_by_name(b["doctype"])
+		for v in b["values"]:
+			if not field:
+				skipped.append(f"{b['doctype']}: {v}")
+				continue
+			doc = frappe.new_doc(b["doctype"])
+			if field == "__name":
+				doc.name = v
+				doc.flags.name_set = True
+			else:
+				doc.set(field, v)
+			doc.insert()
+			created.append(f"{b['doctype']}: {v}")
+	return {"created": created, "skipped": skipped}
 
 
 def _require_system_manager():
@@ -249,6 +312,9 @@ def bulk_fix(key, employees, value):
 				raise frappe.ValidationError(_("An employee cannot report to themselves."))
 			doc.set(field, value)
 			doc.flags.ignore_mandatory = True
+			# Only this field changes and its value was checked above; other stale links on the record
+			# (e.g. a nationality missing from its list) must not block it.
+			doc.flags.ignore_links = True
 			doc.save()
 			done.append(emp)
 		except Exception as exc:

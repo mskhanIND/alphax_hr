@@ -57,6 +57,11 @@ def contract_data(employee):
 
 
 @frappe.whitelist()
+def preview(employee):
+	"""Contract as HTML. (Not named "html": some servers treat a method ending in .html/.pdf as a file.)"""
+	return html(employee)
+
+
 def html(employee):
 	require_hr()
 	data = contract_data(employee)
@@ -72,6 +77,11 @@ def _pdf_bytes(employee):
 
 
 @frappe.whitelist(methods=["GET"])
+def download(employee):
+	"""Contract PDF download (see preview for why this is not called "pdf")."""
+	return pdf(employee)
+
+
 def pdf(employee):
 	"""Download the contract as PDF (read-only)."""
 	require_hr()

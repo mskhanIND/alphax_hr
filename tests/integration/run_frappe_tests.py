@@ -1122,9 +1122,9 @@ def run(site):
         def employment_contract():
             from alphax_hr.api import contract
             frappe.set_user(f["hr"])
-            h = contract.html(f["e_emp"])["html"]
+            h = contract.preview(f["e_emp"])["html"]
             assert "Employment Contract" in h and "عقد عمل" in h and frappe.db.get_value("Employee", f["e_emp"], "employee_name") in h
-            contract.pdf(f["e_emp"])
+            contract.download(f["e_emp"])
             assert frappe.response["type"] == "pdf" and frappe.response["filecontent"][:4] == b"%PDF"
             assert contract.save(f["e_emp"])["file_url"]
             assert frappe.db.exists("File", {"attached_to_name": f["e_emp"], "file_name": ["like", "Employment-Contract-%"]})
@@ -1583,6 +1583,36 @@ def run(site):
             frappe.set_user("Administrator")
             frappe.db.set_single_value("AlphaX HR Settings", "plan_min_block_days", 0)
         check("vacation plan: periods, overlap, block rule, coverage with colleagues, approve via inbox, apply from plan", vacation_plan_flow)
+
+        def broken_links_fix():
+            from alphax_hr.api import setup
+            frappe.set_user("Administrator")
+            if not frappe.db.exists("DocType", "AXT Nationality"):
+                frappe.get_doc({"doctype": "DocType", "name": "AXT Nationality", "module": "HR", "custom": 1, "autoname": "field:nationality",
+                                "fields": [{"fieldname": "nationality", "fieldtype": "Data", "label": "Nationality", "reqd": 1, "unique": 1}],
+                                "permissions": [{"role": "System Manager", "read": 1, "write": 1, "create": 1},
+                                                {"role": "HR Manager", "read": 1, "write": 1, "create": 1}]}).insert(ignore_permissions=True)
+            if not frappe.db.exists("Custom Field", {"dt": "Employee", "fieldname": "custom_axt_nationality"}):
+                frappe.get_doc({"doctype": "Custom Field", "dt": "Employee", "fieldname": "custom_axt_nationality", "label": "AXT Nationality",
+                                "fieldtype": "Link", "options": "AXT Nationality", "insert_after": "gender"}).insert(ignore_permissions=True)
+            frappe.db.delete("AXT Nationality", {"name": "Tanzanian"})
+            frappe.db.set_value("Employee", f["e_emp2"], "custom_axt_nationality", "Tanzanian")  # value removed from its list
+            try:
+                frappe.set_user(f["hr"])
+                b = [x for x in setup.broken_employee_links() if x["field"] == "custom_axt_nationality"][0]
+                assert b["values"] == ["Tanzanian"] and f["e_emp2"] in b["employees"] and b["creatable"], b
+                chk = next(c for c in setup.hr_status()["checks"] if c["key"] == "broken_links")
+                assert chk["status"] == "warn" and chk["fix"] == "create_missing_links" and "Tanzanian" in chk["detail"]
+                r = setup.bulk_fix("reports_to", [f["e_emp2"]], f["e_mgr"])  # other stale links no longer block the fix
+                assert r["done"] == [f["e_emp2"]], r
+                assert setup.create_missing_links()["created"] == ["AXT Nationality: Tanzanian"]
+                assert not [x for x in setup.broken_employee_links() if x["field"] == "custom_axt_nationality"]
+                frappe.set_user(f["emp"])
+                expect_error(setup.create_missing_links, frappe.PermissionError)
+            finally:
+                frappe.set_user("Administrator")
+                frappe.db.set_value("Employee", f["e_emp2"], {"custom_axt_nationality": None, "reports_to": None})
+        check("employee values missing from their lists: flagged, bulk fix not blocked, missing values created", broken_links_fix)
 
         print("\n== /alphax page")
         def www_page():

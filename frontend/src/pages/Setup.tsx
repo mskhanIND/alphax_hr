@@ -15,7 +15,7 @@ const CHECK_LABEL: Record<string, string> = {
   error_log_24h: 'Errors logged (24h)', outgoing_email: 'Outgoing email', employee_row_size: 'Employee table space',
   default_company: 'Default company', holiday_lists: 'Holiday lists', leave_approver: 'Leave approvers', shift_approver: 'Shift approvers',
   reports_to: 'Reporting managers', user_account: 'Employee user accounts', salary_mapping: 'Salary component mapping',
-  annual_leave: 'Annual leave', statutory_leave: 'Statutory leave types', gosi_rates: 'GOSI rates', check_failed: 'Check could not run',
+  annual_leave: 'Annual leave', statutory_leave: 'Statutory leave types', gosi_rates: 'GOSI rates', broken_links: 'Employee values missing from their lists', check_failed: 'Check could not run',
   documents_expired: 'Expired documents', documents_expiring: 'Documents expiring (30 days)', mandatory_missing: 'Employees missing mandatory data',
   no_salary: 'Employees without salary', approvals_waiting: 'Approvals waiting over 3 days',
 }
@@ -86,6 +86,7 @@ function StatusList({ kind, onSettings }: { kind: 'hr' | 'system'; onSettings: (
   const q = useQuery<any>({ queryKey: ['status', kind], queryFn: kind === 'hr' ? api.hrStatus : api.health })
   const [panel, setPanel] = useState<any>(null)
   const allow = useMutation({ mutationFn: api.allowStatutory, onSuccess: () => q.refetch() })
+  const links = useMutation({ mutationFn: api.createMissingLinks, onSuccess: () => q.refetch() })
   if (q.isLoading) return <Spinner />
   if (q.error) return <ErrorBox error={q.error} onRetry={() => q.refetch()} />
   const d = q.data
@@ -95,6 +96,7 @@ function StatusList({ kind, onSettings }: { kind: 'hr' | 'system'; onSettings: (
     if (c.status === 'ok') return null
     if (c.fix === 'employees') return <Button size="sm" variant="secondary" onClick={() => setPanel(c)}>{t('Fix')}</Button>
     if (c.fix === 'settings') return <Button size="sm" variant="secondary" onClick={onSettings}>{t('Fix')}</Button>
+    if (c.fix === 'create_missing_links') return <Button size="sm" variant="secondary" loading={links.isPending} onClick={() => links.mutate()}>{t('Create missing values')}</Button>
     if (c.fix === 'allow_leave_types') return <Button size="sm" variant="secondary" loading={allow.isPending} onClick={() => allow.mutate()}>{t('Allow all')}</Button>
     if (c.link?.startsWith('/app')) return <a href={c.link} target="_blank" rel="noreferrer"><Button size="sm" variant="ghost">{t('Open')}</Button></a>
     if (c.link) return <Link to={c.link}><Button size="sm" variant="secondary">{t('Fix')}</Button></Link>
@@ -107,6 +109,8 @@ function StatusList({ kind, onSettings }: { kind: 'hr' | 'system'; onSettings: (
         <Stat label={t('Warnings')} value={d.counts.warn} tone="amber" />
         <Stat label={t('Problems')} value={d.counts.error} tone="red" />
       </div>
+      {links.data && <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{t('Created')}: {links.data.created.join(', ') || '—'}{links.data.skipped.length ? ` · ${t('Needs the desk')}: ${links.data.skipped.join(', ')}` : ''}</p>}
+      {links.error && <ErrorBox error={links.error} />}
       {groups.map((g) => (
         <Card key={g} title={t(g)} action={<Button size="sm" variant="ghost" loading={q.isFetching} onClick={() => q.refetch()}><RefreshCw className="size-4" />{t('Re-check')}</Button>}>
           <ul className="divide-y divide-line">
