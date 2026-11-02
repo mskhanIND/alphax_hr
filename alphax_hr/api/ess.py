@@ -5,7 +5,7 @@ import frappe
 from frappe import _
 from frappe.utils import add_days, cint, flt, get_first_day, get_last_day, getdate, now_datetime, nowdate
 
-from alphax_hr.api._common import current_employee, has_field
+from alphax_hr.api._common import current_employee, has_field, login_required
 from alphax_hr.saudi import leave as saudi_leave
 
 PROFILE_FIELDS = [
@@ -217,6 +217,82 @@ def check_in(log_type, latitude=None, longitude=None):
 		doc.longitude = flt(longitude)
 	doc.insert()  # HRMS geofence/shift validation applies
 	return today_status()
+
+
+# ------------------------------------------------- shift & attendance requests
+ATTENDANCE_REASONS = {"Work From Home", "On Duty"}  # HRMS options; a missed punch is filed as On Duty
+
+
+def _shift_approver(employee):
+	emp = frappe.db.get_value("Employee", employee, ["shift_request_approver", "department"], as_dict=True)
+	if emp.shift_request_approver:
+		return emp.shift_request_approver
+	if emp.department:
+		row = frappe.db.get_value("Department Approver", {"parent": emp.department, "parentfield": "shift_request_approver"},
+								  "approver", order_by="idx asc")
+		if row:
+			return row
+	return None
+
+
+@frappe.whitelist()
+def shift_types():
+	login_required()
+	return frappe.get_all("Shift Type", fields=["name", "start_time", "end_time"], order_by="name asc")
+
+
+@frappe.whitelist()
+def request_shift(shift_type, from_date, to_date=None, reason=None):
+	"""Ask for a different shift. Goes to the shift approver's inbox in AlphaX."""
+	employee = current_employee()
+	approver = _shift_approver(employee)
+	if not approver:
+		frappe.throw(_("No shift approver is set for you. Please ask HR to set one."), title=_("Shift approver missing"))
+	if to_date and getdate(to_date) < getdate(from_date):
+		frappe.throw(_("End date is before the start date."))
+	doc = frappe.get_doc({"doctype": "Shift Request", "employee": employee, "shift_type": shift_type,
+						  "company": frappe.db.get_value("Employee", employee, "company"),
+						  "from_date": from_date, "to_date": to_date or None, "status": "Draft", "approver": approver})
+	if reason and doc.meta.has_field("reason"):
+		doc.reason = str(reason)[:500]
+	doc.insert()
+	return {"name": doc.name, "approver": approver}
+
+
+@frappe.whitelist()
+def request_attendance(from_date, to_date, reason, explanation=None, half_day=0, half_day_date=None):
+	"""Correct attendance (missed punch, on duty, work from home); approved in the AlphaX inbox."""
+	employee = current_employee()
+	if reason not in ATTENDANCE_REASONS:
+		frappe.throw(_("Choose a reason."))
+	if getdate(to_date) < getdate(from_date):
+		frappe.throw(_("End date is before the start date."))
+	if getdate(from_date) > getdate(nowdate()):
+		frappe.throw(_("Attendance can only be corrected for past days or today."))
+	if not (explanation or "").strip():
+		frappe.throw(_("Please explain what happened (e.g. forgot to punch out)."))
+	doc = frappe.get_doc({"doctype": "Attendance Request", "employee": employee,
+						  "company": frappe.db.get_value("Employee", employee, "company"),
+						  "from_date": from_date, "to_date": to_date, "reason": reason,
+						  "explanation": str(explanation)[:1000], "half_day": cint(half_day),
+						  "half_day_date": half_day_date if cint(half_day) else None})
+	doc.insert()
+	return {"name": doc.name}
+
+
+@frappe.whitelist()
+def my_requests(limit=30):
+	"""My shift and attendance requests, newest first."""
+	employee = current_employee()
+	limit = min(cint(limit) or 30, 100)
+	shifts = frappe.get_list("Shift Request", filters={"employee": employee}, order_by="creation desc", page_length=limit,
+							 fields=["name", "shift_type", "from_date", "to_date", "status", "docstatus", "creation"])
+	att = frappe.get_list("Attendance Request", filters={"employee": employee}, order_by="creation desc", page_length=limit,
+						  fields=["name", "reason", "from_date", "to_date", "explanation", "docstatus", "creation"])
+	rows = [{**r, "type": "Shift Request"} for r in shifts] + [
+		{**r, "type": "Attendance Request", "status": {0: "Open", 1: "Approved", 2: "Cancelled"}[r.docstatus]} for r in att]
+	rows.sort(key=lambda r: str(r["creation"]), reverse=True)
+	return rows[:limit]
 
 
 # --------------------------------------------------------------- payslips

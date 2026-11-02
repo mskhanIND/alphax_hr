@@ -16,6 +16,8 @@ const EmployeeDetail = lazy(() => import('./pages/EmployeeDetail'))
 const NewEmployee = lazy(() => import('./pages/NewEmployee'))
 const Compliance = lazy(() => import('./pages/Compliance'))
 const LeaveSetup = lazy(() => import('./pages/LeaveSetup'))
+const Roster = lazy(() => import('./pages/Roster'))
+const AttendancePage = lazy(() => import('./pages/Attendance'))
 const Payroll = lazy(() => import('./pages/Payroll'))
 const Gosi = lazy(() => import('./pages/Gosi'))
 const Eosb = lazy(() => import('./pages/Eosb'))
@@ -49,6 +51,8 @@ export default function App() {
             <Route path="/people/:id" element={<Guard when={hr}><EmployeeDetail /></Guard>} />
             <Route path="/compliance" element={<Guard when={hr}><Compliance /></Guard>} />
             <Route path="/leave-setup" element={<Guard when={hr}><LeaveSetup /></Guard>} />
+            <Route path="/roster" element={<Guard when={hr}><Roster /></Guard>} />
+            <Route path="/attendance" element={<Guard when={hr}><AttendancePage /></Guard>} />
             <Route path="/payroll" element={<Guard when={hr}><Payroll /></Guard>} />
             <Route path="/payroll/gosi" element={<Guard when={hr}><Gosi /></Guard>} />
             <Route path="/payroll/eosb" element={<Guard when={hr}><Eosb /></Guard>} />

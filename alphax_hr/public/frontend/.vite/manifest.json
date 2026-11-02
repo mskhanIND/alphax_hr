@@ -1,42 +1,42 @@
 {
-  "_FieldInput-Ce81IlgM.js": {
-    "file": "assets/FieldInput-Ce81IlgM.js",
+  "_FieldInput-DXg2ID2P.js": {
+    "file": "assets/FieldInput-DXg2ID2P.js",
     "name": "FieldInput",
     "imports": [
       "index.html",
-      "_LinkInput-cW45C5uZ.js"
+      "_LinkInput-BYbgMOag.js"
     ]
   },
-  "_LinkInput-cW45C5uZ.js": {
-    "file": "assets/LinkInput-cW45C5uZ.js",
+  "_LinkInput-BYbgMOag.js": {
+    "file": "assets/LinkInput-BYbgMOag.js",
     "name": "LinkInput",
     "imports": [
       "index.html"
     ]
   },
-  "_chevron-down-C959lxzy.js": {
-    "file": "assets/chevron-down-C959lxzy.js",
+  "_chevron-down-CFASLqyg.js": {
+    "file": "assets/chevron-down-CFASLqyg.js",
     "name": "chevron-down",
     "imports": [
       "index.html"
     ]
   },
-  "_chevron-left-CYOSBJW6.js": {
-    "file": "assets/chevron-left-CYOSBJW6.js",
+  "_chevron-left-88bWT3Im.js": {
+    "file": "assets/chevron-left-88bWT3Im.js",
     "name": "chevron-left",
     "imports": [
       "index.html"
     ]
   },
-  "_download-CUghfzlV.js": {
-    "file": "assets/download-CUghfzlV.js",
+  "_download-d3ZPPvxC.js": {
+    "file": "assets/download-d3ZPPvxC.js",
     "name": "download",
     "imports": [
       "index.html"
     ]
   },
   "index.html": {
-    "file": "assets/index-bkPxvGQy.js",
+    "file": "assets/index-0wSrvmkG.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -52,16 +52,18 @@
       "src/pages/NewEmployee.tsx",
       "src/pages/Compliance.tsx",
       "src/pages/LeaveSetup.tsx",
+      "src/pages/Roster.tsx",
+      "src/pages/Attendance.tsx",
       "src/pages/Payroll.tsx",
       "src/pages/Gosi.tsx",
       "src/pages/Eosb.tsx"
     ],
     "css": [
-      "assets/index-D9S0YnFL.css"
+      "assets/index-C_E6bu78.css"
     ]
   },
   "src/pages/Approvals.tsx": {
-    "file": "assets/Approvals-DOBpwhGF.js",
+    "file": "assets/Approvals-BV8u3NzP.js",
     "name": "Approvals",
     "src": "src/pages/Approvals.tsx",
     "isDynamicEntry": true,
@@ -69,50 +71,61 @@
       "index.html"
     ]
   },
+  "src/pages/Attendance.tsx": {
+    "file": "assets/Attendance-CFXZojKf.js",
+    "name": "Attendance",
+    "src": "src/pages/Attendance.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_download-d3ZPPvxC.js",
+      "_chevron-left-88bWT3Im.js"
+    ]
+  },
   "src/pages/Compliance.tsx": {
-    "file": "assets/Compliance-DD_Mfv0Q.js",
+    "file": "assets/Compliance-6ibIScGW.js",
     "name": "Compliance",
     "src": "src/pages/Compliance.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
-      "_chevron-down-C959lxzy.js"
+      "_chevron-down-CFASLqyg.js"
     ]
   },
   "src/pages/EmployeeDetail.tsx": {
-    "file": "assets/EmployeeDetail-PmMfZK4m.js",
+    "file": "assets/EmployeeDetail-Cw2J1iAl.js",
     "name": "EmployeeDetail",
     "src": "src/pages/EmployeeDetail.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
-      "_FieldInput-Ce81IlgM.js",
-      "_LinkInput-cW45C5uZ.js"
+      "_FieldInput-DXg2ID2P.js",
+      "_LinkInput-BYbgMOag.js"
     ]
   },
   "src/pages/Eosb.tsx": {
-    "file": "assets/Eosb-CdMX0H1U.js",
+    "file": "assets/Eosb-BvGBLmSx.js",
     "name": "Eosb",
     "src": "src/pages/Eosb.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
-      "_LinkInput-cW45C5uZ.js"
+      "_LinkInput-BYbgMOag.js"
     ]
   },
   "src/pages/Gosi.tsx": {
-    "file": "assets/Gosi-CdkTe9HL.js",
+    "file": "assets/Gosi-CUbyXO2r.js",
     "name": "Gosi",
     "src": "src/pages/Gosi.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
-      "_chevron-left-CYOSBJW6.js",
-      "_download-CUghfzlV.js"
+      "_chevron-left-88bWT3Im.js",
+      "_download-d3ZPPvxC.js"
     ]
   },
   "src/pages/LeaveSetup.tsx": {
-    "file": "assets/LeaveSetup-g_Hj67JV.js",
+    "file": "assets/LeaveSetup-DTgfqYSS.js",
     "name": "LeaveSetup",
     "src": "src/pages/LeaveSetup.tsx",
     "isDynamicEntry": true,
@@ -121,17 +134,17 @@
     ]
   },
   "src/pages/MyAttendance.tsx": {
-    "file": "assets/MyAttendance-DXifuD4i.js",
+    "file": "assets/MyAttendance-zYo4E9h9.js",
     "name": "MyAttendance",
     "src": "src/pages/MyAttendance.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
-      "_chevron-left-CYOSBJW6.js"
+      "_chevron-left-88bWT3Im.js"
     ]
   },
   "src/pages/MyLeave.tsx": {
-    "file": "assets/MyLeave-91fGESiS.js",
+    "file": "assets/MyLeave-DhxJRCz8.js",
     "name": "MyLeave",
     "src": "src/pages/MyLeave.tsx",
     "isDynamicEntry": true,
@@ -140,17 +153,17 @@
     ]
   },
   "src/pages/MyPayslips.tsx": {
-    "file": "assets/MyPayslips-Dz4JWlkM.js",
+    "file": "assets/MyPayslips-BSk0zHUY.js",
     "name": "MyPayslips",
     "src": "src/pages/MyPayslips.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
-      "_download-CUghfzlV.js"
+      "_download-d3ZPPvxC.js"
     ]
   },
   "src/pages/MyProfile.tsx": {
-    "file": "assets/MyProfile-DKa0ikOu.js",
+    "file": "assets/MyProfile-BLjF_T1w.js",
     "name": "MyProfile",
     "src": "src/pages/MyProfile.tsx",
     "isDynamicEntry": true,
@@ -159,45 +172,55 @@
     ]
   },
   "src/pages/NewEmployee.tsx": {
-    "file": "assets/NewEmployee-CiyUd4rJ.js",
+    "file": "assets/NewEmployee-DHmpj95G.js",
     "name": "NewEmployee",
     "src": "src/pages/NewEmployee.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
-      "_FieldInput-Ce81IlgM.js",
-      "_LinkInput-cW45C5uZ.js"
+      "_FieldInput-DXg2ID2P.js",
+      "_LinkInput-BYbgMOag.js"
     ]
   },
   "src/pages/Payroll.tsx": {
-    "file": "assets/Payroll-XGL6PTX0.js",
+    "file": "assets/Payroll-CQ8xGBUy.js",
     "name": "Payroll",
     "src": "src/pages/Payroll.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
-      "_chevron-left-CYOSBJW6.js"
+      "_chevron-left-88bWT3Im.js"
     ]
   },
   "src/pages/People.tsx": {
-    "file": "assets/People-UwmeU476.js",
+    "file": "assets/People-CTjojvOz.js",
     "name": "People",
     "src": "src/pages/People.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
-      "_chevron-down-C959lxzy.js",
-      "_download-CUghfzlV.js"
+      "_chevron-down-CFASLqyg.js",
+      "_download-d3ZPPvxC.js"
+    ]
+  },
+  "src/pages/Roster.tsx": {
+    "file": "assets/Roster-BtaAkiR6.js",
+    "name": "Roster",
+    "src": "src/pages/Roster.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html",
+      "_chevron-left-88bWT3Im.js"
     ]
   },
   "src/pages/TeamCalendar.tsx": {
-    "file": "assets/TeamCalendar-BJZAKWaq.js",
+    "file": "assets/TeamCalendar-CdkUWxzS.js",
     "name": "TeamCalendar",
     "src": "src/pages/TeamCalendar.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
-      "_chevron-left-CYOSBJW6.js"
+      "_chevron-left-88bWT3Im.js"
     ]
   }
 }

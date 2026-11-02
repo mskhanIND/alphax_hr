@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
+import { AttendanceRequests } from '../components/AttendanceRequests'
 import { CheckInCard } from '../components/CheckInCard'
 import { Button, Card, ErrorBox, PageHeader, Spinner, Stat } from '../components/ui'
 import { api } from '../lib/api'
@@ -30,6 +31,7 @@ export default function MyAttendance() {
     <div className="flex flex-col gap-5">
       <PageHeader title={t('My Attendance')} />
       <CheckInCard />
+      <AttendanceRequests />
       {q.error && <ErrorBox error={q.error} onRetry={() => q.refetch()} />}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label={t('Present')} value={fmtNumber(q.data?.summary?.Present ?? 0, lang)} />

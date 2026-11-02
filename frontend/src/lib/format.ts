@@ -56,3 +56,16 @@ export function initials(name?: string | null) {
   const parts = name.trim().split(/\s+/)
   return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase()
 }
+
+/** ISO date ``n`` days after ``iso`` (calendar maths in UTC, so no DST surprises). */
+export function addDaysISO(iso: string, n: number): string {
+  const d = new Date(iso + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+
+/** Sunday of the week containing ``iso`` (the Saudi working week starts on Sunday). */
+export function weekStart(iso: string): string {
+  const d = new Date(iso + 'T00:00:00Z')
+  return addDaysISO(iso, -d.getUTCDay())
+}

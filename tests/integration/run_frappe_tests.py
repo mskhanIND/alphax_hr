@@ -11,7 +11,7 @@ import sys
 import traceback
 
 import frappe
-from frappe.utils import add_days, getdate, nowdate
+from frappe.utils import add_days, get_first_day, get_last_day, getdate, nowdate
 
 COMPANY = "AlphaX Test Co"
 ABBR = "AXT"
@@ -653,6 +653,101 @@ def run(site):
             assert emp.iban == "SA0380000000608010167519"
             assert str(emp.alphax_probation_end_date) == str(add_days(emp.date_of_joining, 89)), emp.alphax_probation_end_date
         check("ID number rules, Saudi flag from ID, duplicates, IBAN, probation date", employee_rules)
+
+        print("\n== Phase 2: shifts and attendance")
+        from alphax_hr.api import attendance as att_api, shifts as shift_api
+
+        def past_workday(min_back=3):
+            d = getdate(add_days(nowdate(), -min_back))
+            while d.weekday() == 4:  # Friday is the weekly off in the fixture
+                d = getdate(add_days(d, -1))
+            return d
+
+        def shifts_and_roster():
+            frappe.set_user("Administrator")
+            st = ensure("Shift Type", {"name": "AXT Day"}, {"start_time": "08:00:00", "end_time": "17:00:00",
+                                                            "late_entry_grace_period": 15, "early_exit_grace_period": 10})
+            if not st.start_time:
+                st = frappe.get_doc({"doctype": "Shift Type", "__newname": "AXT Day", "start_time": "08:00:00", "end_time": "17:00:00",
+                                     "late_entry_grace_period": 15, "early_exit_grace_period": 10}).insert(ignore_permissions=True)
+            # start clean: earlier runs leave assignments for this employee
+            for name in frappe.get_all("Shift Assignment", filters={"employee": f["e_emp2"], "docstatus": 1}, pluck="name"):
+                frappe.get_doc("Shift Assignment", name).cancel()
+            frappe.db.commit()
+            day = past_workday()
+            start = getdate(get_first_day(day))
+            frappe.set_user(f["emp"])
+            expect_error(lambda: shift_api.roster(str(start)), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            month_end = str(get_last_day(day))
+            res = shift_api.assign([f["e_emp2"], "HR-EMP-NOPE"], "AXT Day", str(start), month_end)
+            assert len(res["created"]) == 1 and res["failed"][0]["employee"] == "HR-EMP-NOPE", res
+            again = shift_api.assign([f["e_emp2"]], "AXT Day", str(start), month_end)
+            assert not again["created"] and again["failed"], "overlapping assignment must be refused"
+            grid = shift_api.roster(str(day), days=7)
+            row = next(r for r in grid["rows"] if r["employee"] == f["e_emp2"])
+            assert row["cells"][0]["shift"] == "AXT Day" and row["cells"][0]["assignment"] == res["created"][0], row["cells"][0]
+            assert any(c["holiday"] for c in row["cells"]), "the weekly off (Friday) shows in a 7-day roster"
+            return day
+        check("shift assignment (overlaps refused per employee) and roster grid", shifts_and_roster)
+
+        def register_late_and_overtime():
+            frappe.set_user("Administrator")
+            day = past_workday()
+            frappe.db.delete("Employee Checkin", {"employee": f["e_emp2"], "time": ["between", [f"{day} 00:00:00", f"{day} 23:59:59"]]})
+            for t, kind in (("08:40:00", "IN"), ("19:00:00", "OUT")):
+                frappe.get_doc({"doctype": "Employee Checkin", "employee": f["e_emp2"], "time": f"{day} {t}", "log_type": kind}).insert(ignore_permissions=True)
+            frappe.db.commit()
+            frappe.set_user(f["hr"])
+            data = att_api.register(str(day))
+            row = next(r for r in data["rows"] if r["employee"] == f["e_emp2"])
+            cell = next(c for c in row["cells"] if c["date"] == str(day))
+            assert cell["code"] in ("P", "L"), cell
+            if cell["code"] == "P":
+                assert cell["late"] == 40 and cell["overtime"] == 1.33, cell  # 40 min late; 10h20m worked vs 9h shift
+                ot = att_api.overtime(str(day))
+                mine = next(r for r in ot["rows"] if r["employee"] == f["e_emp2"])
+                assert mine["hours"] >= 1.33 and str(day) in mine["days"], mine
+            joined = getdate(frappe.db.get_value("Employee", f["e_emp2"], "date_of_joining"))
+            before = [c for c in row["cells"] if getdate(c["date"]) < joined]
+            assert all(c["code"] == "" for c in before), "days before joining are not absences"
+            att_api.export_register(str(day), file_format="xlsx")
+            assert frappe.response["filecontent"][:2] == b"PK"
+            frappe.response.pop("filecontent", None); frappe.response.pop("type", None)
+        check("attendance register: late minutes, overtime (Art. 107), Excel export", register_late_and_overtime)
+
+        def employee_requests():
+            frappe.set_user("Administrator")
+            for sr in frappe.get_all("Shift Request", filters={"employee": f["e_emp2"], "docstatus": ["<", 2]}, fields=["name", "docstatus"]):
+                for sa in frappe.get_all("Shift Assignment", filters={"shift_request": sr.name, "docstatus": 1}, pluck="name"):
+                    frappe.get_doc("Shift Assignment", sa).cancel()
+                doc = frappe.get_doc("Shift Request", sr.name)
+                doc.cancel() if sr.docstatus == 1 else doc.delete()
+            for ar in frappe.get_all("Attendance Request", filters={"employee": f["e_emp2"], "docstatus": ["<", 2]}, fields=["name", "docstatus"]):
+                doc = frappe.get_doc("Attendance Request", ar.name)
+                doc.cancel() if ar.docstatus == 1 else doc.delete()
+            frappe.db.set_value("Employee", f["e_emp2"], "shift_request_approver", None)
+            frappe.db.commit()
+            frappe.set_user(f["emp2"])
+            future = str(add_days(nowdate(), 40))
+            expect_error(lambda: ess.request_shift("AXT Day", future), frappe.ValidationError)  # no approver yet
+            frappe.set_user("Administrator")
+            frappe.db.set_value("Employee", f["e_emp2"], "shift_request_approver", f["mgr"])
+            frappe.db.commit()
+            frappe.set_user(f["emp2"])
+            sr = ess.request_shift("AXT Day", future, future)
+            expect_error(lambda: ess.request_attendance(future, future, "On Duty", "x"), frappe.ValidationError)  # future
+            expect_error(lambda: ess.request_attendance(str(past_workday(5)), str(past_workday(5)), "On Duty", ""), frappe.ValidationError)
+            ar = ess.request_attendance(str(past_workday(5)), str(past_workday(5)), "On Duty", "Forgot to punch out")
+            mine = {r["name"]: r for r in ess.my_requests()}
+            assert sr["name"] in mine and ar["name"] in mine and mine[ar["name"]]["status"] == "Open", mine
+            frappe.set_user(f["mgr"])
+            inbox = approvals.inbox()
+            names = {i["name"] for i in inbox["items"]} if isinstance(inbox, dict) else {i["name"] for i in inbox}
+            assert sr["name"] in names, "shift request reaches the approver's inbox"
+            approvals.act("Shift Request", sr["name"], "Approve")
+            assert frappe.db.exists("Shift Assignment", {"shift_request": sr["name"], "docstatus": 1})
+        check("employee shift and attendance requests reach the approver; approval creates the assignment", employee_requests)
 
         print("\n== /alphax page")
         def www_page():

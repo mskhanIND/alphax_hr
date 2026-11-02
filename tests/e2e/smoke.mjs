@@ -87,6 +87,20 @@ try {
       await page.keyboard.press('Escape')
     })
 
+    await step('attendance requests from My Attendance', async () => {
+      await page.goto(`${BASE}/alphax/me/attendance`)
+      await page.getByRole('button', { name: 'Correct attendance' }).click()
+      const dialog = page.getByRole('dialog')
+      await dialog.locator('textarea').fill('E2E: forgot to punch out')
+      await page.screenshot({ path: `${OUT}/04b-correct-attendance.png` })
+      await dialog.getByRole('button', { name: 'Send request' }).click()
+      await Promise.race([
+        page.getByText('Request sent to your approver.').waitFor({ timeout: 15000 }),
+        dialog.getByRole('alert').waitFor({ timeout: 15000 }),  // an overlapping request from an earlier run is a valid refusal
+      ])
+      if (await dialog.isVisible().catch(() => false)) await page.keyboard.press('Escape')
+    })
+
     await step('HR pages are not reachable by URL', async () => {
       await page.goto(`${BASE}/alphax/people`)
       await page.waitForURL(/\/alphax\/?$/)
@@ -190,6 +204,30 @@ try {
       await page.locator('[data-field="alphax_iqama_number"] input').fill('2123456789')
       await page.getByText('Non-Saudi (Iqama)').waitFor()
       await page.screenshot({ path: `${OUT}/10e-new-employee-identity.png` })
+    })
+
+    await step('roster: assign a shift to selected employees', async () => {
+      await page.goto(`${BASE}/alphax/roster`)
+      await page.getByText('Faded = default shift', { exact: false }).waitFor()
+      await page.screenshot({ path: `${OUT}/12-roster.png`, fullPage: true })
+      await page.getByRole('row').nth(1).locator('input[type=checkbox]').check()
+      await page.getByRole('button', { name: /Assign shift/ }).click()
+      await page.getByRole('dialog').getByRole('button', { name: 'Assign' }).click()
+      await page.getByRole('dialog').getByText(/Assigned|Not assigned/).first().waitFor({ timeout: 20000 })
+      await page.screenshot({ path: `${OUT}/12b-roster-assigned.png` })
+      await page.getByRole('dialog').getByRole('button', { name: 'Close' }).last().click()
+    })
+
+    await step('attendance register and overtime', async () => {
+      await page.goto(`${BASE}/alphax/attendance`)
+      await page.getByText('Missing punches').waitFor()
+      await page.getByRole('button', { name: 'Previous' }).click()
+      await page.getByText('Late arrivals').waitFor()
+      await page.waitForTimeout(800)
+      await page.screenshot({ path: `${OUT}/13-attendance-register.png`, fullPage: true })
+      await page.getByRole('tab', { name: 'Overtime' }).click()
+      await page.getByText('Overtime (Art. 107)').waitFor()
+      await page.screenshot({ path: `${OUT}/13b-overtime.png`, fullPage: true })
     })
 
     await step('compliance dashboard', async () => {
