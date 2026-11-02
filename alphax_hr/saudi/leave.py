@@ -50,6 +50,43 @@ def _anniversary(d: date, years: int) -> date:
         return d.replace(year=d.year + years, day=28)
 
 
+def service_period(joining: date, on: date) -> tuple[int, date, date]:
+    """The service year containing ``on``: (year_index, start, end) with ``end`` inclusive.
+
+    Periods run from each anniversary of the joining date (Art. 109 grants
+    leave per year of service, not per calendar year).
+    """
+    if on < joining:
+        raise ValueError("Date is before the joining date")
+    k = full_years_between(joining, on)
+    start = _anniversary(joining, k)
+    end = date.fromordinal(_anniversary(joining, k + 1).toordinal() - 1)
+    return k, start, end
+
+
+def full_years_between(joining: date, on: date) -> int:
+    from alphax_hr.saudi.service import full_years
+
+    return full_years(joining, on)
+
+
+def entitlement_for_service_year(year_index: int, base: int = ANNUAL_BASE_DAYS, senior: int = ANNUAL_SENIOR_DAYS,
+                                 senior_after: int = SENIOR_AFTER_YEARS) -> int:
+    """Days granted for service year ``year_index`` (0 = first year)."""
+    return senior if year_index >= senior_after else base
+
+
+def describe_sick_split(parts: list[dict]) -> str:
+    labels = {1.0: "full pay", 0.75: "75% pay", 0.0: "unpaid"}
+    out = []
+    for p in parts:
+        if p["tier"] == "exceeds_statutory":
+            out.append(f"{p['days']:g} day(s) beyond the 120-day statutory limit")
+        else:
+            out.append(f"{p['days']:g} day(s) {labels.get(p['pay_factor'], str(p['pay_factor']))}")
+    return " · ".join(out)
+
+
 def sick_leave_split(days_already_taken: float, requested_days: float) -> list[dict]:
     """Split a sick-leave request across the pay tiers.
 

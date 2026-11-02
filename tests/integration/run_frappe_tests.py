@@ -405,10 +405,12 @@ def run(site):
                     msg = str(exc)
                     assert "Insurance Class" in msg and "Marital Status" in msg and "Saudi/Non-Saudi" not in msg, msg
                     assert "Identity Number" in msg, "without an Iqama the mirrored field is still missing"
+                unique_id = "23" + frappe.generate_hash(length=12).translate(str.maketrans("abcdef", "123456"))[:8]
+                unique_id = "".join(ch if ch.isdigit() else "7" for ch in unique_id)
                 created = hr.create_employee({**base, "custom_insurance_class": "AXT VIP", "marital_status": "Single",
-                                              "alphax_iqama_number": "2398765432"})
-                assert frappe.db.get_value("Employee", created["name"], "custom_identity_number") == "2398765432"
-                assert frappe.db.get_value("Employee", created["name"], "iqama_national_id") == "2398765432"
+                                              "alphax_iqama_number": unique_id})
+                assert frappe.db.get_value("Employee", created["name"], "custom_identity_number") == unique_id
+                assert frappe.db.get_value("Employee", created["name"], "iqama_national_id") == unique_id
                 made.append(("Employee", created["name"]))
                 assert frappe.db.get_value("Employee", created["name"], "custom_saudinonsaudi") == "Non-Saudi"
                 assert created["sections"]["company_required"]["custom_insurance_class"] == "AXT VIP"
@@ -438,6 +440,154 @@ def run(site):
                 frappe.clear_cache(doctype="Employee")
                 frappe.db.commit()
         check("form, validation and save follow the site's own mandatory fields", site_specific_mandatory)
+
+        print("\n== Phase 1: Saudi leave engine and employee rules")
+        from alphax_hr.api import leave_setup
+        from alphax_hr import leave_engine
+        frappe.db.set_value("Employee", f["e_emp2"], "gender", "Male")  # Omar
+        for key, value in (("validate_iban", 1), ("probation_days", 90), ("min_employee_age", 18)):
+            frappe.db.set_single_value("AlphaX HR Settings", key, value)
+        frappe.db.set_value("Employee", f["e_emp2"], {"alphax_probation_end_date": None, "iban": None})
+        frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
+        frappe.db.commit()
+
+        def statutory_setup():
+            frappe.set_user(f["emp"])
+            expect_error(leave_setup.create_statutory_leave_types, frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            res = leave_setup.create_statutory_leave_types()
+            kinds = {r["rule"] for r in res["rules"]}
+            assert {"Maternity", "Paternity", "Sick", "Hajj", "Bereavement (Sibling)"} <= kinds, kinds
+            assert not res["missing_kinds"], res["missing_kinds"]
+            frappe.set_user(f["emp2"])
+            types = {t["leave_type"]: t["rule"] for t in ess.leave_types()}
+            assert types.get("Paternity Leave", {}).get("kind") == "Paternity", types
+            assert "Maternity Leave" not in types, "maternity hidden for male employees"
+        check("statutory leave types created and offered by gender", statutory_setup)
+
+        def leave_dates(offset, days=1):
+            start = getdate(add_days(nowdate(), offset))
+            return str(start), str(add_days(start, days - 1))
+
+        def statutory_rules():
+            frappe.set_user(f["emp2"])
+            frm, to = leave_dates(20, 3)
+            birth = str(add_days(frm, -1))
+            ok = ess.apply_leave("Paternity Leave", frm, to, event_date=birth)
+            assert ok["total_leave_days"] == 3, ok
+            frappe.set_user("Administrator"); frappe.delete_doc("Leave Application", ok["name"], force=True); frappe.set_user(f["emp2"])
+            try:
+                ess.apply_leave("Paternity Leave", *leave_dates(40, 2), event_date=str(add_days(nowdate(), 20)))
+                raise AssertionError("expected window error")
+            except frappe.ValidationError as exc:
+                frappe.clear_messages(); assert "within 7 day" in str(exc), str(exc)
+            try:
+                ess.apply_leave("Bereavement Leave (Sibling)", *leave_dates(22, 1), event_date=nowdate(), relation="Mother")
+                raise AssertionError("expected relation error")
+            except frappe.ValidationError as exc:
+                frappe.clear_messages(); assert "Brother, Sister" in str(exc), str(exc)
+            sib = ess.apply_leave("Bereavement Leave (Sibling)", *leave_dates(23, 1), event_date=nowdate(), relation="Brother")
+            assert sib["name"]
+            try:
+                ess.apply_leave("Hajj Leave", *leave_dates(24, 2))
+                raise AssertionError("expected service error")
+            except frappe.ValidationError as exc:
+                frappe.clear_messages(); assert "730 days of service" in str(exc), str(exc)
+        check("paternity window, sibling relation, Hajj service enforced", statutory_rules)
+
+        def sick_tiers_and_attachment():
+            frappe.set_user(f["hr"])
+            ov = leave_setup.overview()
+            sick = next(r for r in ov["rules"] if r["rule"] == "Sick")
+            if sick["needs_allocation"]:  # HRMS ships its own Sick Leave type that expects allocations
+                leave_setup.allow_without_allocation(sick["leave_type"])
+            frappe.set_user(f["emp"])  # Eman
+            first = ess.apply_leave("Sick Leave", *leave_dates(60, 25))
+            second = ess.apply_leave("Sick Leave", *leave_dates(86, 10))
+            text = frappe.db.get_value("Leave Application", second["name"], "alphax_sick_breakdown")
+            assert text.startswith("5 day(s) full pay · 5 day(s) 75% pay"), text
+            frappe.set_user(f["mgr"])
+            frappe.db.savepoint("before_approve")  # an HTTP request rolls back on error; mimic that
+            try:
+                approvals.act("Leave Application", first["name"], "Approve")
+                raise AssertionError("expected attachment error")
+            except frappe.ValidationError as exc:
+                frappe.clear_messages(); frappe.db.rollback(save_point="before_approve")
+                assert "supporting document" in str(exc), str(exc)
+            frappe.set_user(f["emp"])
+            frappe.get_doc({"doctype": "File", "file_name": "medical-certificate.txt", "content": "certificate",
+                            "attached_to_doctype": "Leave Application", "attached_to_name": first["name"], "is_private": 1}).insert()
+            frappe.set_user(f["mgr"])
+            assert approvals.act("Leave Application", first["name"], "Approve")["docstatus"] == 1
+        check("sick leave tiers across requests; certificate required to approve", sick_tiers_and_attachment)
+
+        def annual_allocation():
+            frappe.set_user("Administrator")
+            lt = ensure("Leave Type", {"leave_type_name": "AXT Saudi Annual"},
+                        {"is_carry_forward": 1, "maximum_carry_forwarded_leaves": 21, "expire_carry_forwarded_leaves_after_days": 90}).name
+            frappe.db.set_single_value("AlphaX HR Settings", "annual_leave_type", lt)
+            frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
+            frappe.db.commit()
+            frappe.set_user(f["emp"])
+            expect_error(lambda: leave_setup.annual_allocation(apply=1), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            plan = leave_setup.annual_allocation()
+            eman = next(r for r in plan["rows"] if r["employee"] == f["e_emp"])
+            assert eman["days"] == 30 and eman["from_date"].endswith("-01-10") and eman["service_year"] == 6, eman
+            res = leave_setup.annual_allocation(apply=1)
+            assert not res["failed"], res["failed"]
+            again = leave_setup.annual_allocation()
+            assert next(r for r in again["rows"] if r["employee"] == f["e_emp"])["action"] == "exists"
+            omar = next(r for r in again["rows"] if r["employee"] == f["e_emp2"])
+            assert omar["days"] == 21 and omar["from_date"].endswith("-03-01"), omar
+        check("annual allocation per service year: 30 days after 5 years, idempotent", annual_allocation)
+
+        def escalation():
+            frappe.set_user(f["emp2"])
+            name = ess.apply_leave("AXT Annual", *leave_dates(28, 1))["name"]
+            frappe.set_user("Administrator")
+            frappe.db.set_single_value("AlphaX HR Settings", "leave_escalation_hours", 24)
+            frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
+            frappe.db.set_value("Leave Application", name, "creation", add_days(nowdate(), -3), update_modified=False)
+            leave_engine.escalate_pending_leaves()
+            assert frappe.db.get_value("Leave Application", name, "alphax_escalated_on")
+            assert frappe.db.exists("Notification Log", {"for_user": f["mgr"], "document_name": name})
+            leave_engine.escalate_pending_leaves()  # second run must not notify again
+            assert frappe.db.count("Notification Log", {"for_user": f["mgr"], "document_name": name}) == 1
+        check("untouched requests escalate once to approver and HR", escalation)
+
+        def employee_rules():
+            frappe.set_user(f["hr"])
+            d = hr.employee(f["e_emp2"])
+            upd = hr.update_employee(f["e_emp2"], {"alphax_iqama_number": "1012345678"}, d["modified"])
+            assert upd["sections"]["saudi"]["alphax_is_saudi"] == 1, "ID starting with 1 makes the employee Saudi"
+            for bad, words in (("9012345678", "start with 1"), ("12345", "10 digits")):
+                d = hr.employee(f["e_emp2"])
+                try:
+                    hr.update_employee(f["e_emp2"], {"alphax_iqama_number": bad}, d["modified"])
+                    raise AssertionError("expected ID error")
+                except frappe.ValidationError as exc:
+                    frappe.clear_messages(); assert words in str(exc), str(exc)
+            other = frappe.db.get_value("Employee", f["e_emp"], "alphax_iqama_number")
+            d = hr.employee(f["e_emp2"])
+            try:
+                hr.update_employee(f["e_emp2"], {"alphax_iqama_number": other}, d["modified"])
+                raise AssertionError("expected duplicate error")
+            except frappe.ValidationError as exc:
+                frappe.clear_messages(); assert "already belongs" in str(exc), str(exc)
+            d = hr.employee(f["e_emp2"])
+            hr.update_employee(f["e_emp2"], {"alphax_iqama_number": "2311112222"}, d["modified"])  # restore
+            frappe.set_user("Administrator")
+            emp = frappe.get_doc("Employee", f["e_emp2"])
+            emp.iban = "SA0380000000608010167518"
+            try:
+                emp.save(); raise AssertionError("expected IBAN error")
+            except frappe.ValidationError as exc:
+                frappe.clear_messages(); assert "IBAN" in str(exc)
+            emp.reload(); emp.iban = "sa03 8000 0000 6080 1016 7519"; emp.save()
+            assert emp.iban == "SA0380000000608010167519"
+            assert str(emp.alphax_probation_end_date) == str(add_days(emp.date_of_joining, 89)), emp.alphax_probation_end_date
+        check("ID number rules, Saudi flag from ID, duplicates, IBAN, probation date", employee_rules)
 
         print("\n== /alphax page")
         def www_page():

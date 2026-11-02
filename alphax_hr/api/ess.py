@@ -94,14 +94,25 @@ def my_leave_applications(limit=30):
 
 @frappe.whitelist()
 def leave_types():
-	"""Leave types the employee has an allocation for, plus leave-without-pay types."""
+	"""Leave types the employee can apply for, with any statutory rule attached.
+
+	Allocated types, leave-without-pay types, and statutory leaves mapped in
+	AlphaX HR Settings (those need no allocation; the rule caps them).
+	"""
+	from alphax_hr.leave_engine import rule_to_dict, rules_by_leave_type
+
 	balances = my_leave_balances()
-	names = [b["leave_type"] for b in balances["balances"]] + list(balances["lwps"])
-	return sorted(set(names))
+	rules = rules_by_leave_type()
+	gender = frappe.db.get_value("Employee", current_employee(), "gender")
+	names = {b["leave_type"] for b in balances["balances"]} | set(balances["lwps"])
+	for leave_type, rule in rules.items():
+		if (not rule.gender or not gender or rule.gender == gender) and frappe.db.exists("Leave Type", leave_type):
+			names.add(leave_type)
+	return [{"leave_type": n, "rule": rule_to_dict(rules.get(n))} for n in sorted(names)]
 
 
 @frappe.whitelist()
-def apply_leave(leave_type, from_date, to_date, reason=None, half_day=0, half_day_date=None):
+def apply_leave(leave_type, from_date, to_date, reason=None, half_day=0, half_day_date=None, event_date=None, relation=None):
 	employee = current_employee()
 	emp = frappe.db.get_value("Employee", employee, ["company", "holiday_list"], as_dict=True)
 	from hrms.hr.doctype.leave_application.leave_application import get_leave_approver
@@ -119,6 +130,8 @@ def apply_leave(leave_type, from_date, to_date, reason=None, half_day=0, half_da
 		"posting_date": nowdate(),
 		"leave_approver": get_leave_approver(employee),
 		"follow_via_email": 1,
+		"alphax_event_date": event_date or None,
+		"alphax_relation": relation or None,
 	})
 	doc.insert()  # permissions + HRMS validation (balance, overlap, holidays ...)
 	warnings = []
@@ -126,6 +139,8 @@ def apply_leave(leave_type, from_date, to_date, reason=None, half_day=0, half_da
 		warnings.append(_("No leave approver is set for you. HR has been asked to review this request."))
 	if flt(doc.total_leave_days) == 0:
 		warnings.append(_("This request counts as 0 working days. Your holiday list may not cover these dates — please check with HR."))
+	if doc.get("alphax_sick_breakdown"):
+		warnings.append(doc.alphax_sick_breakdown)
 	return {"name": doc.name, "total_leave_days": doc.total_leave_days, "status": doc.status, "warnings": warnings}
 
 

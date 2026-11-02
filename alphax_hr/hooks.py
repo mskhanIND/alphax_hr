@@ -26,6 +26,18 @@ website_route_rules = [
 after_install = "alphax_hr.install.after_install"
 after_migrate = "alphax_hr.install.after_migrate"
 
+doc_events = {
+	"Employee": {"validate": "alphax_hr.employee_rules.validate"},
+	"Leave Application": {
+		"validate": "alphax_hr.leave_engine.validate_leave_application",
+		"before_submit": "alphax_hr.leave_engine.before_submit_leave_application",
+	},
+}
+
 scheduler_events = {
-	"daily": ["alphax_hr.tasks.notify_expiring_documents"],
+	"daily": [
+		"alphax_hr.tasks.notify_expiring_documents",
+		"alphax_hr.leave_engine.daily_annual_allocation",
+	],
+	"hourly": ["alphax_hr.leave_engine.escalate_pending_leaves"],
 }

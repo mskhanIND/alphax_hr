@@ -75,6 +75,18 @@ try {
       await page.getByText('Late entries').waitFor()
       await page.screenshot({ path: `${OUT}/04-attendance.png` })
     })
+    await step('statutory leave asks for event date and relation', async () => {
+      await page.goto(`${BASE}/alphax/me/leave`)
+      await page.getByRole('button', { name: 'Apply for leave' }).first().click()
+      const dialog = page.getByRole('dialog')
+      await dialog.locator('select').first().selectOption({ label: 'Bereavement Leave (Sibling)' })
+      await dialog.getByText('Saudi Labor Law rule').waitFor()
+      await dialog.getByText('Date of death').waitFor()
+      await dialog.locator('select').nth(1).selectOption('Brother')
+      await page.screenshot({ path: `${OUT}/05b-statutory-leave.png` })
+      await page.keyboard.press('Escape')
+    })
+
     await step('HR pages are not reachable by URL', async () => {
       await page.goto(`${BASE}/alphax/people`)
       await page.waitForURL(/\/alphax\/?$/)
@@ -156,6 +168,13 @@ try {
       await page.waitForTimeout(500)
       await page.screenshot({ path: `${OUT}/11-compliance.png`, fullPage: true })
     })
+    await step('leave setup page', async () => {
+      await page.goto(`${BASE}/alphax/leave-setup`)
+      await page.getByText('Statutory leave rules').waitFor()
+      await page.getByText('Allocation plan').waitFor()
+      await page.screenshot({ path: `${OUT}/11b-leave-setup.png`, fullPage: true })
+    })
+
     await step('GOSI register', async () => {
       await page.goto(`${BASE}/alphax/payroll/gosi`)
       await page.getByText('Employer share').first().waitFor()

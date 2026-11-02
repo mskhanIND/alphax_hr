@@ -20,7 +20,8 @@ SOURCES = {
 		"open": {"status": "Open"},
 		"status_field": "status",
 		"values": {"Approve": "Approved", "Reject": "Rejected"},
-		"fields": ["employee", "employee_name", "leave_type", "from_date", "to_date", "total_leave_days", "description", "status"],
+		"fields": ["employee", "employee_name", "leave_type", "from_date", "to_date", "total_leave_days", "description", "status",
+				   "alphax_event_date", "alphax_relation", "alphax_sick_breakdown"],
 		"submit_on_decision": True,
 	},
 	"Expense Claim": {
@@ -106,7 +107,8 @@ def inbox(doctype=None, limit=100):
 			actions = _actions_for(doc, user, workflow)
 			if not actions:
 				continue
-			row.update({"doctype": dt, "actions": actions, "workflow": bool(workflow)})
+			row.update({"doctype": dt, "actions": actions, "workflow": bool(workflow),
+						"attachments": frappe.db.count("File", {"attached_to_doctype": dt, "attached_to_name": row.name})})
 			results.append(row)
 	results.sort(key=lambda r: str(r.get("modified")), reverse=True)
 	counts = {}

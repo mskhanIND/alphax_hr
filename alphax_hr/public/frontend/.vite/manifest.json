@@ -1,35 +1,35 @@
 {
-  "_FieldInput-BRero1Oh.js": {
-    "file": "assets/FieldInput-BRero1Oh.js",
+  "_FieldInput-DKwqPZe7.js": {
+    "file": "assets/FieldInput-DKwqPZe7.js",
     "name": "FieldInput",
     "imports": [
       "index.html",
-      "_LinkInput-DmZu1mwq.js"
+      "_LinkInput-B71v2p8g.js"
     ]
   },
-  "_LinkInput-DmZu1mwq.js": {
-    "file": "assets/LinkInput-DmZu1mwq.js",
+  "_LinkInput-B71v2p8g.js": {
+    "file": "assets/LinkInput-B71v2p8g.js",
     "name": "LinkInput",
     "imports": [
       "index.html"
     ]
   },
-  "_chevron-left-CQt0cFzj.js": {
-    "file": "assets/chevron-left-CQt0cFzj.js",
+  "_chevron-left-wb27b9jy.js": {
+    "file": "assets/chevron-left-wb27b9jy.js",
     "name": "chevron-left",
     "imports": [
       "index.html"
     ]
   },
-  "_download-BoFfhHnc.js": {
-    "file": "assets/download-BoFfhHnc.js",
+  "_download-kPTlX7QY.js": {
+    "file": "assets/download-kPTlX7QY.js",
     "name": "download",
     "imports": [
       "index.html"
     ]
   },
   "index.html": {
-    "file": "assets/index-g2Mh5Jbt.js",
+    "file": "assets/index-C-PDrXeh.js",
     "name": "index",
     "src": "index.html",
     "isEntry": true,
@@ -44,16 +44,17 @@
       "src/pages/EmployeeDetail.tsx",
       "src/pages/NewEmployee.tsx",
       "src/pages/Compliance.tsx",
+      "src/pages/LeaveSetup.tsx",
       "src/pages/Payroll.tsx",
       "src/pages/Gosi.tsx",
       "src/pages/Eosb.tsx"
     ],
     "css": [
-      "assets/index-DCoPd7B8.css"
+      "assets/index-Cq0o_JZp.css"
     ]
   },
   "src/pages/Approvals.tsx": {
-    "file": "assets/Approvals-pC_12mj3.js",
+    "file": "assets/Approvals-Dy2dakBa.js",
     "name": "Approvals",
     "src": "src/pages/Approvals.tsx",
     "isDynamicEntry": true,
@@ -62,7 +63,7 @@
     ]
   },
   "src/pages/Compliance.tsx": {
-    "file": "assets/Compliance-InIAW-_Y.js",
+    "file": "assets/Compliance-Cu4n5ZuR.js",
     "name": "Compliance",
     "src": "src/pages/Compliance.tsx",
     "isDynamicEntry": true,
@@ -71,49 +72,58 @@
     ]
   },
   "src/pages/EmployeeDetail.tsx": {
-    "file": "assets/EmployeeDetail-h_rsb86c.js",
+    "file": "assets/EmployeeDetail-DE6V5H7l.js",
     "name": "EmployeeDetail",
     "src": "src/pages/EmployeeDetail.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
-      "_FieldInput-BRero1Oh.js",
-      "_LinkInput-DmZu1mwq.js"
+      "_FieldInput-DKwqPZe7.js",
+      "_LinkInput-B71v2p8g.js"
     ]
   },
   "src/pages/Eosb.tsx": {
-    "file": "assets/Eosb-Cmhzbpk3.js",
+    "file": "assets/Eosb-CeSd3f9r.js",
     "name": "Eosb",
     "src": "src/pages/Eosb.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
-      "_LinkInput-DmZu1mwq.js"
+      "_LinkInput-B71v2p8g.js"
     ]
   },
   "src/pages/Gosi.tsx": {
-    "file": "assets/Gosi-BEAbqt-n.js",
+    "file": "assets/Gosi-BLrIEPLr.js",
     "name": "Gosi",
     "src": "src/pages/Gosi.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
-      "_chevron-left-CQt0cFzj.js",
-      "_download-BoFfhHnc.js"
+      "_chevron-left-wb27b9jy.js",
+      "_download-kPTlX7QY.js"
+    ]
+  },
+  "src/pages/LeaveSetup.tsx": {
+    "file": "assets/LeaveSetup-C1ihQdYW.js",
+    "name": "LeaveSetup",
+    "src": "src/pages/LeaveSetup.tsx",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html"
     ]
   },
   "src/pages/MyAttendance.tsx": {
-    "file": "assets/MyAttendance-twspMayN.js",
+    "file": "assets/MyAttendance-DrbmHGF9.js",
     "name": "MyAttendance",
     "src": "src/pages/MyAttendance.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
-      "_chevron-left-CQt0cFzj.js"
+      "_chevron-left-wb27b9jy.js"
     ]
   },
   "src/pages/MyLeave.tsx": {
-    "file": "assets/MyLeave-BdOTLYsK.js",
+    "file": "assets/MyLeave-yZ_OVYrU.js",
     "name": "MyLeave",
     "src": "src/pages/MyLeave.tsx",
     "isDynamicEntry": true,
@@ -122,17 +132,17 @@
     ]
   },
   "src/pages/MyPayslips.tsx": {
-    "file": "assets/MyPayslips-CuAvsDhO.js",
+    "file": "assets/MyPayslips-BGPh_IhA.js",
     "name": "MyPayslips",
     "src": "src/pages/MyPayslips.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
-      "_download-BoFfhHnc.js"
+      "_download-kPTlX7QY.js"
     ]
   },
   "src/pages/MyProfile.tsx": {
-    "file": "assets/MyProfile-DcP1gmPz.js",
+    "file": "assets/MyProfile-CsXEEujJ.js",
     "name": "MyProfile",
     "src": "src/pages/MyProfile.tsx",
     "isDynamicEntry": true,
@@ -141,28 +151,28 @@
     ]
   },
   "src/pages/NewEmployee.tsx": {
-    "file": "assets/NewEmployee-Bl17zy1-.js",
+    "file": "assets/NewEmployee-C6N9JRun.js",
     "name": "NewEmployee",
     "src": "src/pages/NewEmployee.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
-      "_FieldInput-BRero1Oh.js",
-      "_LinkInput-DmZu1mwq.js"
+      "_FieldInput-DKwqPZe7.js",
+      "_LinkInput-B71v2p8g.js"
     ]
   },
   "src/pages/Payroll.tsx": {
-    "file": "assets/Payroll-CeRvYT2U.js",
+    "file": "assets/Payroll-DccNwVbH.js",
     "name": "Payroll",
     "src": "src/pages/Payroll.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
-      "_chevron-left-CQt0cFzj.js"
+      "_chevron-left-wb27b9jy.js"
     ]
   },
   "src/pages/People.tsx": {
-    "file": "assets/People-CmDNhZwe.js",
+    "file": "assets/People-CpJKqmlY.js",
     "name": "People",
     "src": "src/pages/People.tsx",
     "isDynamicEntry": true,
@@ -171,13 +181,13 @@
     ]
   },
   "src/pages/TeamCalendar.tsx": {
-    "file": "assets/TeamCalendar-Ymm7FFqL.js",
+    "file": "assets/TeamCalendar-B7A8YpXS.js",
     "name": "TeamCalendar",
     "src": "src/pages/TeamCalendar.tsx",
     "isDynamicEntry": true,
     "imports": [
       "index.html",
-      "_chevron-left-CQt0cFzj.js"
+      "_chevron-left-wb27b9jy.js"
     ]
   }
 }

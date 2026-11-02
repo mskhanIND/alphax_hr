@@ -1,7 +1,6 @@
 import clsx from 'clsx'
 import {
-  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X,
-} from 'lucide-react'
+  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { NavLink, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -41,6 +40,7 @@ export function useNav(): { group: string; items: NavItem[] }[] {
       items: [
         { to: '/people', label: t('People'), icon: <Users className="size-5" /> },
         { to: '/compliance', label: t('Compliance'), icon: <ShieldCheck className="size-5" /> },
+        { to: '/leave-setup', label: t('Leave setup'), icon: <Settings2 className="size-5" /> },
         { to: '/payroll', label: t('Payroll'), icon: <Landmark className="size-5" /> },
         { to: '/payroll/gosi', label: t('GOSI Register'), icon: <FileText className="size-5" /> },
         { to: '/payroll/eosb', label: t('End of Service'), icon: <Scale className="size-5" /> },

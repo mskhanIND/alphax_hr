@@ -24,6 +24,19 @@ export const boot: Boot = (typeof window !== 'undefined' && window.ALPHAX_BOOT) 
   site: 'dev',
 }
 
+export interface LeaveRule {
+  kind: string
+  max_days: number | null
+  gender: string | null
+  requires_event_date: boolean
+  event_label: string | null
+  relations: string[]
+  requires_attachment: boolean
+  min_service_days: number | null
+  lifetime_limit: number | null
+}
+export interface LeaveTypeOption { leave_type: string; rule: LeaveRule | null }
+
 export class ApiError extends Error {
   status: number
   type?: string
@@ -95,7 +108,7 @@ export const api = {
   updateContact: (data: Record<string, unknown>) => call(A + 'ess.update_my_contact', { data }),
   balances: () => call(A + 'ess.my_leave_balances'),
   myLeaves: () => call(A + 'ess.my_leave_applications'),
-  leaveTypes: () => call<string[]>(A + 'ess.leave_types'),
+  leaveTypes: () => call<LeaveTypeOption[]>(A + 'ess.leave_types'),
   applyLeave: (args: Record<string, unknown>) => call(A + 'ess.apply_leave', args),
   withdrawLeave: (name: string) => call(A + 'ess.withdraw_leave', { name }),
   myAttendance: (month: string) => call(A + 'ess.my_attendance', { month }),
@@ -126,5 +139,27 @@ export const api = {
   gosiRegister: (month: string) => call(A + 'payroll.gosi_register', { month }),
   eosb: (args: Record<string, unknown>) => call(A + 'payroll.eosb', args),
   compliance: () => call(A + 'compliance.overview'),
+  leaveSetup: () => call(A + 'leave_setup.overview'),
+  createStatutoryLeaveTypes: () => call(A + 'leave_setup.create_statutory_leave_types'),
+  allowWithoutAllocation: (leave_type: string) => call(A + 'leave_setup.allow_without_allocation', { leave_type }),
+  updateLeaveRule: (name: string, data: Record<string, unknown>) => call(A + 'leave_setup.update_rule', { name, data }),
+  updateAnnualSettings: (data: Record<string, unknown>) => call(A + 'leave_setup.update_annual_settings', { data }),
+  annualAllocation: (apply = 0) => call(A + 'leave_setup.annual_allocation', { apply }),
   expiring: (days: number) => call(A + 'compliance.expiring_documents', { days }),
+}
+
+/** Attach a file to a document through Frappe's standard (permission-checked) upload. */
+export async function uploadFile(doctype: string, docname: string, file: File, isPrivate = true) {
+  const form = new FormData()
+  form.append('file', file, file.name)
+  form.append('doctype', doctype)
+  form.append('docname', docname)
+  form.append('is_private', isPrivate ? '1' : '0')
+  const res = await fetch('/api/method/upload_file', {
+    method: 'POST', credentials: 'same-origin', headers: { 'X-Frappe-CSRF-Token': boot.csrf_token }, body: form,
+  })
+  let body: any = null
+  try { body = await res.json() } catch { /* non-JSON */ }
+  if (!res.ok) throw extractError(body, res.status)
+  return body?.message
 }

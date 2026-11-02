@@ -53,6 +53,9 @@ export default function Approvals() {
                   </div>
                   <div className="truncate text-sm text-muted">{summary(r, t, lang)}</div>
                   {(r.description || r.reason || r.remark) && <div className="mt-0.5 line-clamp-1 text-sm text-ink/80">“{r.description || r.reason || r.remark}”</div>}
+                  {(r.alphax_event_date || r.alphax_relation) && <div className="mt-0.5 text-xs text-muted">{[r.alphax_relation && t(r.alphax_relation), r.alphax_event_date && `${t('Event date')}: ${fmtDate(r.alphax_event_date, lang)}`].filter(Boolean).join(' · ')}</div>}
+                  {r.alphax_sick_breakdown && <div className="mt-0.5 text-xs font-medium text-amber-800">{r.alphax_sick_breakdown}</div>}
+                  {r.attachments > 0 && <div className="mt-0.5 text-xs text-muted">📎 {r.attachments}</div>}
                 </div>
                 <div className="flex gap-2">
                   {r.actions.map((a: string) => (

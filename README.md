@@ -16,7 +16,7 @@ React SPA (/alphax)  ──►  alphax_hr API (permission-checked)  ──►  F
 |---|---|---|
 | ![HR home](docs/screenshots/09-hr-home.png) | ![Compliance](docs/screenshots/ar-compliance.png) | ![Phone](docs/screenshots/05-arabic-phone-home.png) |
 
-## Modules (v0.1)
+## Modules (v0.2)
 
 | Area | Who | What |
 |---|---|---|
@@ -24,6 +24,8 @@ React SPA (/alphax)  ──►  alphax_hr API (permission-checked)  ──►  F
 | Approvals | Leave/expense approvers, HR | One inbox for Leave, Expense, Attendance, Shift and Compensatory requests; follows active Workflows; team leave calendar |
 | HR core | HR User / HR Manager | Employee directory and search (incl. Iqama), profile with Saudi tab, edit with stale-write protection, new employee, data issues per employee |
 | Payroll | HR | Payroll runs, month slip summary, GOSI register, end-of-service calculator |
+| Saudi leave engine | HR, every employee | Statutory leave rules checked on every request (maternity 84, paternity 3, marriage 5, bereavement 5/3, Iddah 130/15, exam, Hajj once after 2 years), sick-leave pay tiers 30/60/30 with certificate before approval, annual leave 21/30 days allocated per service year, escalation of leave requests left pending |
+| Employee rules | HR | National ID / Iqama / border number checks (Saudi flag set from the ID), duplicate IDs, Saudi IBAN check, minimum age, probation end date |
 | Compliance | HR | Nitaqat estimate, Iqama/work permit/passport/contract expiry, data-readiness checks (holiday lists, approvers, GOSI dates, Iqama data …) |
 
 ## Install
@@ -47,6 +49,12 @@ The built frontend is committed under `alphax_hr/public/frontend`, so no Node bu
 2. **GOSI Contribution Rate:** statutory rows are seeded (Legacy; New system 9% → 11% stepping each July 2025–2028; Non-Saudi 2% hazard). Edit them when GOSI publishes changes.
 3. **Employees → Saudi Compliance tab:** *Saudi National*, *First GOSI Registration Date* (decides Legacy vs New; not the hire date), Iqama number/expiry for non-Saudis.
 4. Open **Compliance** in `/alphax` and clear the data-readiness list.
+5. Open **Leave setup** in `/alphax`:
+   - **Create statutory leave types** adds any missing ones and links them to their rules. Existing leave types with matching names are linked automatically on install.
+   - **Allow without allocation** on any statutory type flagged as needing an allocation (for example HRMS's own *Sick Leave*); the rule caps those leaves instead.
+   - Choose the annual leave type, check the **allocation plan**, then **Create allocations** (or tick *Allocate automatically every night*).
+
+Settings for probation days, minimum age and IBAN checking are in *AlphaX HR Settings*.
 
 ### Coming from CentralHRMS
 

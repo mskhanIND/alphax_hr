@@ -22,6 +22,18 @@
   "nitaqat_full_count_wage",
   "nitaqat_partial_weight",
   "nitaqat_target_percent",
+  "leave_section",
+  "leave_rules",
+  "annual_leave_type",
+  "annual_auto_allocate",
+  "annual_base_days",
+  "annual_senior_days",
+  "annual_senior_after_years",
+  "leave_escalation_hours",
+  "employee_section",
+  "probation_days",
+  "min_employee_age",
+  "validate_iban",
   "documents_section",
   "document_alert_days"
  ],
@@ -101,6 +113,78 @@
    "fieldname": "nitaqat_target_percent",
    "fieldtype": "Percent",
    "label": "Target Saudization %"
+  },
+  {
+   "fieldname": "leave_section",
+   "fieldtype": "Section Break",
+   "label": "Leave"
+  },
+  {
+   "fieldname": "leave_rules",
+   "fieldtype": "Table",
+   "label": "Statutory Leave Rules",
+   "options": "AlphaX Leave Rule"
+  },
+  {
+   "fieldname": "annual_leave_type",
+   "fieldtype": "Link",
+   "label": "Annual Leave Type",
+   "options": "Leave Type"
+  },
+  {
+   "fieldname": "annual_auto_allocate",
+   "fieldtype": "Check",
+   "label": "Allocate Annual Leave Automatically",
+   "description": "Each service year (from the joining anniversary) gets its allocation; unused days carry forward per the Leave Type's carry-forward settings."
+  },
+  {
+   "fieldname": "annual_base_days",
+   "fieldtype": "Int",
+   "label": "Days per Year (first 5 years)",
+   "default": "21"
+  },
+  {
+   "fieldname": "annual_senior_days",
+   "fieldtype": "Int",
+   "label": "Days per Year (after 5 years)",
+   "default": "30"
+  },
+  {
+   "fieldname": "annual_senior_after_years",
+   "fieldtype": "Int",
+   "label": "Senior Entitlement After (years)",
+   "default": "5"
+  },
+  {
+   "fieldname": "leave_escalation_hours",
+   "fieldtype": "Int",
+   "label": "Escalate Untouched Requests After (hours)",
+   "default": "48",
+   "description": "0 = off"
+  },
+  {
+   "fieldname": "employee_section",
+   "fieldtype": "Section Break",
+   "label": "Employee Rules"
+  },
+  {
+   "fieldname": "probation_days",
+   "fieldtype": "Int",
+   "label": "Probation Period (days)",
+   "default": "90",
+   "description": "Saudi Labor Law allows up to 180 days."
+  },
+  {
+   "fieldname": "min_employee_age",
+   "fieldtype": "Int",
+   "label": "Minimum Employee Age",
+   "default": "18"
+  },
+  {
+   "fieldname": "validate_iban",
+   "fieldtype": "Check",
+   "label": "Validate IBAN",
+   "default": "1"
   },
   {
    "fieldname": "documents_section",

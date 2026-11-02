@@ -1,0 +1,120 @@
+{
+ "doctype": "DocType",
+ "name": "AlphaX Leave Rule",
+ "module": "AlphaX HR",
+ "custom": 0,
+ "engine": "InnoDB",
+ "creation": "2026-11-02 00:00:00.000000",
+ "modified": "2026-11-02 00:00:00.000000",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "field_order": [
+  "leave_type",
+  "rule",
+  "enabled",
+  "max_days",
+  "gender",
+  "min_service_days",
+  "lifetime_limit",
+  "column_break_r1",
+  "requires_event_date",
+  "event_label",
+  "days_before_event",
+  "days_after_event",
+  "relations",
+  "requires_attachment"
+ ],
+ "fields": [
+  {
+   "fieldname": "leave_type",
+   "fieldtype": "Link",
+   "label": "Leave Type",
+   "options": "Leave Type",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "rule",
+   "fieldtype": "Select",
+   "label": "Statutory Rule",
+   "options": "Maternity\nPaternity\nMarriage\nBereavement\nBereavement (Sibling)\nIddah (Muslim)\nIddah (Non-Muslim)\nExamination\nHajj\nSick",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "max_days",
+   "fieldtype": "Float",
+   "label": "Max Days per Request",
+   "in_list_view": 1,
+   "description": "0 = no limit"
+  },
+  {
+   "fieldname": "gender",
+   "fieldtype": "Select",
+   "label": "Only for Gender",
+   "options": "\nMale\nFemale"
+  },
+  {
+   "fieldname": "min_service_days",
+   "fieldtype": "Int",
+   "label": "Minimum Service (days)",
+   "description": "0 = none"
+  },
+  {
+   "fieldname": "lifetime_limit",
+   "fieldtype": "Int",
+   "label": "Times per Employment",
+   "description": "0 = unlimited"
+  },
+  {
+   "fieldname": "column_break_r1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "requires_event_date",
+   "fieldtype": "Check",
+   "label": "Event Date Required"
+  },
+  {
+   "fieldname": "event_label",
+   "fieldtype": "Data",
+   "label": "Event Date Label"
+  },
+  {
+   "fieldname": "days_before_event",
+   "fieldtype": "Data",
+   "label": "May Start Days Before Event",
+   "description": "Blank = no limit"
+  },
+  {
+   "fieldname": "days_after_event",
+   "fieldtype": "Data",
+   "label": "Must End Within Days After Event",
+   "description": "Blank = no limit"
+  },
+  {
+   "fieldname": "relations",
+   "fieldtype": "Small Text",
+   "label": "Allowed Relations",
+   "description": "One per line; blank = not asked"
+  },
+  {
+   "fieldname": "requires_attachment",
+   "fieldtype": "Check",
+   "label": "Attachment Required Before Approval"
+  }
+ ],
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 1,
+ "editable_grid": 0
+}
