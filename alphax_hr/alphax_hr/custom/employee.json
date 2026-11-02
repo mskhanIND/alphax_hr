@@ -61,7 +61,8 @@
    "modified": "2026-11-02 00:00:00.000000",
    "owner": "Administrator",
    "modified_by": "Administrator",
-   "is_system_generated": 0
+   "is_system_generated": 0,
+   "length": 64
   },
   {
    "doctype": "Custom Field",
@@ -92,7 +93,8 @@
    "owner": "Administrator",
    "modified_by": "Administrator",
    "is_system_generated": 0,
-   "unique": 0
+   "unique": 0,
+   "length": 64
   },
   {
    "doctype": "Custom Field",
@@ -124,7 +126,8 @@
    "owner": "Administrator",
    "modified_by": "Administrator",
    "is_system_generated": 0,
-   "depends_on": "eval:!doc.alphax_is_saudi"
+   "depends_on": "eval:!doc.alphax_is_saudi",
+   "length": 64
   },
   {
    "doctype": "Custom Field",
@@ -204,7 +207,8 @@
    "modified_by": "Administrator",
    "is_system_generated": 0,
    "options": "\n1\n2\n3\n4\n5\nIndefinite",
-   "description": "Sets the contract end date from the joining date (e.g. 2 years from 01-01-2026 ends 31-12-2027)."
+   "description": "Sets the contract end date from the joining date (e.g. 2 years from 01-01-2026 ends 31-12-2027).",
+   "length": 64
   },
   {
    "doctype": "Custom Field",
@@ -212,7 +216,7 @@
    "module": "AlphaX HR",
    "name": "Employee-alphax_employee_name_ar",
    "fieldname": "alphax_employee_name_ar",
-   "fieldtype": "Data",
+   "fieldtype": "Small Text",
    "label": "Full Name (Arabic)",
    "insert_after": "employee_name",
    "creation": "2026-11-02 00:00:00.000000",
@@ -220,7 +224,8 @@
    "owner": "Administrator",
    "modified_by": "Administrator",
    "is_system_generated": 0,
-   "translatable": 0
+   "translatable": 0,
+   "description": "Stored as text so it does not add to the Employee table's row size."
   }
  ],
  "property_setters": [],

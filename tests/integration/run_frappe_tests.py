@@ -917,6 +917,16 @@ def run(site):
             expect_error(lambda: activity.trail("User", f["emp"]), frappe.PermissionError)  # not an HR record type
         check("system-wide activity: record trail with field changes, HR feed with filters, privacy", system_activity)
 
+        def row_size_guard():
+            from alphax_hr import install
+            frappe.set_user("Administrator")
+            frappe.db.sql_ddl("ALTER TABLE `tabEmployee` MODIFY `alphax_gosi_number` varchar(140)")
+            install.shrink_own_columns()
+            col = {c.Field: c.Type for c in frappe.db.sql("SHOW COLUMNS FROM `tabEmployee`", as_dict=True)}
+            assert col["alphax_gosi_number"] == "varchar(64)" and col["alphax_employee_name_ar"] == "text", col
+            assert install.employee_row_size()["used"] < install.ROW_LIMIT
+        check("row-size guard: AlphaX narrows its own Employee columns before migrate", row_size_guard)
+
         print("\n== /alphax page")
         def www_page():
             from alphax_hr.www import alphax as page

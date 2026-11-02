@@ -17,6 +17,68 @@ def after_migrate():
 	apply_field_rules()
 
 
+# AlphaX's own Employee columns and the width they really need. Sites with many
+# custom fields hit MariaDB's 65,535-byte row limit (every varchar(140) reserves
+# 560 bytes), so AlphaX keeps its footprint small.
+# (64 is the narrowest varchar Frappe creates.)
+EMPLOYEE_COLUMN_LENGTHS = {"alphax_iqama_number": 64, "alphax_border_number": 64, "alphax_gosi_number": 64,
+						   "alphax_contract_years": 64}
+ROW_LIMIT = 65535
+
+
+def before_migrate():
+	shrink_own_columns()
+
+
+def shrink_own_columns():
+	"""Narrow AlphaX's varchar columns on tabEmployee before new fields are added. Never touches other apps' columns,
+	and skips a column if any stored value would not fit."""
+	if not frappe.db.table_exists("Employee"):
+		return
+	cols = {c.Field: c.Type for c in frappe.db.sql("SHOW COLUMNS FROM `tabEmployee`", as_dict=True)}
+	for col, length in EMPLOYEE_COLUMN_LENGTHS.items():
+		current = cols.get(col, "")
+		if not current.startswith("varchar("):
+			continue
+		if int(current[8:-1]) <= length:
+			continue
+		longest = frappe.db.sql(f"SELECT MAX(CHAR_LENGTH(`{col}`)) FROM `tabEmployee`")[0][0] or 0
+		if longest > length:
+			print(f"AlphaX: kept {col} as {current}; a stored value has {longest} characters")
+			continue
+		frappe.db.sql_ddl(f"ALTER TABLE `tabEmployee` MODIFY `{col}` varchar({length})")
+		frappe.db.set_value("Custom Field", {"dt": "Employee", "fieldname": col}, "length", length, update_modified=False)
+		print(f"AlphaX: {col} {current} -> varchar({length})")
+
+
+def employee_row_size():
+	"""bench --site SITE execute alphax_hr.install.employee_row_size  -> how full tabEmployee's row is."""
+	used = 0
+	widest = []
+	for c in frappe.db.sql("SHOW COLUMNS FROM `tabEmployee`", as_dict=True):
+		t = c.Type.lower()
+		if t.startswith("varchar("):
+			n = int(t[8:t.index(")")]) * 4 + 2
+		elif "text" in t or "blob" in t:
+			n = 12
+		elif t.startswith("decimal"):
+			n = 12
+		elif t.startswith(("int", "bigint")):
+			n = 8
+		elif t.startswith(("date", "time")):
+			n = 8
+		else:
+			n = 8
+		used += n
+		widest.append((n, c.Field, c.Type))
+	widest.sort(reverse=True)
+	print(f"tabEmployee declared row size ~ {used:,} of {ROW_LIMIT:,} bytes ({100 * used / ROW_LIMIT:.0f}%), {len(widest)} columns")
+	print("Widest columns:")
+	for n, f, t in widest[:15]:
+		print(f"  {n:>6,}  {f}  {t}")
+	return {"used": used, "limit": ROW_LIMIT}
+
+
 def apply_field_rules():
 	"""Site field settings AlphaX owns: passport is checked by AlphaX for non-Saudis only."""
 	if not frappe.db.exists("DocType", "AlphaX HR Settings"):

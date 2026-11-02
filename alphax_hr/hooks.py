@@ -24,6 +24,7 @@ website_route_rules = [
 ]
 
 after_install = "alphax_hr.install.after_install"
+before_migrate = "alphax_hr.install.before_migrate"
 after_migrate = "alphax_hr.install.after_migrate"
 
 doc_events = {
