@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { CheckCircle2, Clock, ExternalLink, FilePlus2, MessageSquare, Paperclip, PencilLine, Send, X, XCircle } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../lib/api'
 import { fmtDate } from '../lib/format'
 import { useI18n } from '../lib/i18n'
@@ -40,7 +41,7 @@ function tone(kind: string, e: any) {
 }
 
 /** Side panel: the complete approval chain of one request, with a link to the record. */
-export function ActivityDrawer({ doctype, name, onClose }: { doctype: string; name: string; onClose: () => void }) {
+export function ActivityDrawer({ doctype, name, onClose, hideOpen }: { doctype: string; name: string; onClose: () => void; hideOpen?: boolean }) {
   const { t, lang } = useI18n()
   const q = useQuery<any>({ queryKey: ['activity', doctype, name], queryFn: () => api.trail(doctype, name) })
   useEffect(() => {
@@ -109,9 +110,12 @@ export function ActivityDrawer({ doctype, name, onClose }: { doctype: string; na
                 </ul>
               </div>
             )}
-            <a href={d.desk_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 self-start rounded-xl border border-line px-4 py-2 text-sm font-medium hover:bg-surface">
-              <ExternalLink className="size-4" />{t('Open record')}
-            </a>
+            {!hideOpen && (
+              <Link to={doctype === 'Employee' ? `/people/${encodeURIComponent(name)}` : `/r/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`} onClick={onClose}
+                className="inline-flex items-center gap-2 self-start rounded-xl border border-line px-4 py-2 text-sm font-medium hover:bg-surface">
+                <ExternalLink className="size-4" />{t('Open record')}
+              </Link>
+            )}
           </div>
         )}
       </aside>

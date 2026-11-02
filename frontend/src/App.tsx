@@ -19,6 +19,7 @@ const LeaveSetup = lazy(() => import('./pages/LeaveSetup'))
 const Roster = lazy(() => import('./pages/Roster'))
 const ActivityLog = lazy(() => import('./pages/ActivityLog'))
 const Setup = lazy(() => import('./pages/Setup'))
+const RecordView = lazy(() => import('./pages/RecordView'))
 const LeaveBalances = lazy(() => import('./pages/LeaveBalances'))
 const AttendancePage = lazy(() => import('./pages/Attendance'))
 const Payroll = lazy(() => import('./pages/Payroll'))
@@ -56,7 +57,8 @@ export default function App() {
             <Route path="/leave-setup" element={<Guard when={hr}><LeaveSetup /></Guard>} />
             <Route path="/roster" element={<Guard when={hr}><Roster /></Guard>} />
             <Route path="/activity" element={<Guard when={hr}><ActivityLog /></Guard>} />
-            <Route path="/setup" element={<Guard when={hr}><Setup /></Guard>} />
+            <Route path="/r/:doctype/:name" element={<RecordView />} />
+            <Route path="/setup" element={<Guard when={(x: any) => x.persona.hr || x.persona.system_manager}><Setup /></Guard>} />
             <Route path="/leave-balances" element={<Guard when={hr}><LeaveBalances /></Guard>} />
             <Route path="/attendance" element={<Guard when={hr}><AttendancePage /></Guard>} />
             <Route path="/payroll" element={<Guard when={hr}><Payroll /></Guard>} />

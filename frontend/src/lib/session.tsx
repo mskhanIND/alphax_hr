@@ -7,7 +7,7 @@ export interface Session {
   full_name: string
   user_image?: string | null
   roles: string[]
-  persona: { employee: boolean; approver: boolean; hr: boolean; hr_manager: boolean }
+  persona: { employee: boolean; approver: boolean; hr: boolean; hr_manager: boolean; system_manager?: boolean }
   employee: null | { name: string; employee_name: string; image?: string; designation?: string; department?: string; company?: string; date_of_joining?: string }
   company?: string
   title: string

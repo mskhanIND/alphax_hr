@@ -2,7 +2,7 @@ import clsx from 'clsx'
 import {
   BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History, Network, CalendarCheck, Activity, ChevronDown } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
-import { NavLink, Link } from 'react-router-dom'
+import { NavLink, Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { useI18n } from '../lib/i18n'
@@ -67,7 +67,8 @@ export function useNav(): { group: string; items: NavItem[] }[] {
     groups.push({
       group: t('Administration'),
       items: [
-        { to: '/setup', label: t('Setup & health'), icon: <Activity className="size-5" /> },
+        ...(s.persona.hr_manager || s.persona.system_manager
+          ? [{ to: '/setup', label: t('HR status & setup'), icon: <Activity className="size-5" /> }] : []),
         { to: '/leave-setup', label: t('Leave setup'), icon: <Settings2 className="size-5" /> },
         { to: '/activity', label: t('Activity log'), icon: <History className="size-5" /> },
       ],
@@ -80,6 +81,14 @@ const NAV_KEY = 'alphax-nav-collapsed'
 
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const groups = useNav()
+  const loc = useLocation()
+  // Items that differ only by query (?view=org) need their own active test.
+  const activeFor = (to: string, isActive: boolean) => {
+    const [path, query] = to.split('?')
+    if (query) return loc.pathname === path && loc.search.includes(query)
+    if (path === '/people') return isActive && !loc.search.includes('view=org')
+    return isActive
+  }
   const [closed, setClosed] = useState<Set<string>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem(NAV_KEY) ?? '[]')) } catch { return new Set() }
   })
@@ -108,7 +117,7 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
                   onClick={onNavigate}
                   className={({ isActive }) =>
                     clsx('flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition',
-                      isActive ? 'bg-white/15 font-medium text-white' : 'text-white/75 hover:bg-white/10 hover:text-white')
+                      activeFor(item.to, isActive) ? 'bg-white/15 font-medium text-white' : 'text-white/75 hover:bg-white/10 hover:text-white')
                   }
                 >
                   {item.icon}

@@ -15,9 +15,9 @@ SKIP = {"leave_rules", "annual_leave_type", "annual_auto_allocate", "annual_poli
 OK, WARN, ERROR = "ok", "warn", "error"
 
 
-def _check(rows, group, key, status, value=None, detail=None, link=None):
+def _check(rows, group, key, status, value=None, detail=None, link=None, fix=None):
 	rows.append({"group": group, "key": key, "status": status, "value": value,
-				 "detail": detail if status != OK else None, "link": link})
+				 "detail": detail if status != OK else None, "link": link, "fix": fix if status != OK else None})
 
 
 def _system_checks(rows):
@@ -75,7 +75,7 @@ def _hr_checks(rows):
 	g = "HR data"
 	conf = settings()
 	today = getdate(nowdate())
-	_check(rows, g, "default_company", OK if conf.default_company else WARN, conf.default_company or _("Not set"), None, "/setup#settings")
+	_check(rows, g, "default_company", OK if conf.default_company else WARN, conf.default_company or _("Not set"), None, None, fix="settings")
 	emps = frappe.get_all("Employee", filters={"status": "Active"},
 						  fields=["name", "holiday_list", "company", "leave_approver", "shift_request_approver", "reports_to", "user_id"])
 	total = len(emps) or 1
@@ -90,18 +90,18 @@ def _hr_checks(rows):
 			ending.add(hl)
 	_check(rows, g, "holiday_lists", ERROR if outdated else WARN if ending else OK,
 		   f"{outdated} {_('employees on an outdated list')}" if outdated else (", ".join(sorted(ending)) if ending else _("Current")),
-		   _("Create next year's holiday list and set it on the company (and employees)."), "/compliance?open=holiday_list_missing_or_outdated")
+		   _("Create the current year's holiday list in the desk, then set it on these employees here."), "/app/holiday-list/new",
+		   fix="employees")
 	for key, field, label in (("leave_approver", "leave_approver", "No leave approver"),
 							  ("shift_approver", "shift_request_approver", "No shift approver"),
 							  ("reports_to", "reports_to", "No reporting manager"),
 							  ("user_account", "user_id", "No user account")):
 		n = sum(1 for e in emps if not e.get(field))
-		_check(rows, g, key, OK if not n else WARN, f"{n}/{len(emps)}", _(label) if n else None,
-			   "/people?view=org" if key == "reports_to" else "/compliance")
+		_check(rows, g, key, OK if not n else WARN, f"{n}/{len(emps)}", _(label) if n else None, None, fix="employees")
 	purposes = {r.purpose for r in conf.component_map}
 	need = {"GOSI Basic", "GOSI Housing", "EOSB Wage"}
 	_check(rows, g, "salary_mapping", OK if need <= purposes else ERROR, f"{len(need & purposes)}/{len(need)}",
-		   (_("Map salary components for") + ": " + ", ".join(sorted(need - purposes))) if need - purposes else None, "/setup#settings")
+		   (_("Map salary components for") + ": " + ", ".join(sorted(need - purposes))) if need - purposes else None, None, fix="settings")
 	_check(rows, g, "annual_leave", OK if conf.annual_leave_type else WARN,
 		   conf.annual_leave_type or _("Not set up"), None if conf.annual_leave_type else _("Set up Annual Leave in Leave setup."), "/leave-setup")
 	rules = conf.leave_rules
@@ -109,26 +109,181 @@ def _hr_checks(rows):
 			   and not frappe.db.get_value("Leave Type", r.leave_type, "is_lwp")]
 	_check(rows, g, "statutory_leave", WARN if (not rules or unalloc) else OK, f"{len(rules)} {_('rules')}",
 		   (_("Need 'Allow without allocation'") + ": " + ", ".join(unalloc)) if unalloc else (None if rules else _("Create statutory leave types.")),
-		   "/leave-setup")
+		   "/leave-setup", fix="allow_leave_types" if unalloc else None)
 	year = today.year
 	rates = frappe.db.count("GOSI Contribution Rate", {"effective_from": ["<=", today]}) if frappe.db.exists("DocType", "GOSI Contribution Rate") else 0
 	_check(rows, g, "gosi_rates", OK if rates else ERROR, rates, None if rates else _("No GOSI rates in effect for {0}.").format(year))
 
 
-@frappe.whitelist()
-def health():
-	require_hr()
+def _require_system_manager():
+	if "System Manager" not in frappe.get_roles():
+		frappe.throw(_("System health is only visible to System Managers."), frappe.PermissionError)
+
+
+def _run(fns):
 	rows = []
-	for fn in (_system_checks, _hr_checks):
+	for fn in fns:
 		try:
 			fn(rows)
 		except Exception as exc:  # one broken check must not hide the others
-			_check(rows, fn.__name__.strip("_").replace("_checks", "").title(), "check_failed", ERROR, None, str(exc)[:300])
-	from frappe.utils.change_log import get_versions
-
-	versions = {app: v.get("version") for app, v in get_versions().items()}
+			_check(rows, _("Checks"), "check_failed", ERROR, None, str(exc)[:300])
 	counts = {s: sum(1 for r in rows if r["status"] == s) for s in (OK, WARN, ERROR)}
-	return {"checks": rows, "counts": counts, "versions": versions, "site": frappe.local.site, "as_of": str(now_datetime())}
+	return {"checks": rows, "counts": counts, "as_of": str(now_datetime())}
+
+
+def _require_hr_lead():
+	if not set(frappe.get_roles()) & {"HR Manager", "System Manager"}:
+		frappe.throw(_("Only HR Managers can see the HR status."), frappe.PermissionError)
+
+
+# ----------------------------------------------------------------- HR operational status
+EMPLOYEE_FIXES = {  # check key -> (Employee field, Link doctype) for bulk setting
+	"holiday_lists": ("holiday_list", "Holiday List"),
+	"leave_approver": ("leave_approver", "User"),
+	"shift_approver": ("shift_request_approver", "User"),
+	"reports_to": ("reports_to", "Employee"),
+}
+
+
+def _hr_operational_checks(rows):
+	g = _("Workforce & operations")
+	today = getdate(nowdate())
+	from alphax_hr.api.compliance import expiring_documents
+
+	docs = expiring_documents(30)
+	expired = [d for d in docs if d["days_left"] < 0]
+	_check(rows, g, "documents_expired", ERROR if expired else OK, len(expired),
+		   _("Iqama, work permit, passport or contract already expired."), None, fix="employees")
+	soon = [d for d in docs if d["days_left"] >= 0]
+	_check(rows, g, "documents_expiring", WARN if soon else OK, len(soon), _("Expiring within 30 days."), None, fix="employees")
+	missing = len(_employees_missing_mandatory())
+	_check(rows, g, "mandatory_missing", WARN if missing else OK, missing,
+		   _("Employees that cannot be saved until mandatory fields are filled."), None, fix="employees")
+	no_salary = len(_employees_without_salary())
+	_check(rows, g, "no_salary", WARN if no_salary else OK, no_salary, _("Active employees without a salary assignment."), None, fix="employees")
+	from alphax_hr.api.approvals import SOURCES
+
+	old = 0
+	for dt, conf in SOURCES.items():
+		if frappe.db.exists("DocType", dt):
+			old += frappe.db.count(dt, {"docstatus": 0, "creation": ["<", add_days(today, -3)], **conf["open"]})
+	_check(rows, g, "approvals_waiting", WARN if old else OK, old, _("Requests waiting for a decision for more than 3 days."), "/approvals")
+
+
+def _active_employees(fields):
+	return frappe.get_all("Employee", filters={"status": "Active"}, fields=["name", "employee_name", "department", *fields],
+						  order_by="employee_name asc", limit_page_length=10000)
+
+
+def _employees_missing_mandatory():
+	from alphax_hr.api.hr import _mirror_map, _site_required_fields
+
+	meta = frappe.get_meta("Employee")
+	req = [df.fieldname for df in _site_required_fields(meta) if df.fieldname not in _mirror_map(meta)]
+	out = []
+	for e in _active_employees(req):
+		gaps = [meta.get_label(f) for f in req if e.get(f) in (None, "")]
+		if gaps:
+			out.append({**e, "note": ", ".join(gaps[:4]) + (f" +{len(gaps) - 4}" if len(gaps) > 4 else "")})
+	return out
+
+
+def _employees_without_salary():
+	with_salary = set(frappe.get_all("Salary Structure Assignment", filters={"docstatus": 1}, pluck="employee", distinct=True))
+	return [e for e in _active_employees([]) if e.name not in with_salary]
+
+
+@frappe.whitelist()
+def affected(key):
+	"""Employees behind one HR status check, with what is wrong for each."""
+	_require_hr_lead()
+	today = getdate(nowdate())
+	if key in EMPLOYEE_FIXES:
+		field, link = EMPLOYEE_FIXES[key]
+		rows = _active_employees([field, "company"])
+		if key == "holiday_lists":
+			ends = {h.name: getdate(h.to_date) for h in frappe.get_all("Holiday List", fields=["name", "to_date"])}
+			def bad(e):
+				hl = e.holiday_list or frappe.get_cached_value("Company", e.company, "default_holiday_list")
+				return not hl or hl not in ends or ends[hl] < add_days(today, 60)
+			rows = [{**e, "note": e.holiday_list or _("Company default")} for e in rows if bad(e)]
+			current = [h.name for h in frappe.get_all("Holiday List", filters={"from_date": ["<=", today], "to_date": [">=", today]},
+														fields=["name"]) if not frappe.db.get_value("Holiday List", h.name, "alphax_employee")]
+		else:
+			rows = [{**e, "note": None} for e in rows if not e.get(field)]
+			current = []
+		return {"key": key, "rows": rows, "set_field": field, "link_doctype": link, "suggestions": current}
+	if key == "user_account":
+		return {"key": key, "rows": [{**e, "note": e.company_email or e.personal_email or _("No email")}
+									 for e in _active_employees(["user_id", "company_email", "personal_email"]) if not e.user_id]}
+	if key in ("documents_expired", "documents_expiring"):
+		from alphax_hr.api.compliance import expiring_documents
+
+		docs = [d for d in expiring_documents(30) if (d["days_left"] < 0) == (key == "documents_expired")]
+		return {"key": key, "rows": [{"name": d["employee"], "employee_name": d["employee_name"], "department": d["department"],
+									  "note": f"{_(d['document'])}: {d['expiry']} ({d['days_left']} {_('days')})"} for d in docs]}
+	if key == "mandatory_missing":
+		return {"key": key, "rows": _employees_missing_mandatory()}
+	if key == "no_salary":
+		return {"key": key, "rows": [{**e, "note": None} for e in _employees_without_salary()]}
+	frappe.throw(_("Unknown check."))
+
+
+@frappe.whitelist()
+def bulk_fix(key, employees, value):
+	"""Set one field (approver, manager, holiday list) on many employees. Each save is validated and audited;
+	other missing mandatory data does not block this one change."""
+	require_hr_manager()
+	if key not in EMPLOYEE_FIXES:
+		frappe.throw(_("This check cannot be fixed in bulk."))
+	field, link = EMPLOYEE_FIXES[key]
+	if not value or not frappe.db.exists(link, value):
+		frappe.throw(_("Choose a valid {0}.").format(_(link)))
+	done, failed = [], []
+	for emp in parse_json(employees, [])[:1000]:
+		frappe.db.savepoint("alphax_fix")
+		try:
+			doc = frappe.get_doc("Employee", emp)
+			doc.check_permission("write")
+			if field == "reports_to" and value == emp:
+				raise frappe.ValidationError(_("An employee cannot report to themselves."))
+			doc.set(field, value)
+			doc.flags.ignore_mandatory = True
+			doc.save()
+			done.append(emp)
+		except Exception as exc:
+			frappe.db.rollback(save_point="alphax_fix")
+			frappe.clear_messages()
+			failed.append({"employee": emp, "error": str(exc)[:300]})
+	return {"done": done, "failed": failed}
+
+
+@frappe.whitelist()
+def allow_statutory_without_allocation():
+	require_hr_manager()
+	from alphax_hr.api import leave_setup
+
+	changed = []
+	for r in settings().leave_rules:
+		lt = frappe.db.get_value("Leave Type", r.leave_type, ["allow_negative", "is_lwp"], as_dict=True)
+		if lt and not lt.allow_negative and not lt.is_lwp:
+			leave_setup.allow_without_allocation(r.leave_type)
+			changed.append(r.leave_type)
+	return {"changed": changed}
+
+
+@frappe.whitelist()
+def health():
+	"""Technical status of the site (System Managers only)."""
+	_require_system_manager()
+	return _run([_system_checks])
+
+
+@frappe.whitelist()
+def hr_status():
+	"""Overall HR status for HR Managers: data gaps, documents, approvals, leave and payroll setup."""
+	_require_hr_lead()
+	return _run([_hr_checks, _hr_operational_checks])
 
 
 def _spec(df):

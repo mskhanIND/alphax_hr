@@ -126,11 +126,15 @@ def update_annual_settings(data):
 	conf = frappe.get_single("AlphaX HR Settings")
 	if "annual_policy" in payload and payload["annual_policy"] not in (annual_law.POLICY_LAW, annual_law.POLICY_FIXED):
 		frappe.throw(_("Unknown annual leave policy."))
+	# Blank (or 0) means "use the law": 21 days, 30 after 5 years. Only typed values are checked.
 	for key in ("annual_fixed_days", "annual_base_days"):
-		if key in payload and cint(payload[key]) < annual_law.ANNUAL_BASE_DAYS:
+		if cint(payload.get(key)) and cint(payload[key]) < annual_law.ANNUAL_BASE_DAYS:
 			frappe.throw(_("Annual leave cannot be less than {0} days (Saudi Labor Law, Art. 109).").format(annual_law.ANNUAL_BASE_DAYS))
-	if "annual_senior_days" in payload and cint(payload["annual_senior_days"]) < annual_law.ANNUAL_SENIOR_DAYS:
+	if cint(payload.get("annual_senior_days")) and cint(payload["annual_senior_days"]) < annual_law.ANNUAL_SENIOR_DAYS:
 		frappe.throw(_("Annual leave after 5 years cannot be less than {0} days (Art. 109).").format(annual_law.ANNUAL_SENIOR_DAYS))
+	for key in ("annual_fixed_days", "annual_base_days", "annual_senior_days", "annual_senior_after_years"):
+		if key in payload and not cint(payload[key]):
+			payload[key] = 0  # stored as 0 = law default
 	for key in ("annual_policy", "annual_fixed_days", "annual_auto_allocate", "annual_base_days", "annual_senior_days",
 				"annual_senior_after_years", "annual_senior_count_from", "leave_escalation_hours"):
 		if key in payload:

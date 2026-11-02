@@ -7,6 +7,7 @@ import { FieldInput } from '../components/FieldInput'
 import { LinkInput } from '../components/LinkInput'
 import { Button, Card, ErrorBox, Field, PageHeader, Select, Spinner, Stat } from '../components/ui'
 import { api } from '../lib/api'
+import { useSession } from '../lib/session'
 import { useI18n } from '../lib/i18n'
 
 const CHECK_LABEL: Record<string, string> = {
@@ -15,6 +16,8 @@ const CHECK_LABEL: Record<string, string> = {
   default_company: 'Default company', holiday_lists: 'Holiday lists', leave_approver: 'Leave approvers', shift_approver: 'Shift approvers',
   reports_to: 'Reporting managers', user_account: 'Employee user accounts', salary_mapping: 'Salary component mapping',
   annual_leave: 'Annual leave', statutory_leave: 'Statutory leave types', gosi_rates: 'GOSI rates', check_failed: 'Check could not run',
+  documents_expired: 'Expired documents', documents_expiring: 'Documents expiring (30 days)', mandatory_missing: 'Employees missing mandatory data',
+  no_salary: 'Employees without salary', approvals_waiting: 'Approvals waiting over 3 days',
 }
 const ICON = {
   ok: <CheckCircle2 className="size-5 text-emerald-600" />,
@@ -22,13 +25,81 @@ const ICON = {
   error: <XCircle className="size-5 text-red-600" />,
 }
 
-function Health() {
+function FixPanel({ check, onClose, onDone }: { check: any; onClose: () => void; onDone: () => void }) {
   const { t } = useI18n()
-  const q = useQuery<any>({ queryKey: ['health'], queryFn: api.health })
+  const q = useQuery<any>({ queryKey: ['affected', check.key], queryFn: () => api.affected(check.key) })
+  const [sel, setSel] = useState<Set<string>>(new Set())
+  const [value, setValue] = useState('')
+  const fix = useMutation({ mutationFn: () => api.bulkFix(check.key, [...sel], value), onSuccess: () => { setSel(new Set()); q.refetch(); onDone() } })
+  const rows: any[] = q.data?.rows ?? []
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end bg-slate-900/30" onMouseDown={onClose}>
+      <aside role="dialog" aria-label={t(CHECK_LABEL[check.key] ?? check.key)} className="h-full w-full max-w-2xl overflow-y-auto bg-white p-5 shadow-xl" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="mb-1 flex items-center justify-between">
+          <span className="text-lg font-semibold">{t(CHECK_LABEL[check.key] ?? check.key)}</span>
+          <button onClick={onClose} className="rounded-lg p-1 text-muted hover:bg-surface" aria-label={t('Close')}>✕</button>
+        </div>
+        {check.detail && <p className="mb-4 text-sm text-muted">{check.detail}</p>}
+        {q.isLoading ? <Spinner /> : q.error ? <ErrorBox error={q.error} /> : (
+          <>
+            {q.data.set_field && (
+              <div className="mb-4 flex flex-wrap items-end gap-2 rounded-xl border border-line bg-surface p-3">
+                <div className="min-w-60 flex-1">
+                  <Field label={`${t('Set for selected')} (${sel.size})`}><LinkInput doctype={q.data.link_doctype} value={value} onChange={setValue} /></Field>
+                  {q.data.suggestions?.length > 0 && <div className="mt-1 flex flex-wrap gap-1 text-xs">{q.data.suggestions.map((sg: string) => <button key={sg} className="rounded bg-white px-2 py-0.5 ring-1 ring-line hover:bg-brand-50" onClick={() => setValue(sg)}>{sg}</button>)}</div>}
+                </div>
+                <Button disabled={!sel.size || !value} loading={fix.isPending} onClick={() => fix.mutate()}>{t('Apply')}</Button>
+                {check.key === 'holiday_lists' && <a href="/app/holiday-list/new" target="_blank" rel="noreferrer" className="text-sm text-brand hover:underline">{t('Create a holiday list')}</a>}
+              </div>
+            )}
+            {fix.data && <p className="mb-3 text-sm text-emerald-700">{t('Updated')}: {fix.data.done.length}{fix.data.failed.length ? ` · ${t('Not updated')}: ${fix.data.failed.length}` : ''}</p>}
+            {fix.data?.failed?.length > 0 && <ul className="mb-3 list-disc rounded-xl bg-amber-50 p-3 ps-8 text-sm text-amber-900">{fix.data.failed.map((f: any) => <li key={f.employee}><b>{f.employee}</b>: {f.error.replace(/<[^>]+>/g, '')}</li>)}</ul>}
+            {fix.error && <ErrorBox error={fix.error} />}
+            {!rows.length ? <p className="text-sm text-emerald-700">{t('All fixed.')}</p> : (
+              <table className="w-full text-sm">
+                <thead className="text-xs text-muted"><tr className="border-b border-line">
+                  {q.data.set_field && <th className="w-8 pb-2"><input type="checkbox" className="size-4 accent-[var(--color-brand)]" aria-label={t('Select all')} checked={sel.size === rows.length} onChange={(e) => setSel(e.target.checked ? new Set(rows.map((r) => r.name)) : new Set())} /></th>}
+                  <th className="pb-2 text-start font-medium">{t('Employee')}</th><th className="pb-2 text-start font-medium">{t('Department')}</th><th className="pb-2 text-start font-medium">{t('Details')}</th>
+                </tr></thead>
+                <tbody className="divide-y divide-line">
+                  {rows.map((r) => (
+                    <tr key={r.name + (r.note ?? '')}>
+                      {q.data.set_field && <td className="py-2"><input type="checkbox" className="size-4 accent-[var(--color-brand)]" checked={sel.has(r.name)} onChange={() => setSel((s) => { const n = new Set(s); if (n.has(r.name)) n.delete(r.name); else n.add(r.name); return n })} /></td>}
+                      <td className="py-2"><Link to={`/people/${encodeURIComponent(r.name)}`} className="font-medium text-brand hover:underline">{r.employee_name}</Link><div className="text-xs text-muted">{r.name}</div></td>
+                      <td className="py-2">{r.department ?? '—'}</td>
+                      <td className="py-2 text-muted">{r.note ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
+      </aside>
+    </div>
+  )
+}
+
+function StatusList({ kind, onSettings }: { kind: 'hr' | 'system'; onSettings: () => void }) {
+  const { t } = useI18n()
+  const qc = useQueryClient()
+  const q = useQuery<any>({ queryKey: ['status', kind], queryFn: kind === 'hr' ? api.hrStatus : api.health })
+  const [panel, setPanel] = useState<any>(null)
+  const allow = useMutation({ mutationFn: api.allowStatutory, onSuccess: () => q.refetch() })
   if (q.isLoading) return <Spinner />
   if (q.error) return <ErrorBox error={q.error} onRetry={() => q.refetch()} />
   const d = q.data
   const groups: string[] = [...new Set<string>(d.checks.map((c: any) => c.group))]
+  const order = (c: any) => ['error', 'warn', 'ok'].indexOf(c.status)
+  const fixButton = (c: any) => {
+    if (c.status === 'ok') return null
+    if (c.fix === 'employees') return <Button size="sm" variant="secondary" onClick={() => setPanel(c)}>{t('Fix')}</Button>
+    if (c.fix === 'settings') return <Button size="sm" variant="secondary" onClick={onSettings}>{t('Fix')}</Button>
+    if (c.fix === 'allow_leave_types') return <Button size="sm" variant="secondary" loading={allow.isPending} onClick={() => allow.mutate()}>{t('Allow all')}</Button>
+    if (c.link?.startsWith('/app')) return <a href={c.link} target="_blank" rel="noreferrer"><Button size="sm" variant="ghost">{t('Open')}</Button></a>
+    if (c.link) return <Link to={c.link}><Button size="sm" variant="secondary">{t('Fix')}</Button></Link>
+    return null
+  }
   return (
     <div className="flex flex-col gap-5">
       <div className="grid grid-cols-3 gap-3">
@@ -39,7 +110,7 @@ function Health() {
       {groups.map((g) => (
         <Card key={g} title={t(g)} action={<Button size="sm" variant="ghost" loading={q.isFetching} onClick={() => q.refetch()}><RefreshCw className="size-4" />{t('Re-check')}</Button>}>
           <ul className="divide-y divide-line">
-            {d.checks.filter((c: any) => c.group === g).sort((a: any, b: any) => ['error', 'warn', 'ok'].indexOf(a.status) - ['error', 'warn', 'ok'].indexOf(b.status)).map((c: any) => (
+            {d.checks.filter((c: any) => c.group === g).sort((a: any, b: any) => order(a) - order(b)).map((c: any) => (
               <li key={c.key} className="flex items-start gap-3 py-3">
                 {ICON[c.status as keyof typeof ICON]}
                 <div className="min-w-0 flex-1">
@@ -49,20 +120,13 @@ function Health() {
                   </div>
                   {c.detail && <p className="mt-0.5 text-sm text-muted">{c.detail}</p>}
                 </div>
-                {c.link && c.status !== 'ok' && (c.link.startsWith('/app')
-                  ? <a href={c.link} target="_blank" rel="noreferrer" className="shrink-0 text-sm font-medium text-brand hover:underline">{t('Open')}</a>
-                  : <Link to={c.link} className="shrink-0 text-sm font-medium text-brand hover:underline">{t('Fix')}</Link>)}
+                <div className="shrink-0">{fixButton(c)}</div>
               </li>
             ))}
           </ul>
         </Card>
       ))}
-      <Card title={t('Installed apps')}>
-        <div className="flex flex-wrap gap-2 text-sm">
-          {Object.entries(d.versions).map(([app, v]) => <span key={app} className="rounded-lg bg-surface px-2 py-1"><b>{app}</b> {String(v)}</span>)}
-        </div>
-        <p className="mt-2 text-xs text-muted">{d.site} · {d.as_of.slice(0, 16)}</p>
-      </Card>
+      {panel && <FixPanel check={panel} onClose={() => setPanel(null)} onDone={() => qc.invalidateQueries({ queryKey: ['status', kind] })} />}
     </div>
   )
 }
@@ -132,20 +196,60 @@ function SettingsForm() {
   )
 }
 
+function FieldMap() {
+  const { t } = useI18n()
+  const q = useQuery<any>({ queryKey: ['fieldMap'], queryFn: api.fieldMap })
+  if (q.isLoading) return <Spinner />
+  if (q.error) return <ErrorBox error={q.error} onRetry={() => q.refetch()} />
+  const d = q.data
+  return (
+    <div className="flex flex-col gap-5">
+      <Card title={t('Filled automatically (duplicates of an AlphaX field)')} subtitle={t('These site fields are hidden in AlphaX forms and copied from the AlphaX field.')}>
+        {!d.mirrors.length ? <p className="text-sm text-muted">—</p> : (
+          <ul className="divide-y divide-line text-sm">{d.mirrors.map((m: any) => (
+            <li key={m.fieldname} className="flex justify-between gap-3 py-2"><span><b>{m.label}</b> <span className="text-xs text-muted">{m.fieldname} · {m.fieldtype}</span></span><span className="text-muted">← {m.from_label}</span></li>
+          ))}</ul>
+        )}
+      </Card>
+      {d.unhandled_id_like.length > 0 && (
+        <Card title={t('ID-like mandatory fields not linked')}>
+          <ul className="text-sm">{d.unhandled_id_like.map((m: any) => <li key={m.fieldname}><b>{m.label}</b> <span className="text-xs text-muted">{m.fieldname} · {m.fieldtype}</span></li>)}</ul>
+        </Card>
+      )}
+      <Card title={t('Mandatory fields on this site')} subtitle={t('Asked in the new-employee form, in the step shown.')}>
+        <ul className="divide-y divide-line text-sm">{d.required.map((m: any) => (
+          <li key={m.fieldname} className="flex flex-wrap justify-between gap-2 py-2">
+            <span><b>{m.label}</b> <span className="text-xs text-muted">{m.fieldname} · {m.fieldtype}{m.hidden ? ' · hidden in desk' : ''}{m.read_only ? ' · read-only in desk' : ''}</span></span>
+            <span className="text-muted">{m.mirrored ? t('auto') : t(m.step)}</span>
+          </li>
+        ))}</ul>
+      </Card>
+    </div>
+  )
+}
+
 export default function Setup() {
   const { t } = useI18n()
   const loc = useLocation()
-  const [tab, setTab] = useState<'health' | 'settings'>(loc.hash === '#settings' ? 'settings' : 'health')
+  const s = useSession()
+  const isSys = !!s.persona.system_manager           // technical system checks: System Managers only
+  const isLead = isSys || !!s.persona.hr_manager     // overall HR status: HR Managers (and System Managers)
+  type Tab = 'hr' | 'settings' | 'fields' | 'system'
+  const tabs: Tab[] = [...(isLead ? ['hr' as Tab] : []), 'settings', 'fields', ...(isSys ? ['system' as Tab] : [])]
+  const [tab, setTab] = useState<Tab>(loc.hash === '#settings' || !isLead ? 'settings' : 'hr')
+  const tabLabel: Record<Tab, string> = { hr: 'HR status', settings: 'Settings', fields: 'Employee fields', system: 'System' }
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title={t('Setup & health')} subtitle={t('Is the HR system healthy, and how is AlphaX set up — in one place.')}
+      <PageHeader title={t('HR status & setup')} subtitle={t('Where HR data needs attention, and how AlphaX is set up — in one place.')}
         actions={<div className="flex rounded-xl border border-line p-0.5" role="tablist">
-          {(['health', 'settings'] as const).map((v) => (
+          {tabs.map((v) => (
             <button key={v} role="tab" aria-selected={tab === v} onClick={() => setTab(v)}
-              className={clsx('rounded-lg px-3 py-1.5 text-sm', tab === v ? 'bg-brand text-white' : 'text-muted hover:bg-surface')}>{t(v === 'health' ? 'System health' : 'Settings')}</button>
+              className={clsx('rounded-lg px-3 py-1.5 text-sm', tab === v ? 'bg-brand text-white' : 'text-muted hover:bg-surface')}>{t(tabLabel[v])}</button>
           ))}
         </div>} />
-      {tab === 'health' ? <Health /> : <SettingsForm />}
+      {tab === 'hr' && isLead ? <StatusList kind="hr" onSettings={() => setTab('settings')} />
+        : tab === 'system' && isSys ? <StatusList kind="system" onSettings={() => setTab('settings')} />
+        : tab === 'fields' ? <FieldMap /> : <SettingsForm />}
     </div>
   )
 }

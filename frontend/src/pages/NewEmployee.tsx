@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { FieldInput, isEmpty, type FieldSpec } from '../components/FieldInput'
 import { Button, Card, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner } from '../components/ui'
+import { SalaryEditor, packageReady, type SalaryPackage } from '../components/SalaryEditor'
 import { api, uploadFile } from '../lib/api'
 import { todayISO } from '../lib/format'
 import { useI18n } from '../lib/i18n'
@@ -13,11 +14,15 @@ import { useSession } from '../lib/session'
 interface Spec extends FieldSpec { mirrors?: string; step?: string; auto?: 'contract_start' | 'contract_end' | 'nationality'; saudi_value?: string | null }
 
 const STEPS = [
-  { key: 'employee', label: 'Employee & contract' },
+  { key: 'employee', label: 'Employee' },
+  { key: 'contract', label: 'Contract' },
   { key: 'personal', label: 'Personal & contact' },
   { key: 'organization', label: 'Organization & role' },
+  { key: 'salary', label: 'Salary' },
+  { key: 'bank', label: 'Bank' },
   { key: 'review', label: 'Review' },
 ] as const
+const ALWAYS = new Set(['review', 'salary'])
 const CORE_REQUIRED = new Set(['first_name', 'last_name', 'gender', 'date_of_birth', 'company', 'date_of_joining', 'alphax_iqama_number', 'alphax_contract_years'])
 const NON_SAUDI_ONLY = new Set(['alphax_iqama_expiry', 'passport_number', 'valid_upto'])
 const NON_SAUDI_REQUIRED = new Set(['alphax_iqama_expiry', 'passport_number'])
@@ -43,6 +48,8 @@ export default function NewEmployee() {
   const form = useQuery<{ core: Spec[]; required: Spec[] }>({ queryKey: ['newEmployeeForm'], queryFn: api.newEmployeeForm })
   const [f, setF] = useState<Record<string, any>>({ company: s.company ?? '', date_of_joining: todayISO() })
   const [step, setStep] = useState(0)
+  const [salary, setSalary] = useState<SalaryPackage>({ mode: 'total' })
+  const [salaryLater, setSalaryLater] = useState(false)
   const [tried, setTried] = useState<Set<string>>(new Set())
   const [popup, setPopup] = useState<Spec[] | null>(null)
   useEffect(() => {
@@ -57,6 +64,7 @@ export default function NewEmployee() {
   const kind = idKind(f.alphax_iqama_number)
   const payload = () => {
     const out: Record<string, any> = { ...f, alphax_is_saudi: kind === 'saudi' ? 1 : 0 }
+    if (!salaryLater && packageReady(salary)) out.salary = salary
     if (kind === 'saudi') for (const k of NON_SAUDI_ONLY) delete out[k]
     return out
   }
@@ -106,7 +114,7 @@ export default function NewEmployee() {
   }, [form.data, kind])
 
   // On the Review step, ask the server which mandatory fields Frappe would still reject (attachments, hidden fields …).
-  const stepKeys = STEPS.filter((st) => st.key === 'review' || fields.some((x) => (x.step ?? 'personal') === st.key)).map((st) => st.key)
+  const stepKeys = STEPS.filter((st) => ALWAYS.has(st.key) || fields.some((x) => (x.step ?? 'personal') === st.key)).map((st) => st.key)
   const onReview = stepKeys[step] === 'review'
   useEffect(() => {
     if (!onReview) return
@@ -122,7 +130,7 @@ export default function NewEmployee() {
   if (form.isLoading) return <Spinner />
   if (form.error) return <ErrorBox error={form.error} onRetry={() => form.refetch()} />
 
-  const steps = STEPS.filter((st) => st.key === 'review' || fields.some((x) => (x.step ?? 'personal') === st.key))
+  const steps = STEPS.filter((st) => ALWAYS.has(st.key) || fields.some((x) => (x.step ?? 'personal') === st.key))
   const current = steps[step]
   const inStep = (key: string) => fields.filter((x) => (x.step ?? 'personal') === key)
   const missingIn = (key: string) => inStep(key).filter((x) => x.mandatory && isEmpty(f[x.fieldname]))
@@ -130,7 +138,13 @@ export default function NewEmployee() {
   const allMissing = [...fields.filter((x) => x.mandatory && isEmpty(f[x.fieldname])), ...extraMissing]
   const autoFilled = form.data!.required.filter((c) => c.mirrors && fields.some((x) => x.fieldname === c.mirrors))
 
+  const salaryMissing = !salaryLater && !packageReady(salary)
   const next = () => {
+    if (current.key === 'salary' && salaryMissing) {
+      setTried((x) => new Set(x).add('salary'))
+      setPopup([{ fieldname: '__salary', label: t('Salary package (or tick "Set salary later")'), fieldtype: 'Data', step: 'salary' } as any])
+      return
+    }
     const miss = missingIn(current.key)
     setTried((x) => new Set(x).add(current.key))
     if (miss.length) { setPopup(miss); return }
@@ -138,7 +152,10 @@ export default function NewEmployee() {
   }
   const create = () => {
     setTried(new Set([...steps.map((x) => x.key), 'review']))
-    if (allMissing.length) { setPopup(allMissing); return }
+    if (allMissing.length || salaryMissing) {
+      setPopup([...allMissing, ...(salaryMissing ? [{ fieldname: '__salary', label: t('Salary package (or tick "Set salary later")'), fieldtype: 'Data', step: 'salary' } as any] : [])])
+      return
+    }
     m.mutate()
   }
   const goTo = (spec: Spec) => {
@@ -211,7 +228,13 @@ export default function NewEmployee() {
       </ol>
 
       <Card title={t(current.label)}>
-        {current.key !== 'review' ? (
+        {current.key === 'salary' ? (
+          <div className="flex flex-col gap-4">
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-4 accent-[var(--color-brand)]" checked={salaryLater} onChange={(e) => setSalaryLater(e.target.checked)} />{t('Set salary later')}</label>
+            {!salaryLater && <SalaryEditor value={salary} onChange={setSalary} isSaudi={kind === 'saudi'} gosiDate={f.alphax_gosi_registration_date || f.date_of_joining} startDate={f.date_of_joining} company={f.company} />}
+            {!salaryLater && <p className="text-xs text-muted">{t('Creates the employee\'s own salary structure and assignment from the joining date (same as CentralHRMS).')}</p>}
+          </div>
+        ) : current.key !== 'review' ? (
           <div className="grid gap-4 sm:grid-cols-2">{inStep(current.key).flatMap((spec) => spec.fieldname === 'alphax_employee_name_ar' ? [
             <div key="name_en">
               <Field label={t('Full Name (English)')}>
@@ -238,6 +261,15 @@ export default function NewEmployee() {
                 </dl>
               </div>
             ))}
+            <div className="rounded-xl border border-line p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="font-medium">{t('Salary')}</span>
+                <button type="button" className="text-sm text-brand hover:underline" onClick={() => setStep(steps.findIndex((x) => x.key === 'salary'))}>{t('Edit')}</button>
+              </div>
+              <p className={clsx('text-sm', salaryMissing ? 'font-medium text-red-700' : '')}>
+                {salaryLater ? t('Set salary later') : salary.mode === 'total' ? `${t('Total monthly package')}: ${salary.total ?? '—'}` : `${t('Basic')}: ${salary.basic ?? '—'}`}
+              </p>
+            </div>
             {extra.length > 0 && (
               <div className="rounded-xl border border-red-200 bg-red-50/40 p-3">
                 <div className="mb-2 font-medium text-red-800">{t('Also required by your company')}</div>

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, ArrowLeft, Camera, ChevronDown, ChevronsDownUp, ChevronsUpDown, History, Pencil, Printer } from 'lucide-react'
 import { ActivityDrawer } from '../components/ActivityDrawer'
 import { LeaveLedger } from '../components/LeaveLedger'
+import { SalaryCard } from '../components/SalaryCard'
 import { useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { FieldInput } from '../components/FieldInput'
@@ -13,7 +14,7 @@ import { useI18n } from '../lib/i18n'
 
 const SECTION_TITLES: Record<string, string> = {
   personal: 'Personal', job: 'Organization & role', attendance_leave: 'Attendance & Leave', contact: 'Contact', saudi: 'Saudi compliance', exit: 'Exit',
-  company_required: 'Required by your company',
+  company_required: 'Required by your company', bank: 'Bank',
 }
 const LINKS: Record<string, string> = {
   company: 'Company', department: 'Department', designation: 'Designation', branch: 'Branch', employment_type: 'Employment Type',
@@ -163,6 +164,8 @@ export default function EmployeeDetail() {
               ))}
             </ul>
           </Card>
+          <SalaryCard employee={id} isSaudi={!!e.sections.saudi?.alphax_is_saudi} gosiDate={e.sections.saudi?.alphax_gosi_registration_date ?? undefined}
+            company={e.sections.job?.company} canWrite={e.can_write} />
           {e.issues.length > 0 && (
             <Card title={t('Data issues')}>
               <ul className="flex flex-col gap-2 text-sm">

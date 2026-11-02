@@ -38,6 +38,14 @@
   "min_employee_age",
   "validate_iban",
   "passport_non_saudi_only",
+  "salary_section",
+  "salary_basic_component",
+  "salary_housing_component",
+  "salary_housing_percent",
+  "salary_transport_component",
+  "salary_transport_percent",
+  "salary_other_component",
+  "salary_gosi_component",
   "documents_section",
   "document_alert_days"
  ],
@@ -219,6 +227,54 @@
    "label": "Passport Mandatory Only for Non-Saudis",
    "default": "1",
    "description": "Saudis (ID starting with 1) do not need a passport number. AlphaX relaxes the site's blanket 'passport mandatory' setting and checks non-Saudis itself."
+  },
+  {
+   "fieldname": "salary_section",
+   "fieldtype": "Section Break",
+   "label": "Salary Package (new employees)"
+  },
+  {
+   "fieldname": "salary_basic_component",
+   "fieldtype": "Link",
+   "label": "Basic Component",
+   "options": "Salary Component"
+  },
+  {
+   "fieldname": "salary_housing_component",
+   "fieldtype": "Link",
+   "label": "Housing Component",
+   "options": "Salary Component"
+  },
+  {
+   "fieldname": "salary_housing_percent",
+   "fieldtype": "Percent",
+   "label": "Housing (% of basic)",
+   "default": "25"
+  },
+  {
+   "fieldname": "salary_transport_component",
+   "fieldtype": "Link",
+   "label": "Transport Component",
+   "options": "Salary Component"
+  },
+  {
+   "fieldname": "salary_transport_percent",
+   "fieldtype": "Percent",
+   "label": "Transport (% of basic)",
+   "default": "10"
+  },
+  {
+   "fieldname": "salary_other_component",
+   "fieldtype": "Link",
+   "label": "Other Allowance Component",
+   "options": "Salary Component"
+  },
+  {
+   "fieldname": "salary_gosi_component",
+   "fieldtype": "Link",
+   "label": "GOSI Deduction Component (Saudis)",
+   "options": "Salary Component",
+   "description": "Employee GOSI share is added as a deduction for Saudi employees, at the rate in force on the start date."
   },
   {
    "fieldname": "documents_section",

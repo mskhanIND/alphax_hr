@@ -28,6 +28,7 @@ SECTIONS = {
 	"saudi": ["alphax_is_saudi", "alphax_gosi_registration_date", "alphax_gosi_number", "alphax_iqama_number",
 			  "alphax_iqama_expiry", "alphax_border_number", "alphax_work_permit_expiry",
 			  "alphax_medical_insurance_expiry", "passport_number", "valid_upto", "alphax_annual_leave_days"],
+	"bank": ["salary_mode", "bank_name", "bank_ac_no", "iban"],
 	"exit": ["relieving_date", "reason_for_leaving", "resignation_letter_date"],
 }
 EDITABLE = {f for fields in SECTIONS.values() for f in fields} - {"status"}
@@ -36,7 +37,7 @@ LOOKUP_DOCTYPES = {"Company", "Department", "Designation", "Branch", "Employment
 NEW_EMPLOYEE_CORE = ["first_name", "last_name", "alphax_employee_name_ar", "gender", "date_of_birth", "date_of_joining",
 					 "alphax_contract_years", "notice_number_of_days", "alphax_iqama_number", "alphax_is_saudi",
 					 "alphax_iqama_expiry", "alphax_gosi_registration_date", "passport_number", "valid_upto",
-					 "cell_number", "personal_email", "marital_status",
+					 "cell_number", "personal_email", "marital_status", "salary_mode", "bank_name", "bank_ac_no", "iban",
 					 "company", "department", "designation", "branch", "employment_type", "reports_to"]
 INPUT_TYPES = {"Data", "Link", "Select", "Date", "Datetime", "Check", "Int", "Float", "Currency", "Percent",
 			   "Small Text", "Text", "Long Text", "Phone", "Dynamic Link", "Attach", "Attach Image"}
@@ -50,7 +51,9 @@ def _site_required_fields(meta):
 	property setters from other apps), so forms adapt to each customer."""
 	out = []
 	for df in meta.fields:
-		if not df.reqd or df.hidden or df.read_only or cint(df.permlevel) or df.fieldtype not in INPUT_TYPES:
+		# Hidden or read-only mandatory fields still block saving in Frappe, so they are shown here too
+		# (unless a fetch fills them).
+		if not df.reqd or df.fetch_from or cint(df.permlevel) or df.fieldtype not in INPUT_TYPES:
 			continue
 		if df.fieldtype == "Check":  # unticked is a valid answer; Frappe never treats it as missing
 			continue
@@ -132,7 +135,7 @@ def _mirror_source(df):
 	if df.fieldname.startswith("alphax_") or df.fieldname in ("passport_number", "valid_upto"):
 		return None
 	label = df.label or ""
-	if df.fieldtype in ("Data", "Int") and _ID_LABEL.search(label) and not _EXPIRY_LABEL.search(label):
+	if df.fieldtype in ("Data", "Int", "Long Int", "Small Text", "Phone") and _ID_LABEL.search(label) and not _EXPIRY_LABEL.search(label):
 		return "alphax_iqama_number"
 	if df.fieldtype == "Date" and _ID_LABEL.search(label) and _EXPIRY_LABEL.search(label):
 		return "alphax_iqama_expiry"
@@ -372,10 +375,11 @@ def update_employee(name, data, modified):
 
 STEP_RULES = [  # first match wins; checked against fieldname + label
 	("personal", r"\bclass\b|marital|blood|e-?mail|mobile|cell|phone|address|emergency|relation|salutation|insurance"),
-	("employee", r"name|gender|birth|joining|contract|notice|probation|religion|iqama|national|border|passport|saudi|"
-				 r"identity|gosi|visa|expir|valid"),
+	("bank", r"bank|iban|account\s*(no|number)|salary\s*mode|payment\s*mode"),
+	("contract", r"joining|contract|notice|probation|confirmation"),
+	("employee", r"name|gender|birth|religion|iqama|national|border|passport|saudi|identity|gosi|visa|expir|valid"),
 	("organization", r"company|department|designation|branch|employment|reports|grade|division|cost.?center|shift|"
-					 r"holiday|approver|location|project|payroll|salary|bank|iban"),
+					 r"holiday|approver|location|project|payroll"),
 ]
 
 
@@ -420,6 +424,15 @@ def _draft_employee(payload):
 	doc.status = "Active"
 	if not doc.get("holiday_list") and doc.get("company"):
 		doc.holiday_list = frappe.get_cached_value("Company", doc.company, "default_holiday_list")
+	# Same automatic values the save will set, so the mandatory check sees them.
+	from alphax_hr import employee_rules
+	from alphax_hr.saudi import identity
+
+	kind, _err = identity.classify_id(doc.get("alphax_iqama_number"))
+	if kind and meta.has_field("alphax_is_saudi"):
+		doc.alphax_is_saudi = 1 if kind == identity.SAUDI else 0
+	employee_rules._auto_dates(doc)
+	employee_rules._saudi_defaults(doc)
 	return doc
 
 
@@ -451,7 +464,30 @@ def create_employee(data):
 		frappe.throw(_("Please fill in: {0}").format(", ".join(m["label"] for m in missing)), title=_("Missing information"))
 	doc.insert()
 	_claim_attachments(doc, payload)
+	package = payload.get("salary")
+	if isinstance(package, dict) and package.get("mode"):
+		from alphax_hr.api.salary import assign
+
+		assign(doc.name, package, doc.date_of_joining)  # same transaction: a salary error undoes the whole create
 	return employee(doc.name)
+
+
+@frappe.whitelist()
+def field_map():
+	"""Diagnostics: which site fields AlphaX fills from its own (duplicates) and which mandatory fields it will ask for."""
+	require_hr()
+	meta = frappe.get_meta("Employee")
+	mirrors = _mirror_map(meta)
+	return {
+		"mirrors": [{"fieldname": f, "label": _(meta.get_label(f)), "fieldtype": meta.get_field(f).fieldtype,
+					 "from": src, "from_label": _(meta.get_label(src))} for f, src in mirrors.items()],
+		"required": [{"fieldname": df.fieldname, "label": _(df.label), "fieldtype": df.fieldtype, "hidden": cint(df.hidden),
+					  "read_only": cint(df.read_only), "step": _step_for(df), "mirrored": df.fieldname in mirrors}
+					 for df in _site_required_fields(meta)],
+		"unhandled_id_like": [{"fieldname": df.fieldname, "label": _(df.label), "fieldtype": df.fieldtype}
+							  for df in meta.fields if df.reqd and _ID_LABEL.search(df.label or "")
+							  and df.fieldname not in mirrors and not df.fieldname.startswith("alphax_")],
+	}
 
 
 def _claim_attachments(doc, payload):

@@ -235,7 +235,10 @@ try {
       await page.getByTitle('Show activity').first().click()
       await page.getByRole('dialog', { name: 'Activity' }).getByText('created the request').waitFor()
       await page.screenshot({ path: `${OUT}/14-activity-trail.png` })
-      await page.keyboard.press('Escape')
+      await page.getByRole('link', { name: 'Open record' }).click()
+      await page.getByText('Show empty fields').waitFor()
+      if (!page.url().includes('/alphax/r/')) throw new Error('record must open inside AlphaX: ' + page.url())
+      await page.screenshot({ path: `${OUT}/14b-record-view.png`, fullPage: true })
     })
 
     await step('activity log, leave balances, week-off dialog', async () => {
@@ -258,8 +261,14 @@ try {
 
     await step('setup & health page', async () => {
       await page.goto(`${BASE}/alphax/setup`)
-      await page.getByText('Employee table space').waitFor()
+      await page.getByText('Employees missing mandatory data').waitFor()
       await page.screenshot({ path: `${OUT}/18-setup-health.png`, fullPage: true })
+      if (await page.getByRole('tab', { name: 'System' }).count()) throw new Error('System tab must be hidden for HR Managers')
+      await page.getByRole('button', { name: 'Fix' }).first().click()
+      await page.getByText('Department', { exact: true }).first().waitFor()
+      await page.screenshot({ path: `${OUT}/18c-fix-panel.png` })
+      await page.keyboard.press('Escape').catch(() => {})
+      await page.goto(`${BASE}/alphax/setup`)
       await page.getByRole('tab', { name: 'Settings' }).click()
       await page.getByText('Salary component mapping').waitFor()
       await page.screenshot({ path: `${OUT}/18b-settings.png`, fullPage: true })

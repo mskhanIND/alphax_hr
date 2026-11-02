@@ -168,7 +168,7 @@ def run(site):
         def emp_boot():
             frappe.set_user(f["emp"])
             b = session.boot()
-            assert b["persona"] == {"employee": True, "approver": False, "hr": False, "hr_manager": False}, b["persona"]
+            assert b["persona"] == {"employee": True, "approver": False, "hr": False, "hr_manager": False, "system_manager": False}, b["persona"]
         check("employee persona resolved on server", emp_boot)
 
         def emp_profile():
@@ -400,7 +400,8 @@ def run(site):
                 assert req["custom_nid_border_no"].get("mirrors") == "alphax_iqama_number", req["custom_nid_border_no"]
                 assert core["marital_status"]["step"] == "personal" and req["custom_insurance_class"]["step"] == "personal", req
                 steps = {c["fieldname"]: c["step"] for c in form["core"]}
-                assert steps["department"] == "organization" and steps["alphax_contract_years"] == "employee", steps
+                assert steps["department"] == "organization" and steps["alphax_contract_years"] == "contract", steps
+                assert steps["alphax_iqama_number"] == "employee" and steps["iban"] == "bank", steps
                 assert hr.lookup("Branch", "AXT"), "link lookup must allow site-specific Employee links"
 
                 base = {"first_name": "Mandatory", "last_name": "Check", "gender": "Male", "date_of_birth": "1990-01-01",
@@ -587,6 +588,7 @@ def run(site):
             frappe.set_user("Administrator")
             expect_error(lambda: leave_setup.update_annual_settings({"annual_policy": "Fixed for all employees", "annual_fixed_days": 20}),
                          frappe.ValidationError)
+            leave_setup.update_annual_settings({"annual_senior_days": "", "annual_senior_after_years": None})  # blank = law, accepted
             leave_setup.update_annual_settings({"annual_policy": "Fixed for all employees", "annual_fixed_days": 30})
             frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
             try:
@@ -799,6 +801,65 @@ def run(site):
                 frappe.clear_cache(doctype="Employee"); frappe.db.commit()
         check("hcs-style wizard: contract dates from period, Saudi nationality, Passport attachment, company holiday list", hcs_wizard)
 
+        def salary_package():
+            import random
+            from alphax_hr.api import salary
+            frappe.set_user("Administrator")
+            salary.seed_components()
+            frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
+            frappe.set_user(f["hr"])
+            c = salary.config()
+            assert c["ready"] and c["basic"] == "Basic" and c["gosi"] == "GOSI Employee", c
+            p = salary.preview({"mode": "total", "total": 13500}, is_saudi=1, gosi_registration_date="2025-01-01", start_date="2026-01-01")
+            amounts = {r["salary_component"]: r["amount"] for r in p["earnings"]}
+            assert amounts == {"Basic": 10000, "Housing Allowance": 2500, "Transport Allowance": 1000}, amounts
+            assert p["deductions"] and p["gosi"]["system"] == "New" and p["net"] < p["gross"], p
+            assert not salary.preview({"mode": "components", "basic": 8000}, is_saudi=0)["deductions"]  # non-Saudi: no GOSI
+            created = hr.create_employee({"first_name": "Salary", "last_name": "Check", "gender": "Female", "date_of_birth": "1991-01-01",
+                                          "date_of_joining": "2026-02-01", "company": COMPANY, "alphax_contract_years": "1",
+                                          "alphax_iqama_number": "1" + "".join(random.choice("0123456789") for _ in range(9)),
+                                          "salary": {"mode": "total", "total": 13500}})
+            cur = salary.current(created["name"])["current"]
+            assert cur and cur["from_date"] == "2026-02-01" and cur["gross"] == 13500 and cur["total_deductions"] > 0, cur
+            salary.set_salary(created["name"], {"mode": "components", "basic": 12000, "housing": 3000, "transport": 1200}, "2026-08-01")
+            hist = salary.current(created["name"])
+            assert hist["current"]["gross"] == 16200 and len(hist["history"]) == 2, hist
+            frappe.set_user(f["emp"])
+            expect_error(lambda: salary.preview({"mode": "total", "total": 1000}), frappe.PermissionError)
+            frappe.set_user("Administrator")
+            for a in frappe.get_all("Salary Structure Assignment", filters={"employee": created["name"], "docstatus": 1}, pluck="name"):
+                frappe.get_doc("Salary Structure Assignment", a).cancel()
+            frappe.delete_doc("Employee", created["name"], force=True, ignore_permissions=True)
+            frappe.db.commit()
+        check("salary package: split by %, GOSI for Saudis, own structure + assignment on create, change later", salary_package)
+
+        def hidden_mandatory_fields():
+            from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+            frappe.set_user("Administrator")
+            try:
+                if not frappe.db.exists("Custom Field", "Employee-custom_hidden_code"):
+                    frappe.get_doc({"doctype": "Custom Field", "dt": "Employee", "fieldname": "custom_hidden_code", "label": "Hidden Code",
+                                    "fieldtype": "Data", "reqd": 1, "insert_after": "gender"}).insert(ignore_permissions=True)
+                # how such fields usually end up hidden on customer sites (Customize Form)
+                make_property_setter("Employee", "custom_hidden_code", "hidden", 1, "Check", validate_fields_for_doctype=False)
+                frappe.clear_cache(doctype="Employee"); frappe.db.commit()
+                frappe.set_user(f["hr"])
+                assert "custom_hidden_code" in {x["fieldname"] for x in hr.new_employee_form()["required"]}
+                fm = hr.field_map()
+                assert any(r["fieldname"] == "custom_hidden_code" and r["hidden"] for r in fm["required"])
+                d = hr.employee(f["e_emp2"])
+                assert "custom_hidden_code" in d["sections"]["company_required"], "fillable on the profile, so saving is possible"
+                frappe.db.set_value("Employee", f["e_emp2"], "custom_hidden_code", None)
+                d = hr.employee(f["e_emp2"])
+                hr.update_employee(f["e_emp2"], {"custom_hidden_code": "X1"}, d["modified"])
+            finally:
+                frappe.set_user("Administrator")
+                frappe.db.delete("Property Setter", {"doc_type": "Employee", "field_name": "custom_hidden_code"})
+                if frappe.db.exists("Custom Field", "Employee-custom_hidden_code"):
+                    frappe.delete_doc("Custom Field", "Employee-custom_hidden_code", ignore_permissions=True)
+                frappe.clear_cache(doctype="Employee"); frappe.db.commit()
+        check("hidden/read-only mandatory fields are asked for, so saving works", hidden_mandatory_fields)
+
         print("\n== Phase 2: shifts and attendance")
         from alphax_hr.api import attendance as att_api, shifts as shift_api
 
@@ -991,11 +1052,30 @@ def run(site):
             frappe.set_user(f["emp"])
             expect_error(setup.health, frappe.PermissionError)
             frappe.set_user(f["hr"])
+            expect_error(setup.health, frappe.PermissionError)   # System Managers only
+            frappe.set_user("Administrator")
             h = setup.health()
-            keys = {c["key"] for c in h["checks"]}
-            assert {"scheduler", "workers", "employee_row_size", "holiday_lists", "salary_mapping", "leave_approver"} <= keys, keys
-            assert "check_failed" not in keys, [c for c in h["checks"] if c["key"] == "check_failed"]
-            assert "alphax_hr" in h["versions"]
+            assert {"scheduler", "workers", "employee_row_size"} <= {c["key"] for c in h["checks"]}
+            frappe.set_user(f["hr"])
+            hs = setup.hr_status()
+            keys = {c["key"] for c in hs["checks"]}
+            assert {"holiday_lists", "salary_mapping", "leave_approver", "documents_expiring", "mandatory_missing",
+                    "no_salary", "approvals_waiting"} <= keys, keys
+            assert "check_failed" not in keys, [c for c in hs["checks"] if c["key"] == "check_failed"]
+            # bulk fix: give an employee without a shift approver one
+            frappe.set_user("Administrator")
+            frappe.db.set_value("Employee", f["e_emp"], "shift_request_approver", None); frappe.db.commit()
+            frappe.set_user(f["hr"])
+            aff = setup.affected("shift_approver")
+            assert any(r["name"] == f["e_emp"] for r in aff["rows"]) and aff["set_field"] == "shift_request_approver"
+            res = setup.bulk_fix("shift_approver", [f["e_emp"]], f["mgr"])
+            assert res["done"] == [f["e_emp"]] and frappe.db.get_value("Employee", f["e_emp"], "shift_request_approver") == f["mgr"]
+            expect_error(lambda: setup.bulk_fix("shift_approver", [f["e_emp"]], "nobody@nowhere"), frappe.ValidationError)
+            for k in ("documents_expiring", "mandatory_missing", "no_salary", "user_account", "holiday_lists"):
+                assert "rows" in setup.affected(k)
+            frappe.set_user(f["emp"])
+            expect_error(setup.hr_status, frappe.PermissionError)
+            frappe.set_user(f["hr"])
             st = setup.get_settings()
             assert any(f_["fieldname"] == "probation_days" for sec in st["sections"] for f_ in sec["fields"])
             old = st["values"]["document_alert_days"]
@@ -1003,6 +1083,22 @@ def run(site):
             assert saved["values"]["document_alert_days"] == 45 and saved["component_map"] == st["component_map"]
             setup.save_settings({"values": {"document_alert_days": old}})
         check("setup & health: checks run, settings save (HR only)", setup_and_health)
+
+        def record_view():
+            from alphax_hr.api import records
+            frappe.set_user(f["emp"])
+            name = frappe.get_all("Leave Application", filters={"employee": f["e_emp"]}, pluck="name", limit=1)[0]
+            r = records.get("Leave Application", name)
+            labels = {fl["label"] for sec in r["sections"] for fl in sec["fields"]}
+            assert {"Leave Type", "From Date", "To Date"} <= labels, labels
+            assert r["employee"] == f["e_emp"] and r["desk_url"] is None
+            expect_error(lambda: records.get("User", f["emp"]), frappe.PermissionError)
+            other = frappe.get_all("Leave Application", filters={"employee": f["e_emp2"]}, pluck="name", limit=1)
+            if other:
+                expect_error(lambda: records.get("Leave Application", other[0]), frappe.PermissionError)
+            frappe.set_user(f["mgr"])
+            assert isinstance(records.get("Leave Application", name)["actions"], list)
+        check("in-app record view: all fields in the record's layout, permissions enforced", record_view)
 
         print("\n== /alphax page")
         def www_page():

@@ -42,6 +42,7 @@ def boot():
 			"approver": approver,
 			"hr": is_hr(),
 			"hr_manager": is_hr_manager(),
+			"system_manager": "System Manager" in user_roles,
 		},
 		"employee": emp,
 		"company": conf.default_company,
