@@ -575,6 +575,15 @@ const ar: Record<string, string> = {
   "Approvals waiting over 3 days": "طلبات بانتظار القرار أكثر من 3 أيام",
   "Total package": "إجمالي الحزمة",
   "Component amounts": "مبالغ المكونات",
+  "Same as": "مطابق لـ",
+  "Not linked": "غير مرتبط",
+  "Unlink": "إلغاء الربط",
+  "If one of these holds the same data as an AlphaX field, link it so it is not asked twice.": "إذا كان أحد هذه الحقول يحمل نفس بيانات حقل في AlphaX، اربطه حتى لا يُطلب مرتين.",
+  "Employment contract": "عقد العمل",
+  "English and Arabic, in the layout of the Qiwa unified contract.": "بالإنجليزية والعربية، بتنسيق العقد الموحد في منصة قوى.",
+  "Print": "طباعة",
+  "Save to employee's file": "حفظ في ملف الموظف",
+  "Saved as an attachment on the employee.": "تم الحفظ كمرفق في ملف الموظف.",
 }
 
 // Machine keys returned by the API need readable English too.

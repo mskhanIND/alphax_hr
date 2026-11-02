@@ -1,0 +1,80 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Employment Contract — {{ employee.name }}</title>
+<style>
+  body { font-family: "Noto Naskh Arabic", "Noto Sans", Tahoma, Arial, sans-serif; color:#111; font-size:11.5px; margin:0; }
+  .page { max-width: 820px; margin: 0 auto; padding: 18px; }
+  h1 { font-size: 18px; margin: 0; } h2 { font-size: 13px; margin: 18px 0 6px; padding: 5px 8px; background:#0f4c3a; color:#fff; border-radius:4px; }
+  .head { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #0f4c3a; padding-bottom:8px; }
+  .ar { direction: rtl; text-align: right; } .muted { color:#555; }
+  table { width:100%; border-collapse: collapse; } td, th { border:1px solid #ccc; padding:5px 7px; vertical-align: top; }
+  th { background:#f2f5f3; font-weight:600; width:24%; }
+  .two { display:grid; grid-template-columns: 1fr 1fr; gap: 14px; } .clause { margin: 4px 0; line-height: 1.55; }
+  .sign td { height: 70px; } .num { text-align:right; font-variant-numeric: tabular-nums; }
+  @media print { .page { padding: 0; } h2 { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style></head>
+<body><div class="page">
+  <div class="head">
+    <div><h1>Employment Contract</h1><div class="muted">Unified contract form · Saudi Labor Law</div></div>
+    <div class="ar"><h1>عقد عمل</h1><div class="muted">نموذج العقد الموحد · نظام العمل السعودي</div></div>
+  </div>
+  <p class="muted">Date / التاريخ: {{ today }}</p>
+
+  <h2>1. The parties · أطراف العقد</h2>
+  <table>
+    <tr><th>First party (Employer)</th><td>{{ company.name }}</td><td class="ar">{{ company.name_ar }}</td><th class="ar">الطرف الأول (صاحب العمل)</th></tr>
+    <tr><th>CR / Tax no.</th><td colspan="2">{{ company.cr or "" }} {% if company.tax_id %}· VAT {{ company.tax_id }}{% endif %}</td><th class="ar">السجل التجاري / الرقم الضريبي</th></tr>
+    <tr><th>Address</th><td colspan="2">{{ company.address }}</td><th class="ar">العنوان</th></tr>
+    <tr><th>Second party (Employee)</th><td>{{ employee.name }}</td><td class="ar">{{ employee.name_ar }}</td><th class="ar">الطرف الثاني (العامل)</th></tr>
+    <tr><th>Nationality</th><td colspan="2">{{ employee.nationality }}</td><th class="ar">الجنسية</th></tr>
+    <tr><th>ID / Iqama no.</th><td colspan="2">{{ employee.id }}</td><th class="ar">رقم الهوية / الإقامة</th></tr>
+    <tr><th>Date of birth · Gender</th><td colspan="2">{{ employee.dob }} · {{ employee.gender }}</td><th class="ar">تاريخ الميلاد · الجنس</th></tr>
+    <tr><th>Mobile · Email</th><td colspan="2">{{ employee.mobile }} · {{ employee.email }}</td><th class="ar">الجوال · البريد</th></tr>
+  </table>
+
+  <h2>2. The job · العمل</h2>
+  <table>
+    <tr><th>Job title</th><td colspan="2">{{ job.designation }}</td><th class="ar">المسمى الوظيفي</th></tr>
+    <tr><th>Department · Work location</th><td colspan="2">{{ job.department }} · {{ job.location }}</td><th class="ar">الإدارة · مقر العمل</th></tr>
+    <tr><th>Start date</th><td colspan="2">{{ job.start }}</td><th class="ar">تاريخ المباشرة</th></tr>
+    <tr><th>Contract type</th><td>{{ job.type }}{% if job.years %} — {{ job.years }} year(s){% endif %}</td><td class="ar">{{ job.type_ar }}{% if job.years %} — {{ job.years }} سنة{% endif %}</td><th class="ar">نوع العقد</th></tr>
+    <tr><th>Contract end</th><td colspan="2">{{ job.end or "—" }}</td><th class="ar">تاريخ انتهاء العقد</th></tr>
+    <tr><th>Probation</th><td>{{ job.probation_days }} days (max. 180, Art. 53)</td><td class="ar">{{ job.probation_days }} يومًا (بحد أقصى 180 يومًا، المادة 53)</td><th class="ar">فترة التجربة</th></tr>
+    <tr><th>Working hours</th><td>{{ job.daily_hours }} h/day, {{ job.weekly_hours }} h/week (Art. 98)</td><td class="ar">{{ job.daily_hours }} ساعات يوميًا، {{ job.weekly_hours }} ساعة أسبوعيًا (المادة 98)</td><th class="ar">ساعات العمل</th></tr>
+  </table>
+
+  <h2>3. Wage · الأجر</h2>
+  {% if salary %}
+  <table>
+    {% for r in salary.rows %}<tr><th>{{ r.component }}</th><td class="num" colspan="2">{{ "{:,.2f}".format(r.amount) }} {{ salary.currency }}</td><th class="ar">{{ r.component }}</th></tr>{% endfor %}
+    <tr><th>Total monthly wage</th><td class="num" colspan="2"><b>{{ "{:,.2f}".format(salary.gross) }} {{ salary.currency }}</b></td><th class="ar">إجمالي الأجر الشهري</th></tr>
+    <tr><th>Paid to</th><td colspan="2">{{ employee.bank }} {{ employee.iban }}</td><th class="ar">يُصرف إلى</th></tr>
+  </table>
+  {% else %}<p class="muted">Salary not yet assigned · لم يُحدد الأجر بعد</p>{% endif %}
+
+  <h2>4. Terms · الشروط</h2>
+  <div class="two">
+    <div>
+      <p class="clause">Annual leave: {{ job.annual_days }} days per year, rising to at least 30 days after 5 years of service (Art. 109).</p>
+      <p class="clause">Sick leave, overtime (Art. 107: hourly wage + 50% of basic) and all other rights follow the Saudi Labor Law.</p>
+      <p class="clause">Notice period: {{ job.notice_days }} days for either party (Art. 75).</p>
+      <p class="clause">End-of-service award per Art. 84 (half a month's wage for each of the first five years, one month for each year after), and Art. 85 on resignation.</p>
+      <p class="clause">Social insurance (GOSI) and medical insurance as required by law.</p>
+      <p class="clause">Disputes are settled under the Saudi Labor Law and its regulations.</p>
+    </div>
+    <div class="ar">
+      <p class="clause">الإجازة السنوية: {{ job.annual_days }} يومًا في السنة، وتصبح 30 يومًا على الأقل بعد خمس سنوات خدمة (المادة 109).</p>
+      <p class="clause">الإجازة المرضية والعمل الإضافي (المادة 107: أجر الساعة مضافًا إليه 50% من الأجر الأساسي) وسائر الحقوق وفق نظام العمل السعودي.</p>
+      <p class="clause">مدة الإشعار: {{ job.notice_days }} يومًا لكل من الطرفين (المادة 75).</p>
+      <p class="clause">مكافأة نهاية الخدمة وفق المادة 84 (أجر نصف شهر عن كل سنة من السنوات الخمس الأولى، وأجر شهر عن كل سنة بعدها)، والمادة 85 عند الاستقالة.</p>
+      <p class="clause">التأمينات الاجتماعية والتأمين الطبي وفق الأنظمة.</p>
+      <p class="clause">تُسوّى النزاعات وفق نظام العمل السعودي ولوائحه.</p>
+    </div>
+  </div>
+
+  <h2>5. Signatures · التوقيعات</h2>
+  <table class="sign">
+    <tr><th>First party</th><td></td><td></td><th class="ar">الطرف الأول</th></tr>
+    <tr><th>Second party</th><td></td><td></td><th class="ar">الطرف الثاني</th></tr>
+  </table>
+  <p class="muted" style="margin-top:10px">Prepared in AlphaX HR for documentation alongside the contract registered on Qiwa. · أُعدّ في AlphaX HR للتوثيق إلى جانب العقد الموثق في منصة قوى.</p>
+</div></body></html>

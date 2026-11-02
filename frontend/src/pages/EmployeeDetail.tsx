@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ArrowLeft, Camera, ChevronDown, ChevronsDownUp, ChevronsUpDown, History, Pencil, Printer } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Camera, ChevronDown, ChevronsDownUp, ChevronsUpDown, History, Pencil, Printer, FileText } from 'lucide-react'
 import { ActivityDrawer } from '../components/ActivityDrawer'
 import { LeaveLedger } from '../components/LeaveLedger'
 import { SalaryCard } from '../components/SalaryCard'
@@ -114,6 +114,7 @@ export default function EmployeeDetail() {
           <Button variant="ghost" onClick={() => saveCollapsed(new Set())}><ChevronsUpDown className="size-4" />{t('Expand all')}</Button>
           <Button variant="ghost" onClick={() => saveCollapsed(new Set(Object.keys(e.sections)))}><ChevronsDownUp className="size-4" />{t('Collapse all')}</Button>
           <Button variant="secondary" onClick={() => setShowActivity(true)}><History className="size-4" />{t('Activity')}</Button>
+          <Link to={`/people/${encodeURIComponent(id)}/contract`}><Button variant="secondary"><FileText className="size-4" />{t('Contract')}</Button></Link>
           <Button variant="secondary" onClick={() => window.print()}><Printer className="size-4" />{t('Print / PDF')}</Button>
         </div>} />
       {showActivity && <ActivityDrawer doctype="Employee" name={id} onClose={() => setShowActivity(false)} />}

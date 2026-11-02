@@ -26,7 +26,7 @@ SECTIONS = {
 	"contact": ["cell_number", "personal_email", "company_email", "prefered_contact_email", "user_id",
 				"current_address", "permanent_address", "person_to_be_contacted", "emergency_phone_number", "relation"],
 	"saudi": ["alphax_is_saudi", "alphax_gosi_registration_date", "alphax_gosi_number", "alphax_iqama_number",
-			  "alphax_iqama_expiry", "alphax_border_number", "alphax_work_permit_expiry",
+			  "alphax_iqama_expiry", "alphax_work_permit_expiry",
 			  "alphax_medical_insurance_expiry", "passport_number", "valid_upto", "alphax_annual_leave_days"],
 	"bank": ["salary_mode", "bank_name", "bank_ac_no", "iban"],
 	"exit": ["relieving_date", "reason_for_leaving", "resignation_letter_date"],
@@ -110,18 +110,23 @@ def _editable(meta):
 
 # Legacy (CentralHRMS / IRSAA) Employee fields that hold the same data as an
 # AlphaX field. AlphaX fills them so HR never types the same number twice.
-MIRRORS = {
+MIRRORS = {  # known CentralHRMS / IRSAA fields
 	"custom_identity_number": "alphax_iqama_number",
 	"iqama_national_id": "alphax_iqama_number",
 	"custom_identity_valid_upto": "alphax_iqama_expiry",
+	"custom_identity_expiry_date": "alphax_iqama_expiry",
 	"iqama_expiry_date": "alphax_iqama_expiry",
 	"custom_work_permit_expiry_date": "alphax_work_permit_expiry",
 	"custom_saudinonsaudi": "alphax_is_saudi",
+	"custom_identity_type": "alphax_id_type",  # set from the ID's first digit
 }
+ID_TYPE = "alphax_id_type"  # virtual source: derived from alphax_iqama_number
 
 
-_ID_LABEL = re.compile(r"iqama|national\s*id|border\s*(no|number)|identity\s*(no|number)", re.I)
+_ID_LABEL = re.compile(r"iqama|national\s*id|border\s*(no|number)|identity|muqeem", re.I)
+_ID_NAME = re.compile(r"iqama|national_?id|identity|border_?no", re.I)
 _EXPIRY_LABEL = re.compile(r"expir|valid", re.I)
+_NOT_MIRROR = re.compile(r"hijri|issue|type|place|copy|pdf|management|details", re.I)
 
 
 def _mirror_source(df):
@@ -130,14 +135,22 @@ def _mirror_source(df):
 	Known fieldnames first; otherwise recognise custom fields by their label
 	(e.g. 'National ID / Iqama / Border No'), so each site only asks once.
 	"""
+	linked = _manual_links().get(df.fieldname)
+	if linked:
+		return linked
 	if df.fieldname in MIRRORS:
 		return MIRRORS[df.fieldname]
 	if df.fieldname.startswith("alphax_") or df.fieldname in ("passport_number", "valid_upto"):
 		return None
 	label = df.label or ""
-	if df.fieldtype in ("Data", "Int", "Long Int", "Small Text", "Phone") and _ID_LABEL.search(label) and not _EXPIRY_LABEL.search(label):
+	idlike = _ID_LABEL.search(label) or _ID_NAME.search(df.fieldname)
+	if df.fieldtype == "Select" and idlike and re.search(r"type", label, re.I):
+		return ID_TYPE
+	if idlike and _NOT_MIRROR.search(label):
+		return None
+	if df.fieldtype in ("Data", "Int", "Long Int", "Small Text", "Phone") and idlike and not _EXPIRY_LABEL.search(label):
 		return "alphax_iqama_number"
-	if df.fieldtype == "Date" and _ID_LABEL.search(label) and _EXPIRY_LABEL.search(label):
+	if df.fieldtype == "Date" and idlike and _EXPIRY_LABEL.search(label):
 		return "alphax_iqama_expiry"
 	if df.fieldtype == "Select" and _is_saudi_select(df):
 		return "alphax_is_saudi"
@@ -151,11 +164,38 @@ def _is_saudi_select(df):
 	return any("non" in o and "saudi" in o for o in options) and any("saudi" in o and "non" not in o for o in options)
 
 
+def _manual_links():
+	if not frappe.db.exists("DocType", "AlphaX Field Link"):
+		return {}
+	return {r.site_field: r.same_as for r in frappe.get_all("AlphaX Field Link", filters={"parent": "AlphaX HR Settings"},
+															  fields=["site_field", "same_as"])}
+
+
 def _mirror_map(meta):
-	return {df.fieldname: src for df in meta.fields if (src := _mirror_source(df)) and meta.has_field(src)}
+	out = {}
+	for df in meta.fields:
+		src = _mirror_source(df)
+		if src and (src == ID_TYPE and meta.has_field("alphax_iqama_number") or meta.has_field(src)):
+			out[df.fieldname] = src
+	return out
+
+
+def _id_type_value(df, number):
+	"""Pick the site's 'Identity Type' option for an ID number (1 Saudi ID, 2 Iqama, 3/4 border number)."""
+	from alphax_hr.saudi import identity
+
+	kind, _err = identity.classify_id(number)
+	options = [o for o in (df.options or "").split("\n") if o.strip()]
+	if not kind or not options:
+		return None
+	wants = {identity.SAUDI: r"national|saudi|\bid\b|identity", identity.RESIDENT: r"iqama|resident|identity",
+			 identity.BORDER: r"border"}[kind]
+	return next((o for o in options if re.search(wants, o, re.I) and not re.search(r"without|don.?t\s+have|not\s+have|\bno\s+id\b", o, re.I)), None)
 
 
 def _mirror_value(df, source_value):
+	if MIRRORS.get(df.fieldname) == ID_TYPE or (df.fieldtype == "Select" and _mirror_source(df) == ID_TYPE):
+		return _id_type_value(df, source_value)
 	if df.fieldtype == "Select" and _is_saudi_select(df):
 		options = [o for o in (df.options or "").split("\n") if o]
 		want_non = not cint(source_value)
@@ -172,19 +212,22 @@ def _sync_legacy_saudi_flag(doc, payload):
 	for legacy, source in _mirror_map(doc.meta).items():
 		df = doc.meta.get_field(legacy)
 		if legacy not in payload and doc.get(legacy) in (None, ""):
-			current = payload.get(source) if source in payload else doc.get(source)
+			src_field = "alphax_iqama_number" if source == ID_TYPE else source
+			current = payload.get(src_field) if src_field in payload else doc.get(src_field)
 			if source == "alphax_is_saudi" and source not in payload and doc.get(source) is None:
 				continue
 			value = _mirror_value(df, current)
 			if value not in (None, "") and (source == "alphax_is_saudi" or current not in (None, "")):
 				doc.set(legacy, value)
-		elif legacy in payload and source != "alphax_is_saudi" and doc.get(source) in (None, ""):
+		elif legacy in payload and source not in ("alphax_is_saudi", ID_TYPE) and doc.get(source) in (None, ""):
 			doc.set(source, payload.get(legacy))
 
 
 def _mirrored(meta, payload, fieldname):
 	"""True when a legacy field will be filled from an AlphaX field in the payload."""
 	source = _mirror_map(meta).get(fieldname)
+	if source == ID_TYPE:
+		source = "alphax_iqama_number"
 	return bool(source and (source in payload) and
 				(payload.get(source) not in (None, "") or source == "alphax_is_saudi"))
 
@@ -408,8 +451,11 @@ def new_employee_form():
 		if df.fieldname in core_names:
 			continue
 		spec = {**_field_spec(df), "step": _step_for(df)}
-		if mirrors.get(df.fieldname) in core_names:
-			spec["mirrors"] = mirrors[df.fieldname]  # filled from the AlphaX field; not shown twice
+		src = mirrors.get(df.fieldname)
+		if src == ID_TYPE:
+			src = "alphax_iqama_number"
+		if src in core_names:
+			spec["mirrors"] = src  # filled from the AlphaX field; not shown twice
 		required.append(spec)
 	return {"core": core, "required": required}
 
@@ -473,6 +519,23 @@ def create_employee(data):
 
 
 @frappe.whitelist()
+def link_field(site_field, same_as=None):
+	"""Employee fields tab: mark a site field as the same data as an AlphaX field (or remove the link)."""
+	from alphax_hr.api._common import require_hr_manager
+
+	require_hr_manager()
+	meta = frappe.get_meta("Employee")
+	if not meta.has_field(site_field) or site_field.startswith("alphax_"):
+		frappe.throw(_("Unknown Employee field."))
+	conf = frappe.get_single("AlphaX HR Settings")
+	conf.set("field_links", [r for r in conf.field_links if r.site_field != site_field])
+	if same_as:
+		conf.append("field_links", {"site_field": site_field, "same_as": same_as})
+	conf.save()
+	return field_map()
+
+
+@frappe.whitelist()
 def field_map():
 	"""Diagnostics: which site fields AlphaX fills from its own (duplicates) and which mandatory fields it will ask for."""
 	require_hr()
@@ -480,7 +543,11 @@ def field_map():
 	mirrors = _mirror_map(meta)
 	return {
 		"mirrors": [{"fieldname": f, "label": _(meta.get_label(f)), "fieldtype": meta.get_field(f).fieldtype,
-					 "from": src, "from_label": _(meta.get_label(src))} for f, src in mirrors.items()],
+					 "from": src, "from_label": _("ID type (from the ID number)") if src == ID_TYPE else _(meta.get_label(src)),
+					 "manual": f in _manual_links()} for f, src in mirrors.items()],
+		"targets": [{"value": v, "label": _(meta.get_label(v))} for v in
+					("alphax_iqama_number", "alphax_iqama_expiry", "alphax_is_saudi", "alphax_work_permit_expiry",
+					 "alphax_employee_name_ar", "alphax_gosi_number", "alphax_gosi_registration_date") if meta.has_field(v)],
 		"required": [{"fieldname": df.fieldname, "label": _(df.label), "fieldtype": df.fieldtype, "hidden": cint(df.hidden),
 					  "read_only": cint(df.read_only), "step": _step_for(df), "mirrored": df.fieldname in mirrors}
 					 for df in _site_required_fields(meta)],

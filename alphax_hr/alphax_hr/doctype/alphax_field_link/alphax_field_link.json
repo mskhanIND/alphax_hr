@@ -1,0 +1,38 @@
+{
+ "doctype": "DocType",
+ "name": "AlphaX Field Link",
+ "module": "AlphaX HR",
+ "custom": 0,
+ "engine": "InnoDB",
+ "creation": "2026-11-02 00:00:00.000000",
+ "modified": "2026-11-02 00:00:00.000000",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "field_order": [
+  "site_field",
+  "same_as"
+ ],
+ "fields": [
+  {
+   "fieldname": "site_field",
+   "fieldtype": "Data",
+   "label": "Site Field (fieldname)",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "same_as",
+   "fieldtype": "Select",
+   "label": "Same as AlphaX Field",
+   "reqd": 1,
+   "in_list_view": 1,
+   "options": "alphax_iqama_number\nalphax_iqama_expiry\nalphax_is_saudi\nalphax_work_permit_expiry\nalphax_employee_name_ar\nalphax_gosi_number\nalphax_gosi_registration_date"
+  }
+ ],
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 1,
+ "editable_grid": 1
+}

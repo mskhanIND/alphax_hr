@@ -38,6 +38,7 @@
   "min_employee_age",
   "validate_iban",
   "passport_non_saudi_only",
+  "field_links",
   "salary_section",
   "salary_basic_component",
   "salary_housing_component",
@@ -227,6 +228,13 @@
    "label": "Passport Mandatory Only for Non-Saudis",
    "default": "1",
    "description": "Saudis (ID starting with 1) do not need a passport number. AlphaX relaxes the site's blanket 'passport mandatory' setting and checks non-Saudis itself."
+  },
+  {
+   "fieldname": "field_links",
+   "fieldtype": "Table",
+   "label": "Employee Field Links",
+   "options": "AlphaX Field Link",
+   "description": "Site fields that hold the same data as an AlphaX field. AlphaX hides them in its forms and fills them automatically."
   },
   {
    "fieldname": "salary_section",

@@ -755,7 +755,10 @@ def run(site):
             fields = (("custom_contract_start_date", "Contract Start Date", "Date", None),
                       ("custom_contract_end_date", "Contract End Date", "Date", None),
                       ("custom_passport_attach", "Passport", "Attach", None),
-                      ("custom_employee_nationality", "Employee Nationality", "Link", "Country"))
+                      ("custom_employee_nationality", "Employee Nationality", "Link", "Country"),
+                      ("custom_identity_expiry_date", "Identity Expiry Date", "Date", None),
+                      ("custom_identity_type", "Identity Type", "Select", "\nIdentity(Have ID/Iqama No)\nBorder Number"),
+                      ("custom_odd_id", "Muqeem Ref", "Data", None))
             made = []
             for fn, label, ft, opt in fields:
                 if not frappe.db.exists("Custom Field", "Employee-" + fn):
@@ -774,13 +777,19 @@ def run(site):
                 assert req["custom_employee_nationality"]["auto"] == "nationality"
                 assert req["custom_employee_nationality"]["saudi_value"] == "Saudi Arabia", req["custom_employee_nationality"]
                 assert req["custom_passport_attach"]["fieldtype"] == "Attach"
+                assert req["custom_identity_type"].get("mirrors") == "alphax_iqama_number", req["custom_identity_type"]
+                fm = hr.field_map()
+                assert {m["fieldname"]: m["from"] for m in fm["mirrors"]}["custom_identity_expiry_date"] == "alphax_iqama_expiry"
+                hr.link_field("custom_odd_id", "alphax_iqama_number")   # a site field AlphaX could not guess
+                assert hr.new_employee_form()["required"] and {x["fieldname"]: x for x in hr.new_employee_form()["required"]}["custom_odd_id"].get("mirrors") == "alphax_iqama_number"
                 payload = {"first_name": "Wizard", "last_name": "Check", "gender": "Male", "date_of_birth": "1990-01-01",
                            "date_of_joining": "2026-03-15", "company": COMPANY, "alphax_contract_years": "2",
                            "alphax_iqama_number": "1" + "".join(random.choice("0123456789") for _ in range(9)),
                            "custom_contract_start_date": "2026-03-15", "custom_contract_end_date": "2028-03-14",
                            "custom_employee_nationality": "Saudi Arabia"}
+                payload["alphax_iqama_expiry"] = "2027-01-01"
                 missing = {m["fieldname"] for m in hr.check_new_employee(payload)["missing"]}
-                assert missing == {"custom_passport_attach"}, missing   # holiday list comes from the company
+                assert missing == {"custom_passport_attach"}, missing   # ID type, expiry, odd ID: filled; holiday list from company
                 expect_error(lambda: hr.create_employee(payload), frappe.ValidationError)
                 f_ = frappe.get_doc({"doctype": "File", "file_name": "passport.txt", "content": b"passport scan", "is_private": 1}).insert()
                 created = hr.create_employee({**payload, "custom_passport_attach": f_.file_url,
@@ -791,6 +800,8 @@ def run(site):
                 assert str(row.custom_contract_start_date) == "2026-03-15" and str(row.custom_contract_end_date) == "2028-03-14", row
                 assert str(row.contract_end_date) == "2028-03-14" and row.holiday_list, row
                 assert frappe.db.get_value("File", f_.name, "attached_to_name") == emp
+                assert frappe.db.get_value("Employee", emp, "custom_identity_type") == "Identity(Have ID/Iqama No)"
+                assert frappe.db.get_value("Employee", emp, "custom_odd_id") == payload["alphax_iqama_number"]
             finally:
                 frappe.set_user("Administrator")
                 if emp:
@@ -798,6 +809,7 @@ def run(site):
                 for n in made:
                     frappe.delete_doc("Custom Field", n, ignore_permissions=True)
                 frappe.db.delete("Property Setter", {"doc_type": "Employee", "field_name": "holiday_list", "property": "reqd"})
+                conf = frappe.get_single("AlphaX HR Settings"); conf.set("field_links", []); conf.save()
                 frappe.clear_cache(doctype="Employee"); frappe.db.commit()
         check("hcs-style wizard: contract dates from period, Saudi nationality, Passport attachment, company holiday list", hcs_wizard)
 
@@ -1104,6 +1116,20 @@ def run(site):
             frappe.set_user(f["mgr"])
             assert isinstance(records.get("Leave Application", name)["actions"], list)
         check("in-app record view: all fields in the record's layout, permissions enforced", record_view)
+
+        def employment_contract():
+            from alphax_hr.api import contract
+            frappe.set_user(f["hr"])
+            h = contract.html(f["e_emp"])["html"]
+            assert "Employment Contract" in h and "عقد عمل" in h and frappe.db.get_value("Employee", f["e_emp"], "employee_name") in h
+            contract.pdf(f["e_emp"])
+            assert frappe.response["type"] == "pdf" and frappe.response["filecontent"][:4] == b"%PDF"
+            assert contract.save(f["e_emp"])["file_url"]
+            assert frappe.db.exists("File", {"attached_to_name": f["e_emp"], "file_name": ["like", "Employment-Contract-%"]})
+            frappe.response.pop("filecontent", None); frappe.response.pop("type", None)
+            frappe.set_user(f["emp"])
+            expect_error(lambda: contract.html(f["e_emp"]), frappe.PermissionError)
+        check("bilingual employment contract: HTML + PDF saved to the employee (HR only)", employment_contract)
 
         print("\n== /alphax page")
         def www_page():

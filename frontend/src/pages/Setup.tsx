@@ -196,9 +196,22 @@ function SettingsForm() {
   )
 }
 
+function SameAs({ field, targets, current, onDone }: { field: string; targets: any[]; current?: string; onDone: (d: any) => void }) {
+  const { t } = useI18n()
+  const m = useMutation({ mutationFn: (v: string) => api.linkField(field, v || undefined), onSuccess: onDone })
+  return (
+    <Select aria-label={t('Same as')} className="!h-8 !w-56 text-xs" disabled={m.isPending} value={current ?? ''} onChange={(e) => m.mutate(e.target.value)}>
+      <option value="">{t('Not linked')}</option>
+      {targets.map((x) => <option key={x.value} value={x.value}>{t('Same as')}: {x.label}</option>)}
+    </Select>
+  )
+}
+
 function FieldMap() {
   const { t } = useI18n()
+  const qc = useQueryClient()
   const q = useQuery<any>({ queryKey: ['fieldMap'], queryFn: api.fieldMap })
+  const done = (d: any) => { qc.setQueryData(['fieldMap'], d); qc.invalidateQueries({ queryKey: ['newEmployeeForm'] }) }
   if (q.isLoading) return <Spinner />
   if (q.error) return <ErrorBox error={q.error} onRetry={() => q.refetch()} />
   const d = q.data
@@ -207,20 +220,22 @@ function FieldMap() {
       <Card title={t('Filled automatically (duplicates of an AlphaX field)')} subtitle={t('These site fields are hidden in AlphaX forms and copied from the AlphaX field.')}>
         {!d.mirrors.length ? <p className="text-sm text-muted">—</p> : (
           <ul className="divide-y divide-line text-sm">{d.mirrors.map((m: any) => (
-            <li key={m.fieldname} className="flex justify-between gap-3 py-2"><span><b>{m.label}</b> <span className="text-xs text-muted">{m.fieldname} · {m.fieldtype}</span></span><span className="text-muted">← {m.from_label}</span></li>
+            <li key={m.fieldname} className="flex flex-wrap items-center justify-between gap-3 py-2"><span><b>{m.label}</b> <span className="text-xs text-muted">{m.fieldname} · {m.fieldtype}</span></span>
+              <span className="flex items-center gap-2 text-muted">← {m.from_label}{m.manual && <button className="text-xs text-red-700 hover:underline" onClick={() => api.linkField(m.fieldname).then(done)}>{t('Unlink')}</button>}</span></li>
           ))}</ul>
         )}
       </Card>
       {d.unhandled_id_like.length > 0 && (
         <Card title={t('ID-like mandatory fields not linked')}>
-          <ul className="text-sm">{d.unhandled_id_like.map((m: any) => <li key={m.fieldname}><b>{m.label}</b> <span className="text-xs text-muted">{m.fieldname} · {m.fieldtype}</span></li>)}</ul>
+          <p className="mb-2 text-sm text-muted">{t('If one of these holds the same data as an AlphaX field, link it so it is not asked twice.')}</p>
+          <ul className="divide-y divide-line text-sm">{d.unhandled_id_like.map((m: any) => <li key={m.fieldname} className="flex flex-wrap items-center justify-between gap-2 py-2"><span><b>{m.label}</b> <span className="text-xs text-muted">{m.fieldname} · {m.fieldtype}</span></span><SameAs field={m.fieldname} targets={d.targets} onDone={done} /></li>)}</ul>
         </Card>
       )}
       <Card title={t('Mandatory fields on this site')} subtitle={t('Asked in the new-employee form, in the step shown.')}>
         <ul className="divide-y divide-line text-sm">{d.required.map((m: any) => (
           <li key={m.fieldname} className="flex flex-wrap justify-between gap-2 py-2">
             <span><b>{m.label}</b> <span className="text-xs text-muted">{m.fieldname} · {m.fieldtype}{m.hidden ? ' · hidden in desk' : ''}{m.read_only ? ' · read-only in desk' : ''}</span></span>
-            <span className="text-muted">{m.mirrored ? t('auto') : t(m.step)}</span>
+            <span className="flex items-center gap-2 text-muted">{m.mirrored ? t('auto') : <>{t(m.step)} <SameAs field={m.fieldname} targets={d.targets} onDone={done} /></>}</span>
           </li>
         ))}</ul>
       </Card>
