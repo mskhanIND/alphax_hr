@@ -93,3 +93,11 @@ def doctype_installed(doctype: str) -> bool:
 
 def has_field(doctype: str, fieldname: str) -> bool:
 	return bool(frappe.get_meta(doctype).has_field(fieldname))
+
+
+def require_salary_structure(employee, on, hint=None):
+	"""Additional Salary needs a submitted Salary Structure Assignment; say so clearly before HRMS does."""
+	if not frappe.db.exists("Salary Structure Assignment", {"employee": employee, "docstatus": 1, "from_date": ["<=", on]}):
+		frappe.throw(_("{0} has no salary structure on {1}, so this cannot go through payroll. {2}").format(
+			frappe.db.get_value("Employee", employee, "employee_name") or employee, frappe.utils.formatdate(on), hint or ""),
+			title=_("No salary structure"))

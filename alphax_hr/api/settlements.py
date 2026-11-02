@@ -150,6 +150,9 @@ def approve(name):
 	compute(doc)
 	created = []
 	if doc.mode == "With payroll":
+		from alphax_hr.api._common import require_salary_structure
+
+		require_salary_structure(doc.employee, doc.exit_date, _("Choose 'Separate payment' or assign a salary first."))
 		for key, amount in (("eosb", doc.eosb_amount), ("leave", doc.leave_amount), ("earn", doc.other_earnings),
 							("deduct", flt(doc.advances) + flt(doc.other_deductions))):
 			if flt(amount) > 0:

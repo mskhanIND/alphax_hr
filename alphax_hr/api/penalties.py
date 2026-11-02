@@ -204,6 +204,9 @@ def issue_penalty(name):
 			rules.DISCOVERY_LIMIT_DAYS))
 	preview_doc(doc)
 	if doc.amount > 0:
+		from alphax_hr.api._common import require_salary_structure
+
+		require_salary_structure(doc.employee, doc.payroll_date, _("Assign a salary first, or record it as a warning."))
 		add = frappe.get_doc({"doctype": "Additional Salary", "employee": doc.employee, "company": doc.company,
 							  "salary_component": _component(doc.company), "amount": doc.amount,
 							  "payroll_date": doc.payroll_date, "overwrite_salary_structure_amount": 0})

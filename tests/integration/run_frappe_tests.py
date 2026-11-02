@@ -1320,6 +1320,9 @@ def run(site):
                     if frappe.db.get_value("Additional Salary", add, "docstatus") == 1:
                         frappe.get_doc("Additional Salary", add).cancel()
                 frappe.delete_doc("AlphaX Final Settlement", n.name, force=1, ignore_permissions=True)
+            if not frappe.db.exists("Salary Structure Assignment", {"employee": f["e_emp"], "docstatus": 1}):
+                from alphax_hr.api import salary
+                salary.assign(f["e_emp"], {"mode": "total", "total": 12000}, "2021-01-10")
             frappe.set_user(f["emp"])
             expect_error(lambda: fs.prepare(f["e_emp"], nowdate(), "Resignation"), frappe.PermissionError)
             frappe.set_user(f["hr"])
