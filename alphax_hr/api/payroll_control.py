@@ -170,6 +170,19 @@ def checklist(company, month):
 	checks.append(_check("leavers", _("Leaving this month without a final settlement"), [_emp_item(e, str(e.relieving_date)) for e in leavers if e.name not in settled],
 						 "warning", _("Prepare the end-of-service settlement so it is paid with this payroll or separately."), "/payroll/settlements"))
 
+	# accounting set-up payroll needs
+	setup_items = []
+	try:
+		from erpnext.accounts.utils import get_fiscal_year
+
+		get_fiscal_year(end, company=company)
+	except Exception:  # noqa: BLE001 - FiscalYearError and friends
+		setup_items.append({"note": _("No active fiscal year covers {0} for this company.").format(frappe.utils.formatdate(end))})
+	if not frappe.db.get_value("Company", company, "default_payroll_payable_account"):
+		setup_items.append({"note": _("Company has no Default Payroll Payable Account.")})
+	checks.append(_check("accounting_setup", _("Accounting set-up for payroll"), setup_items, "blocker",
+						 _("Payroll cannot create salary slips until this is fixed in ERPNext.")))
+
 	# salary, bank, GOSI
 	with_ssa = set(frappe.get_all("Salary Structure Assignment", filters={"employee": ["in", ids], "docstatus": 1, "from_date": ["<=", end]},
 								  pluck="employee"))

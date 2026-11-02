@@ -49,7 +49,10 @@ jobs:
         with: { node-version: '20' }
       - name: System packages
         run: |
-          sudo apt-get update && sudo apt-get install -y mariadb-client libmariadb-dev pkg-config
+          sudo apt-get update && sudo apt-get install -y mariadb-client libmariadb-dev pkg-config xvfb fontconfig xfonts-75dpi xfonts-base
+          # Frappe renders PDFs with wkhtmltopdf (patched-qt build, as on Frappe servers)
+          wget -q https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.jammy_amd64.deb
+          sudo apt-get install -y ./wkhtmltox_0.12.6.1-2.jammy_amd64.deb || sudo apt-get install -y wkhtmltopdf
           # Newer MariaDB clients require TLS by default; the service container has none.
           printf '[client]\nskip-ssl\n' > ~/.my.cnf
       - name: Bench with Frappe, ERPNext, HRMS (v15)
