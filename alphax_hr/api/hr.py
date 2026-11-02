@@ -28,6 +28,54 @@ SECTIONS = {
 EDITABLE = {f for fields in SECTIONS.values() for f in fields} - {"status"}
 LOOKUP_DOCTYPES = {"Company", "Department", "Designation", "Branch", "Employment Type", "Employee Grade",
 				   "Holiday List", "Shift Type", "Gender", "User", "Employee", "Leave Type", "Salary Component"}
+NEW_EMPLOYEE_CORE = ["first_name", "last_name", "gender", "date_of_birth", "company", "date_of_joining",
+					 "department", "designation", "alphax_is_saudi", "alphax_gosi_registration_date",
+					 "alphax_iqama_number", "alphax_iqama_expiry"]
+INPUT_TYPES = {"Data", "Link", "Select", "Date", "Datetime", "Check", "Int", "Float", "Currency", "Percent",
+			   "Small Text", "Text", "Long Text", "Phone", "Dynamic Link"}
+NEVER_EDIT = {"name", "owner", "creation", "modified", "modified_by", "docstatus", "idx", "status",
+			  "naming_series", "employee", "user_id", "create_user_permission", "lft", "rgt", "old_parent"}
+
+
+def _site_required_fields(meta):
+	"""Mandatory Employee fields as configured on *this* site (core + custom fields +
+	property setters from other apps), so forms adapt to each customer."""
+	out = []
+	for df in meta.fields:
+		if not df.reqd or df.hidden or df.read_only or cint(df.permlevel) or df.fieldtype not in INPUT_TYPES:
+			continue
+		if df.fieldname in NEVER_EDIT:
+			continue
+		out.append(df)
+	return out
+
+
+def _field_spec(df):
+	spec = {"fieldname": df.fieldname, "label": _(df.label or df.fieldname), "fieldtype": df.fieldtype,
+			"reqd": cint(df.reqd), "default": df.default, "description": _(df.description) if df.description else None}
+	if df.fieldtype == "Select":
+		spec["options"] = [o for o in (df.options or "").split("\n")]
+	elif df.fieldtype == "Link":
+		spec["options"] = df.options
+	return spec
+
+
+def _editable(meta):
+	"""Curated sections + whatever this site makes mandatory."""
+	return EDITABLE | {df.fieldname for df in _site_required_fields(meta)}
+
+
+def _sync_legacy_saudi_flag(doc, payload):
+	"""Keep CentralHRMS-style 'Saudi/Non-Saudi' selects in step with alphax_is_saudi."""
+	for fieldname in ("custom_saudinonsaudi",):
+		df = doc.meta.get_field(fieldname)
+		if not df or doc.get(fieldname) or fieldname in payload or "alphax_is_saudi" not in payload:
+			continue
+		options = [o for o in (df.options or "").split("\n") if o]
+		want = "saudi" if cint(payload.get("alphax_is_saudi")) else "non"
+		match = next((o for o in options if (want == "non") == ("non" in o.lower())), None)
+		if match:
+			doc.set(fieldname, match)
 
 
 def _fields(meta, names):
@@ -70,7 +118,14 @@ def employee(name):
 	sections = {}
 	for key, names in SECTIONS.items():
 		sections[key] = {f: doc.get(f) for f in _fields(meta, names)}
+	curated = {f for names in SECTIONS.values() for f in names}
+	extra = [df for df in _site_required_fields(meta) if df.fieldname not in curated]
+	if extra:
+		sections["company_required"] = {df.fieldname: doc.get(df.fieldname) for df in extra}
 	labels = {f: _(meta.get_label(f)) for names in SECTIONS.values() for f in _fields(meta, names)}
+	labels.update({df.fieldname: _(df.label) for df in extra})
+	fields = {df.fieldname: _field_spec(df) for df in meta.fields if df.fieldname in curated or df in extra}
+	missing_required = [_(df.label) for df in _site_required_fields(meta) if doc.get(df.fieldname) in (None, "")]
 	today = getdate(nowdate())
 	docs = {
 		"iqama": documents.bucket(getdate(doc.get("alphax_iqama_expiry")) if doc.get("alphax_iqama_expiry") else None, today),
@@ -80,7 +135,8 @@ def employee(name):
 	}
 	return {
 		"name": doc.name, "employee_name": doc.employee_name, "image": doc.image, "modified": str(doc.modified),
-		"sections": sections, "labels": labels, "documents": docs,
+		"sections": sections, "labels": labels, "fields": fields, "documents": docs,
+		"missing_required": missing_required,
 		"can_write": bool(frappe.has_permission("Employee", "write", doc)),
 		"issues": _issues(doc),
 	}
@@ -117,24 +173,41 @@ def update_employee(name, data, modified):
 	doc.check_permission("write")
 	if not modified or get_datetime(modified) != get_datetime(doc.modified):
 		frappe.throw(_("Someone else changed this employee. Reload and try again."), frappe.TimestampMismatchError)
-	changes = {k: v for k, v in payload.items() if k in EDITABLE and doc.meta.has_field(k)}
+	allowed = _editable(doc.meta)
+	changes = {k: v for k, v in payload.items() if k in allowed and doc.meta.has_field(k)}
 	if not changes:
 		frappe.throw(_("Nothing to update."))
 	doc.update(changes)
+	_sync_legacy_saudi_flag(doc, changes)
 	doc.save()
 	return employee(doc.name)
+
+
+@frappe.whitelist()
+def new_employee_form():
+	"""Fields the 'New employee' screen must show on this site."""
+	require_hr()
+	meta = frappe.get_meta("Employee")
+	core = [_field_spec(meta.get_field(f)) for f in NEW_EMPLOYEE_CORE if meta.get_field(f)]
+	core_names = {f["fieldname"] for f in core}
+	required = [_field_spec(df) for df in _site_required_fields(meta) if df.fieldname not in core_names]
+	return {"core": core, "required": required}
 
 
 @frappe.whitelist()
 def create_employee(data):
 	require_hr()
 	payload = parse_json(data, {})
-	required = ["first_name", "gender", "date_of_birth", "date_of_joining", "company"]
-	missing = [f for f in required if not payload.get(f)]
+	meta = frappe.get_meta("Employee")
+	allowed = _editable(meta) | set(NEW_EMPLOYEE_CORE)
+	missing = [_(df.label) for df in _site_required_fields(meta)
+			   if payload.get(df.fieldname) in (None, "") and not df.default
+			   and not (df.fieldname == "custom_saudinonsaudi" and "alphax_is_saudi" in payload)]
 	if missing:
-		frappe.throw(_("Missing required fields: {0}").format(", ".join(missing)))
+		frappe.throw(_("Please fill in: {0}").format(", ".join(missing)), title=_("Missing information"))
 	doc = frappe.new_doc("Employee")
-	doc.update({k: v for k, v in payload.items() if k in EDITABLE and doc.meta.has_field(k)})
+	doc.update({k: v for k, v in payload.items() if k in allowed and meta.has_field(k) and v not in (None, "")})
+	_sync_legacy_saudi_flag(doc, payload)
 	doc.status = "Active"
 	doc.insert()
 	return employee(doc.name)
@@ -144,7 +217,8 @@ def create_employee(data):
 def lookup(doctype, txt="", filters=None):
 	"""Typeahead for Link fields, limited to HR-relevant doctypes and permissions."""
 	require_hr()
-	if doctype not in LOOKUP_DOCTYPES:
+	employee_links = {df.options for df in frappe.get_meta("Employee").fields if df.fieldtype == "Link" and df.options}
+	if doctype not in LOOKUP_DOCTYPES | employee_links:
 		frappe.throw(_("Lookup not allowed."), frappe.PermissionError)
 	from frappe.desk.search import search_link
 

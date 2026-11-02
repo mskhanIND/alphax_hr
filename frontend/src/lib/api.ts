@@ -35,7 +35,7 @@ export class ApiError extends Error {
 }
 
 function stripHtml(s: string) {
-  return s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  return s.replace(/<[^>]+>/g, ' ').replace(/[ \t]+/g, ' ').replace(/ *\n */g, '\n').trim()
 }
 
 /** Turn a Frappe error response into one human message. */
@@ -52,7 +52,7 @@ export function extractError(body: any, status: number): ApiError {
             return m
           }
         })
-        .join(' ')
+        .join('\n')
     }
   } catch {
     /* ignore */
@@ -117,6 +117,7 @@ export const api = {
   updateEmployee: (name: string, data: Record<string, unknown>, modified: string) =>
     call(A + 'hr.update_employee', { name, data, modified }),
   createEmployee: (data: Record<string, unknown>) => call(A + 'hr.create_employee', { data }),
+  newEmployeeForm: () => call(A + 'hr.new_employee_form'),
   lookup: (doctype: string, txt: string) => call<{ value: string; description?: string; label?: string }[]>(A + 'hr.lookup', { doctype, txt }),
   orgSummary: () => call(A + 'hr.org_summary'),
   // payroll & compliance

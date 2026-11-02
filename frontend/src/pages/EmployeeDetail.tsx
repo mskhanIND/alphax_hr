@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, ArrowLeft, Pencil } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { FieldInput } from '../components/FieldInput'
 import { LinkInput } from '../components/LinkInput'
 import { Avatar, Badge, Button, Card, ErrorBox, Field, Input, PageHeader, Select, Spinner, statusTone } from '../components/ui'
 import { api } from '../lib/api'
@@ -10,6 +11,7 @@ import { useI18n } from '../lib/i18n'
 
 const SECTION_TITLES: Record<string, string> = {
   personal: 'Personal', job: 'Job', attendance_leave: 'Attendance & Leave', contact: 'Contact', saudi: 'Saudi compliance', exit: 'Exit',
+  company_required: 'Required by your company',
 }
 const LINKS: Record<string, string> = {
   company: 'Company', department: 'Department', designation: 'Designation', branch: 'Branch', employment_type: 'Employment Type',
@@ -31,7 +33,8 @@ function Value({ field, value, lang, t }: { field: string; value: any; lang: str
   return <>{String(value)}</>
 }
 
-function Editor({ field, value, onChange }: { field: string; value: any; onChange: (v: any) => void }) {
+function Editor({ field, value, onChange, spec }: { field: string; value: any; onChange: (v: any) => void; spec?: any }) {
+  if (spec && spec.fieldtype !== 'Data' && !LINKS[field] && !SELECTS[field]) return <FieldInput spec={spec} value={value} onChange={onChange} />
   if (field === 'alphax_is_saudi') return <input type="checkbox" className="size-5 accent-[var(--color-brand)]" checked={!!value} onChange={(e) => onChange(e.target.checked ? 1 : 0)} />
   if (LINKS[field]) return <LinkInput doctype={LINKS[field]} value={value ?? ''} onChange={onChange} />
   if (SELECTS[field]) return <Select value={value ?? ''} onChange={(e) => onChange(e.target.value)}>{SELECTS[field].map((o) => <option key={o} value={o}>{o || '—'}</option>)}</Select>
@@ -57,6 +60,12 @@ export default function EmployeeDetail() {
     <div>
       <Link to="/people" className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-ink"><ArrowLeft className="size-4 flip-rtl" />{t('People')}</Link>
       <PageHeader title={e.employee_name} subtitle={e.name} />
+      {e.missing_required?.length > 0 && (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <span>{t('Saving this employee needs these mandatory fields first')}: {e.missing_required.join(', ')}</span>
+        </div>
+      )}
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="flex flex-col gap-5">
           <Card>
@@ -96,7 +105,7 @@ export default function EmployeeDetail() {
                 <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
                   {Object.entries(fields).map(([f, v]) => (
                     isEditing && f !== 'status' ? (
-                      <Field key={f} label={e.labels[f] ?? f}><Editor field={f} value={f in draft ? draft[f] : v} onChange={(nv) => setDraft({ ...draft, [f]: nv })} /></Field>
+                      <Field key={f} label={e.labels[f] ?? f}><Editor field={f} spec={e.fields?.[f]} value={f in draft ? draft[f] : v} onChange={(nv) => setDraft({ ...draft, [f]: nv })} /></Field>
                     ) : (
                       <div key={f} className="text-sm"><div className="text-muted">{e.labels[f] ?? f}</div><div className="font-medium"><Value field={f} value={v} lang={lang} t={t} /></div></div>
                     )

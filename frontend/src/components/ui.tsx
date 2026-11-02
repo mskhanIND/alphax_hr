@@ -98,10 +98,19 @@ export function Spinner({ label }: { label?: string }) {
 export function ErrorBox({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
   const { t } = useI18n()
   const message = error instanceof Error ? error.message : String(error)
+  // Frappe often returns several messages (e.g. one per missing field): show them as a list.
+  const parts = message.split(/\n|(?=Error: )/).map((p) => p.replace(/^Error:\s*/, '').trim()).filter(Boolean)
+  const missing = parts.map((p) => p.match(/^Value missing for [^:]+:\s*(.+)$/)?.[1]).filter(Boolean) as string[]
   return (
     <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="alert">
-      <p className="font-medium">{t('Something went wrong')}</p>
-      <p className="mt-1">{message}</p>
+      <p className="font-medium">{missing.length ? t('Please fill in') : t('Something went wrong')}</p>
+      {missing.length ? (
+        <ul className="mt-2 grid list-disc gap-x-6 gap-y-0.5 ps-5 sm:grid-cols-2">{missing.map((m) => <li key={m}>{m}</li>)}</ul>
+      ) : parts.length > 1 ? (
+        <ul className="mt-2 list-disc space-y-0.5 ps-5">{parts.map((p, i) => <li key={i}>{p}</li>)}</ul>
+      ) : (
+        <p className="mt-1">{message}</p>
+      )}
       {onRetry && <Button variant="secondary" size="sm" className="mt-3" onClick={onRetry}>{t('Try again')}</Button>}
     </div>
   )

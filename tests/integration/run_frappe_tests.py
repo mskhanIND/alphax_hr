@@ -359,6 +359,71 @@ def run(site):
             assert r["dry_run"] is True
         check("legacy import is HR-Manager only and dry-runs", legacy_import_guard)
 
+        print("\n== Sites with extra mandatory Employee fields (CentralHRMS/IRSAA style)")
+        def site_specific_mandatory():
+            frappe.set_user("Administrator")
+            made = []
+            try:
+                if not frappe.db.exists("Custom Field", "Employee-custom_saudinonsaudi"):
+                    frappe.get_doc({"doctype": "Custom Field", "dt": "Employee", "fieldname": "custom_saudinonsaudi",
+                                    "label": "Saudi/Non-Saudi", "fieldtype": "Select", "options": "\nSaudi\nNon-Saudi",
+                                    "reqd": 1, "insert_after": "gender"}).insert(ignore_permissions=True)
+                    made.append(("Custom Field", "Employee-custom_saudinonsaudi"))
+                if not frappe.db.exists("Custom Field", "Employee-custom_insurance_class"):
+                    frappe.get_doc({"doctype": "Custom Field", "dt": "Employee", "fieldname": "custom_insurance_class",
+                                    "label": "Insurance Class", "fieldtype": "Link", "options": "Branch",
+                                    "reqd": 1, "insert_after": "gender"}).insert(ignore_permissions=True)
+                    made.append(("Custom Field", "Employee-custom_insurance_class"))
+                ensure("Branch", {"branch": "AXT VIP"}, {})
+                from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+                make_property_setter("Employee", "marital_status", "reqd", 1, "Check")
+                made.append(("Property Setter", "Employee-marital_status-reqd"))
+                frappe.clear_cache(doctype="Employee")
+                frappe.db.commit()
+
+                frappe.set_user(f["hr"])
+                form = hr.new_employee_form()
+                req = {x["fieldname"]: x for x in form["required"]}
+                assert {"custom_saudinonsaudi", "custom_insurance_class", "marital_status"} <= set(req), list(req)
+                assert req["marital_status"]["options"][1:] == ["Single", "Married", "Divorced", "Widowed"], req["marital_status"]
+                assert req["custom_insurance_class"]["options"] == "Branch"
+                assert hr.lookup("Branch", "AXT"), "link lookup must allow site-specific Employee links"
+
+                base = {"first_name": "Mandatory", "last_name": "Check", "gender": "Male", "date_of_birth": "1990-01-01",
+                        "date_of_joining": nowdate(), "company": COMPANY, "alphax_is_saudi": 0}
+                try:
+                    hr.create_employee(base)
+                    raise AssertionError("expected friendly missing-fields error")
+                except frappe.ValidationError as exc:
+                    frappe.clear_messages()
+                    msg = str(exc)
+                    assert "Insurance Class" in msg and "Marital Status" in msg and "Saudi/Non-Saudi" not in msg, msg
+                created = hr.create_employee({**base, "custom_insurance_class": "AXT VIP", "marital_status": "Single"})
+                made.append(("Employee", created["name"]))
+                assert frappe.db.get_value("Employee", created["name"], "custom_saudinonsaudi") == "Non-Saudi"
+                assert created["sections"]["company_required"]["custom_insurance_class"] == "AXT VIP"
+                assert not created["missing_required"]
+
+                # An older record missing the new mandatory fields is flagged, and can be fixed in one save.
+                frappe.set_user("Administrator")
+                old = frappe.get_doc("Employee", f["e_emp2"])
+                frappe.set_user(f["hr"])
+                d = hr.employee(old.name)
+                assert "Insurance Class" in d["missing_required"], d["missing_required"]
+                fixed = hr.update_employee(old.name, {"custom_insurance_class": "AXT VIP", "marital_status": "Married",
+                                                      "custom_saudinonsaudi": "Non-Saudi"}, d["modified"])
+                assert "Insurance Class" not in fixed["missing_required"]
+            finally:
+                frappe.set_user("Administrator")
+                for dt, name in reversed(made):
+                    if dt == "Employee":
+                        frappe.delete_doc("Employee", name, force=True, ignore_permissions=True)
+                    elif frappe.db.exists(dt, name):
+                        frappe.delete_doc(dt, name, ignore_permissions=True)
+                frappe.clear_cache(doctype="Employee")
+                frappe.db.commit()
+        check("form, validation and save follow the site's own mandatory fields", site_specific_mandatory)
+
         print("\n== /alphax page")
         def www_page():
             from alphax_hr.www import alphax as page

@@ -1,50 +1,81 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { ArrowLeft } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { LinkInput } from '../components/LinkInput'
-import { Button, Card, ErrorBox, Field, Input, PageHeader } from '../components/ui'
+import { FieldInput, isEmpty, type FieldSpec } from '../components/FieldInput'
+import { Button, Card, ErrorBox, Field, PageHeader, Spinner } from '../components/ui'
 import { api } from '../lib/api'
 import { todayISO } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 import { useSession } from '../lib/session'
 
+const SAUDI_ONLY = new Set(['alphax_gosi_registration_date'])
+const FOREIGN_ONLY = new Set(['alphax_iqama_number', 'alphax_iqama_expiry'])
+const CORE_REQUIRED = new Set(['first_name', 'gender', 'date_of_birth', 'company', 'date_of_joining'])
+
 export default function NewEmployee() {
   const { t } = useI18n()
   const s = useSession()
   const nav = useNavigate()
+  const form = useQuery<{ core: FieldSpec[]; required: FieldSpec[] }>({ queryKey: ['newEmployeeForm'], queryFn: api.newEmployeeForm })
   const [f, setF] = useState<Record<string, any>>({ company: s.company ?? '', date_of_joining: todayISO(), alphax_is_saudi: 0 })
+  const [tried, setTried] = useState(false)
+  useEffect(() => {
+    // Apply site defaults for required fields once the form definition arrives.
+    if (!form.data) return
+    setF((cur) => {
+      const next = { ...cur }
+      for (const spec of form.data.required) if (isEmpty(next[spec.fieldname]) && spec.default) next[spec.fieldname] = spec.default
+      return next
+    })
+  }, [form.data])
   const set = (k: string, v: any) => setF((x) => ({ ...x, [k]: v }))
   const m = useMutation({ mutationFn: () => api.createEmployee(f), onSuccess: (d: any) => nav(`/people/${encodeURIComponent(d.name)}`) })
+
+  if (form.isLoading) return <Spinner />
+  if (form.error) return <ErrorBox error={form.error} onRetry={() => form.refetch()} />
+  const core = form.data!.core.filter((c) => (f.alphax_is_saudi ? !FOREIGN_ONLY.has(c.fieldname) : !SAUDI_ONLY.has(c.fieldname)))
+  const required = form.data!.required.filter((c) => c.fieldname !== 'custom_saudinonsaudi') // follows the Saudi checkbox
+  const missing = [...core.filter((c) => CORE_REQUIRED.has(c.fieldname)), ...required].filter((c) => isEmpty(f[c.fieldname]))
+  const submit = () => {
+    setTried(true)
+    if (missing.length) return
+    m.mutate()
+  }
+  const render = (spec: FieldSpec, mandatory: boolean) => (
+    <Field key={spec.fieldname} label={spec.label + (mandatory ? ' *' : '')}
+      hint={spec.fieldname === 'alphax_gosi_registration_date' ? t('Decides Legacy vs New GOSI system — not the hire date.') : spec.description ?? undefined}
+      error={tried && mandatory && isEmpty(f[spec.fieldname]) ? t('Required') : undefined}>
+      <FieldInput spec={spec} value={f[spec.fieldname]} onChange={(v) => set(spec.fieldname, v)} invalid={tried && mandatory && isEmpty(f[spec.fieldname])} />
+    </Field>
+  )
   return (
     <div>
       <Link to="/people" className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-ink"><ArrowLeft className="size-4 flip-rtl" />{t('People')}</Link>
       <PageHeader title={t('New employee')} />
-      <Card>
-        <form className="grid gap-4 sm:grid-cols-2" onSubmit={(e) => { e.preventDefault(); m.mutate() }}>
-          <Field label={t('First name')}><Input required value={f.first_name ?? ''} onChange={(e) => set('first_name', e.target.value)} /></Field>
-          <Field label={t('Last name')}><Input value={f.last_name ?? ''} onChange={(e) => set('last_name', e.target.value)} /></Field>
-          <Field label={t('Gender')}><LinkInput doctype="Gender" required value={f.gender ?? ''} onChange={(v) => set('gender', v)} /></Field>
-          <Field label={t('Date of birth')}><Input type="date" required value={f.date_of_birth ?? ''} onChange={(e) => set('date_of_birth', e.target.value)} /></Field>
-          <Field label={t('Company')}><LinkInput doctype="Company" required value={f.company} onChange={(v) => set('company', v)} /></Field>
-          <Field label={t('Date of joining')}><Input type="date" required value={f.date_of_joining} onChange={(e) => set('date_of_joining', e.target.value)} /></Field>
-          <Field label={t('Department')}><LinkInput doctype="Department" value={f.department ?? ''} onChange={(v) => set('department', v)} /></Field>
-          <Field label={t('Designation')}><LinkInput doctype="Designation" value={f.designation ?? ''} onChange={(v) => set('designation', v)} /></Field>
-          <label className="flex items-center gap-2 text-sm sm:col-span-2">
-            <input type="checkbox" className="size-5 accent-[var(--color-brand)]" checked={!!f.alphax_is_saudi} onChange={(e) => set('alphax_is_saudi', e.target.checked ? 1 : 0)} /> {t('Saudi')}
-          </label>
-          {f.alphax_is_saudi ? (
-            <Field label={t('First GOSI registration date')} hint={t('Decides Legacy vs New GOSI system — not the hire date.')}><Input type="date" value={f.alphax_gosi_registration_date ?? ''} onChange={(e) => set('alphax_gosi_registration_date', e.target.value)} /></Field>
-          ) : (
-            <>
-              <Field label={t('Iqama')}><Input value={f.alphax_iqama_number ?? ''} onChange={(e) => set('alphax_iqama_number', e.target.value)} inputMode="numeric" /></Field>
-              <Field label={t('Iqama expiry')}><Input type="date" value={f.alphax_iqama_expiry ?? ''} onChange={(e) => set('alphax_iqama_expiry', e.target.value)} /></Field>
-            </>
-          )}
-          {m.error && <div className="sm:col-span-2"><ErrorBox error={m.error} /></div>}
-          <div className="sm:col-span-2"><Button type="submit" loading={m.isPending}>{t('Create')}</Button></div>
-        </form>
-      </Card>
+      <form className="flex flex-col gap-5" onSubmit={(e) => { e.preventDefault(); submit() }}>
+        <Card title={t('Basic details')}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {core.map((spec) => spec.fieldname === 'alphax_is_saudi' ? (
+              <label key="saudi" className="flex items-center gap-2 self-end pb-2 text-sm font-medium">
+                <FieldInput spec={spec} value={f.alphax_is_saudi} onChange={(v) => set('alphax_is_saudi', v)} /> {t('Saudi')}
+              </label>
+            ) : render(spec, CORE_REQUIRED.has(spec.fieldname)))}
+          </div>
+        </Card>
+        {required.length > 0 && (
+          <Card title={t('Required by your company')} subtitle={t('These fields are mandatory in your HR setup.')}>
+            <div className="grid gap-4 sm:grid-cols-2">{required.map((spec) => render(spec, true))}</div>
+          </Card>
+        )}
+        {tried && missing.length > 0 && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="alert">
+            {t('Please fill in')}: {missing.map((m) => m.label).join(', ')}
+          </div>
+        )}
+        {m.error && <ErrorBox error={m.error} />}
+        <div><Button type="submit" loading={m.isPending}>{t('Create')}</Button></div>
+      </form>
     </div>
   )
 }
