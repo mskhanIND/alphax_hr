@@ -104,7 +104,8 @@ def setup_fixtures():
                               "leave_approver": approver, "alphax_is_saudi": saudi,
                               "alphax_gosi_registration_date": "2025-02-01" if saudi else None,
                               "alphax_iqama_number": None if saudi else "2" + str(abs(hash(user)))[:9],
-                              "alphax_iqama_expiry": None if saudi else add_days(nowdate(), 20)})
+                              "alphax_iqama_expiry": None if saudi else add_days(nowdate(), 20),
+                              "passport_number": None if saudi else "P" + str(abs(hash(user)))[:7]})
         doc.insert(ignore_permissions=True)
         return doc.name
 
