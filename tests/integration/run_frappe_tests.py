@@ -805,6 +805,11 @@ def run(site):
             import random
             from alphax_hr.api import salary
             frappe.set_user("Administrator")
+            for comp, abbr, kind in (("Basic", "B", "Earning"), ("Housing Allowance", "HA", "Earning"),
+                                     ("Transport Allowance", "TA", "Earning"), ("GOSI Employee", "GOSI", "Deduction")):
+                if not frappe.db.exists("Salary Component", comp):
+                    frappe.get_doc({"doctype": "Salary Component", "salary_component": comp, "salary_component_abbr": abbr,
+                                    "type": kind}).insert(ignore_permissions=True)
             salary.seed_components()
             frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
             frappe.set_user(f["hr"])
