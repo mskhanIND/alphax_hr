@@ -526,6 +526,9 @@ def run(site):
             lt = ensure("Leave Type", {"leave_type_name": "AXT Saudi Annual"},
                         {"is_carry_forward": 1, "maximum_carry_forwarded_leaves": 21, "expire_carry_forwarded_leaves_after_days": 90}).name
             frappe.db.set_single_value("AlphaX HR Settings", "annual_leave_type", lt)
+            frappe.db.set_single_value("AlphaX HR Settings", "annual_policy", "Saudi Labor Law")
+            for e in (f["e_emp"], f["e_emp2"]):
+                frappe.db.set_value("Employee", e, "alphax_annual_leave_days", 0)
             frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
             frappe.db.commit()
             frappe.set_user(f["emp"])
@@ -541,6 +544,41 @@ def run(site):
             omar = next(r for r in again["rows"] if r["employee"] == f["e_emp2"])
             assert omar["days"] == 21 and omar["from_date"].endswith("-03-01"), omar
         check("annual allocation per service year: 30 days after 5 years, idempotent", annual_allocation)
+
+        def annual_policy_and_contract():
+            frappe.set_user("Administrator")
+            expect_error(lambda: leave_setup.update_annual_settings({"annual_policy": "Fixed for all employees", "annual_fixed_days": 20}),
+                         frappe.ValidationError)
+            leave_setup.update_annual_settings({"annual_policy": "Fixed for all employees", "annual_fixed_days": 30})
+            frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
+            try:
+                omar = next(r for r in leave_engine.plan_annual_allocations()["rows"] if r["employee"] == f["e_emp2"])
+                assert omar["days"] == 30 and omar["source"] == "company", omar  # IRSAA case: 30 for everyone
+                frappe.db.set_value("Employee", f["e_emp2"], "alphax_annual_leave_days", 25)
+                frappe.db.set_value("Employee", f["e_emp"], "alphax_annual_leave_days", 25)
+                rows = {r["employee"]: r for r in leave_engine.plan_annual_allocations()["rows"]}
+                assert rows[f["e_emp2"]]["days"] == 25 and rows[f["e_emp2"]]["source"] == "contract", rows[f["e_emp2"]]
+                # 6th service year: the law's 30 days beat a 25-day contract
+                assert rows[f["e_emp"]]["days"] == 30 and rows[f["e_emp"]]["source"] == "legal_minimum", rows[f["e_emp"]]
+                doc = frappe.get_doc("Employee", f["e_emp2"])
+                doc.alphax_annual_leave_days = 15
+                expect_error(doc.save, frappe.ValidationError)
+            finally:
+                frappe.db.set_value("Employee", f["e_emp2"], "alphax_annual_leave_days", 0)
+                frappe.db.set_value("Employee", f["e_emp"], "alphax_annual_leave_days", 0)
+                frappe.db.set_single_value("AlphaX HR Settings", "annual_policy", "Saudi Labor Law")
+                frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
+                frappe.db.commit()
+        check("annual policy: fixed 30 for all, contract override, legal minimum", annual_policy_and_contract)
+
+        def fixed_leave_type_names():
+            frappe.set_user("Administrator")
+            lt = frappe.db.get_single_value("AlphaX HR Settings", "annual_leave_type")
+            expect_error(lambda: frappe.rename_doc("Leave Type", lt, lt + " X"), frappe.ValidationError)
+            expect_error(lambda: frappe.delete_doc("Leave Type", lt), frappe.ValidationError, frappe.LinkExistsError)
+            expect_error(leave_setup.setup_annual_leave_type, frappe.ValidationError)
+            assert frappe.db.exists("Leave Type", lt)
+        check("statutory and annual leave type names are fixed", fixed_leave_type_names)
 
         def escalation():
             frappe.set_user(f["emp2"])

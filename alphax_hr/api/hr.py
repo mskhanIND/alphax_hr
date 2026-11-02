@@ -22,7 +22,7 @@ SECTIONS = {
 				"current_address", "permanent_address", "person_to_be_contacted", "emergency_phone_number", "relation"],
 	"saudi": ["alphax_is_saudi", "alphax_gosi_registration_date", "alphax_gosi_number", "alphax_iqama_number",
 			  "alphax_iqama_expiry", "alphax_border_number", "alphax_work_permit_expiry",
-			  "alphax_medical_insurance_expiry", "passport_number", "valid_upto"],
+			  "alphax_medical_insurance_expiry", "passport_number", "valid_upto", "alphax_annual_leave_days"],
 	"exit": ["relieving_date", "reason_for_leaving", "resignation_letter_date"],
 }
 EDITABLE = {f for fields in SECTIONS.values() for f in fields} - {"status"}

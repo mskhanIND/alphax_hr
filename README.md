@@ -52,7 +52,9 @@ The built frontend is committed under `alphax_hr/public/frontend`, so no Node bu
 5. Open **Leave setup** in `/alphax`:
    - **Create statutory leave types** adds any missing ones and links them to their rules. Existing leave types with matching names are linked automatically on install.
    - **Allow without allocation** on any statutory type flagged as needing an allocation (for example HRMS's own *Sick Leave*); the rule caps those leaves instead.
-   - Choose the annual leave type, check the **allocation plan**, then **Create allocations** (or tick *Allocate automatically every night*).
+   - **Annual leave:** click **Set up Annual Leave** once (it links an existing *Annual Leave* type or creates it). Leave type names used by AlphaX are then fixed: they cannot be renamed or deleted.
+   - Pick the **company policy**: *Saudi Labor Law* (21 days, 30 after 5 years) or *Fixed for all employees* (e.g. 30 days, as at IRSAA). An employee whose contract says otherwise gets *Annual Leave Days (contract)* on their profile. The legal minimum always applies.
+   - Check the **allocation plan** (it shows what each number is based on), then **Create allocations** or tick *Allocate automatically every night*.
 
 Settings for probation days, minimum age and IBAN checking are in *AlphaX HR Settings*.
 

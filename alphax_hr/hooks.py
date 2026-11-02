@@ -28,6 +28,10 @@ after_migrate = "alphax_hr.install.after_migrate"
 
 doc_events = {
 	"Employee": {"validate": "alphax_hr.employee_rules.validate"},
+	"Leave Type": {
+		"before_rename": "alphax_hr.leave_engine.block_rename",
+		"on_trash": "alphax_hr.leave_engine.block_delete",
+	},
 	"Leave Application": {
 		"validate": "alphax_hr.leave_engine.validate_leave_application",
 		"before_submit": "alphax_hr.leave_engine.before_submit_leave_application",

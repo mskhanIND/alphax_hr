@@ -76,6 +76,31 @@ def entitlement_for_service_year(year_index: int, base: int = ANNUAL_BASE_DAYS, 
     return senior if year_index >= senior_after else base
 
 
+POLICY_LAW = "Saudi Labor Law"
+POLICY_FIXED = "Fixed for all employees"
+
+
+def annual_days(year_index: int, policy: str = POLICY_LAW, fixed_days: int | None = None,
+                contract_days: int | None = None, base: int = ANNUAL_BASE_DAYS, senior: int = ANNUAL_SENIOR_DAYS,
+                senior_after: int = SENIOR_AFTER_YEARS) -> tuple[int, str]:
+    """Annual leave days for one service year and where the number came from.
+
+    Order: the employee's contract, else the company policy. Art. 109's minimum
+    (21 days, 30 from the 6th year) always applies, so a contract or policy can
+    give more than the law but never less.
+    """
+    legal_min = entitlement_for_service_year(year_index, ANNUAL_BASE_DAYS, ANNUAL_SENIOR_DAYS, SENIOR_AFTER_YEARS)
+    if contract_days:
+        days, source = int(contract_days), "contract"
+    elif policy == POLICY_FIXED and fixed_days:
+        days, source = int(fixed_days), "company"
+    else:
+        days, source = entitlement_for_service_year(year_index, base, senior, senior_after), "law"
+    if days < legal_min:
+        return legal_min, "legal_minimum"
+    return days, source
+
+
 def describe_sick_split(parts: list[dict]) -> str:
     labels = {1.0: "full pay", 0.75: "75% pay", 0.0: "unpaid"}
     out = []

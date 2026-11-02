@@ -26,6 +26,8 @@
   "leave_rules",
   "annual_leave_type",
   "annual_auto_allocate",
+  "annual_policy",
+  "annual_fixed_days",
   "annual_base_days",
   "annual_senior_days",
   "annual_senior_after_years",
@@ -129,13 +131,30 @@
    "fieldname": "annual_leave_type",
    "fieldtype": "Link",
    "label": "Annual Leave Type",
-   "options": "Leave Type"
+   "options": "Leave Type",
+   "read_only": 1,
+   "description": "Set once from AlphaX → Leave setup. The leave type cannot be renamed or deleted while it is in use here."
   },
   {
    "fieldname": "annual_auto_allocate",
    "fieldtype": "Check",
    "label": "Allocate Annual Leave Automatically",
    "description": "Each service year (from the joining anniversary) gets its allocation; unused days carry forward per the Leave Type's carry-forward settings."
+  },
+  {
+   "fieldname": "annual_policy",
+   "fieldtype": "Select",
+   "label": "Annual Leave Policy",
+   "options": "Saudi Labor Law\nFixed for all employees",
+   "default": "Saudi Labor Law",
+   "description": "Saudi Labor Law: 21 days, 30 after 5 years. Fixed: the same days for everyone (e.g. 30). An employee's contract days override either; the legal minimum always applies."
+  },
+  {
+   "fieldname": "annual_fixed_days",
+   "fieldtype": "Int",
+   "label": "Fixed Days per Year",
+   "default": "30",
+   "depends_on": "eval:doc.annual_policy=='Fixed for all employees'"
   },
   {
    "fieldname": "annual_base_days",

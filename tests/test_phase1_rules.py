@@ -110,3 +110,14 @@ class ServicePeriodTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_annual_days_policy_contract_and_legal_minimum():
+    from alphax_hr.saudi.leave import annual_days, POLICY_FIXED, POLICY_LAW
+    assert annual_days(0) == (21, "law")
+    assert annual_days(5) == (30, "law")
+    assert annual_days(0, POLICY_FIXED, 30) == (30, "company")       # IRSAA: 30 for everyone
+    assert annual_days(0, POLICY_FIXED, 30, contract_days=35) == (35, "contract")
+    assert annual_days(0, POLICY_LAW, contract_days=25) == (25, "contract")
+    assert annual_days(6, POLICY_LAW, contract_days=25) == (30, "legal_minimum")
+    assert annual_days(6, POLICY_FIXED, 21) == (30, "legal_minimum")

@@ -170,7 +170,8 @@ try {
     })
     await step('leave setup page', async () => {
       await page.goto(`${BASE}/alphax/leave-setup`)
-      await page.getByText('Statutory leave rules').waitFor()
+      await page.getByText('Sick and statutory leave').waitFor()
+      await page.getByText('Company policy', { exact: true }).waitFor()
       await page.getByText('Allocation plan').waitFor()
       await page.screenshot({ path: `${OUT}/11b-leave-setup.png`, fullPage: true })
     })

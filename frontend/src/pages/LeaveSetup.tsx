@@ -54,26 +54,68 @@ function RuleRow({ r, canEdit, onSaved }: { r: any; canEdit: boolean; onSaved: (
   )
 }
 
+const POLICY_LAW = 'Saudi Labor Law'
+const POLICY_FIXED = 'Fixed for all employees'
+const SOURCE_LABEL: Record<string, string> = { contract: 'Contract', company: 'Company policy', law: 'Labor Law', legal_minimum: 'Legal minimum' }
+
 function AnnualCard({ annual, canEdit, onSaved }: { annual: any; canEdit: boolean; onSaved: (d: any) => void }) {
   const { t, lang } = useI18n()
   const [form, setForm] = useState(annual)
   useEffect(() => setForm(annual), [annual])
   const qc = useQueryClient()
   const plan = useQuery<any>({ queryKey: ['annualPlan'], queryFn: () => api.annualAllocation(0) })
-  const save = useMutation({ mutationFn: () => api.updateAnnualSettings(form), onSuccess: (d) => { onSaved(d); qc.invalidateQueries({ queryKey: ['annualPlan'] }) } })
+  const refresh = (d: any) => { onSaved(d); qc.invalidateQueries({ queryKey: ['annualPlan'] }) }
+  const save = useMutation({
+    mutationFn: () => api.updateAnnualSettings({
+      annual_policy: form.annual_policy, annual_fixed_days: form.annual_fixed_days, annual_auto_allocate: form.annual_auto_allocate,
+      annual_base_days: form.annual_base_days, annual_senior_days: form.annual_senior_days, annual_senior_after_years: form.annual_senior_after_years,
+    }),
+    onSuccess: refresh,
+  })
+  const setupType = useMutation({ mutationFn: api.setupAnnualLeaveType, onSuccess: refresh })
   const apply = useMutation({ mutationFn: () => api.annualAllocation(1), onSuccess: (d) => qc.setQueryData(['annualPlan'], d) })
   const num = (k: string) => (
-    <Input type="number" min={0} value={form[k] ?? ''} disabled={!canEdit} onChange={(e) => setForm({ ...form, [k]: e.target.value })} />
+    <Input type="number" min={21} value={form[k] ?? ''} disabled={!canEdit} onChange={(e) => setForm({ ...form, [k]: e.target.value })} />
   )
+  const fixed = form.annual_policy === POLICY_FIXED
   const p = plan.data
   return (
     <Card title={t('Annual leave (Art. 109)')} subtitle={t('Allocated per service year, from each employee\'s joining anniversary.')}>
-      <div className="grid gap-3 sm:grid-cols-5">
-        <Field label={t('Leave type')}><Input value={form.annual_leave_type ?? ''} disabled={!canEdit} onChange={(e) => setForm({ ...form, annual_leave_type: e.target.value })} /></Field>
-        <Field label={t('Days per year')}>{num('annual_base_days')}</Field>
-        <Field label={t('Senior days per year')}>{num('annual_senior_days')}</Field>
-        <Field label={t('Senior after (years)')}>{num('annual_senior_after_years')}</Field>
-        <Field label={t('Escalate after (hours)')}>{num('leave_escalation_hours')}</Field>
+      <div className="flex flex-wrap items-center gap-3 rounded-xl bg-surface p-3">
+        <span className="text-sm text-muted">{t('Leave type')}</span>
+        {annual.annual_leave_type ? (
+          <span className="font-semibold">{annual.annual_leave_type} <span className="ms-1 text-xs font-normal text-muted">🔒 {t('fixed name')}</span></span>
+        ) : canEdit ? (
+          <Button size="sm" loading={setupType.isPending} onClick={() => setupType.mutate()}>{t('Set up Annual Leave')}</Button>
+        ) : <span className="text-sm text-amber-800">{t('Not set up yet')}</span>}
+      </div>
+      {setupType.error && <ErrorBox error={setupType.error} />}
+
+      <div className="mt-4">
+        <div className="mb-2 text-sm font-medium">{t('Company policy')}</div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          {[POLICY_LAW, POLICY_FIXED].map((pol) => (
+            <label key={pol} className={`flex flex-1 cursor-pointer items-start gap-2 rounded-xl border p-3 text-sm ${form.annual_policy === pol ? 'border-brand bg-brand-50' : 'border-line'}`}>
+              <input type="radio" name="annual_policy" className="mt-0.5 accent-[var(--color-brand)]" checked={form.annual_policy === pol} disabled={!canEdit}
+                onChange={() => setForm({ ...form, annual_policy: pol })} />
+              <span><span className="font-medium">{t(pol)}</span><br />
+                <span className="text-muted">{pol === POLICY_LAW ? t('21 days, 30 days after 5 years of service') : t('The same days for every employee, e.g. 30')}</span></span>
+            </label>
+          ))}
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          {fixed ? <Field label={t('Days per year')}>{num('annual_fixed_days')}</Field> : (<>
+            <Field label={t('Days per year')}>{num('annual_base_days')}</Field>
+            <Field label={t('Senior days per year')}>{num('annual_senior_days')}</Field>
+            <Field label={t('Senior after (years)')}><Input type="number" min={1} value={form.annual_senior_after_years ?? ''} disabled={!canEdit}
+              onChange={(e) => setForm({ ...form, annual_senior_after_years: e.target.value })} /></Field>
+          </>)}
+        </div>
+        <p className="mt-2 text-xs text-muted">
+          {t('An employee\'s contract days (Profile → Saudi compliance) override the company policy.')}{' '}
+          {annual.contract_overrides > 0 && <span className="font-medium text-ink">{annual.contract_overrides} {t('employees have contract days.')}</span>}{' '}
+          {t('The legal minimum always applies.')}
+        </p>
       </div>
       <label className="mt-3 flex items-center gap-2 text-sm">
         <input type="checkbox" className="size-4 accent-[var(--color-brand)]" checked={!!Number(form.annual_auto_allocate)} disabled={!canEdit}
@@ -85,7 +127,7 @@ function AnnualCard({ annual, canEdit, onSaved }: { annual: any; canEdit: boolea
 
       <div className="mt-5 border-t border-line pt-4">
         {plan.isLoading ? <Spinner /> : plan.error ? <ErrorBox error={plan.error} /> : !p?.configured ? (
-          <p className="text-sm text-muted">{t('Choose the annual leave type to see the allocation plan.')}</p>
+          <p className="text-sm text-muted">{t('Set up the annual leave type to see the allocation plan.')}</p>
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -100,7 +142,8 @@ function AnnualCard({ annual, canEdit, onSaved }: { annual: any; canEdit: boolea
               <table className="w-full text-sm">
                 <thead className="text-start text-xs text-muted"><tr>
                   <th className="pb-2 text-start">{t('Employee')}</th><th className="pb-2 text-start">{t('Service year')}</th>
-                  <th className="pb-2 text-start">{t('Period')}</th><th className="pb-2 text-start">{t('Days')}</th><th className="pb-2 text-start">{t('Status')}</th>
+                  <th className="pb-2 text-start">{t('Period')}</th><th className="pb-2 text-start">{t('Days')}</th>
+                  <th className="pb-2 text-start">{t('Based on')}</th><th className="pb-2 text-start">{t('Status')}</th>
                 </tr></thead>
                 <tbody className="divide-y divide-line">
                   {p.rows.map((r: any) => (
@@ -109,6 +152,7 @@ function AnnualCard({ annual, canEdit, onSaved }: { annual: any; canEdit: boolea
                       <td className="py-1.5 tabular-nums">{r.service_year}</td>
                       <td className="py-1.5">{fmtDate(r.from_date, lang)} → {fmtDate(r.to_date, lang)}</td>
                       <td className="py-1.5 tabular-nums">{fmtNumber(r.days, lang)}</td>
+                      <td className="py-1.5 text-xs text-muted">{t(SOURCE_LABEL[r.source] ?? r.source ?? '')}</td>
                       <td className="py-1.5"><Badge tone={r.action === 'create' ? 'green' : r.action === 'conflict' ? 'amber' : 'gray'}>
                         {t(r.action === 'create' ? 'to create' : r.action === 'conflict' ? 'overlapping allocation' : 'already allocated')}</Badge></td>
                     </tr>
@@ -119,6 +163,24 @@ function AnnualCard({ annual, canEdit, onSaved }: { annual: any; canEdit: boolea
           </>
         )}
       </div>
+    </Card>
+  )
+}
+
+function EscalationCard({ hours, canEdit, onSaved }: { hours: number; canEdit: boolean; onSaved: (d: any) => void }) {
+  const { t } = useI18n()
+  const [v, setV] = useState<string>(String(hours ?? 0))
+  useEffect(() => setV(String(hours ?? 0)), [hours])
+  const save = useMutation({ mutationFn: () => api.updateAnnualSettings({ leave_escalation_hours: Number(v) || 0 }), onSuccess: onSaved })
+  return (
+    <Card title={t('Pending requests')} subtitle={t('Remind the approver and HR when a leave request is left waiting.')}>
+      <div className="flex flex-wrap items-end gap-3">
+        <Field label={t('Escalate after (hours)')} hint={t('0 = off')}>
+          <Input type="number" min={0} className="!w-32" value={v} disabled={!canEdit} onChange={(e) => setV(e.target.value)} />
+        </Field>
+        {canEdit && <Button variant="secondary" loading={save.isPending} onClick={() => save.mutate()}>{t('Save')}</Button>}
+      </div>
+      {save.error && <ErrorBox error={save.error} />}
     </Card>
   )
 }
@@ -135,7 +197,8 @@ export default function LeaveSetup() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title={t('Leave setup')} subtitle={t('Saudi Labor Law leave rules, checked on every leave request.')} />
-      <Card title={t('Statutory leave rules')}
+      <AnnualCard annual={d.annual} canEdit={d.can_edit} onSaved={onSaved} />
+      <Card title={t('Sick and statutory leave')}
         action={d.can_edit && d.missing_kinds.length > 0 ? (
           <Button size="sm" loading={create.isPending} onClick={() => create.mutate()}>{t('Create statutory leave types')} ({d.missing_kinds.length})</Button>
         ) : undefined}>
@@ -156,7 +219,7 @@ export default function LeaveSetup() {
           </table>
         </div>
       </Card>
-      <AnnualCard annual={d.annual} canEdit={d.can_edit} onSaved={onSaved} />
+      <EscalationCard hours={d.annual.leave_escalation_hours} canEdit={d.can_edit} onSaved={onSaved} />
     </div>
   )
 }

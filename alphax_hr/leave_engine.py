@@ -140,10 +140,14 @@ def plan_annual_allocations(on=None, employees=None):
 	if employees:
 		filters["name"] = ["in", list(employees)]
 	rows = []
-	for e in frappe.get_all("Employee", filters=filters, fields=["name", "employee_name", "date_of_joining"], order_by="employee_name asc"):
+	fields = ["name", "employee_name", "date_of_joining"]
+	if frappe.get_meta("Employee").has_field("alphax_annual_leave_days"):
+		fields.append("alphax_annual_leave_days")
+	for e in frappe.get_all("Employee", filters=filters, fields=fields, order_by="employee_name asc"):
 		k, start, end = annual.service_period(getdate(e.date_of_joining), on)
-		days = annual.entitlement_for_service_year(
-			k, cint(conf.annual_base_days) or annual.ANNUAL_BASE_DAYS, cint(conf.annual_senior_days) or annual.ANNUAL_SENIOR_DAYS,
+		days, source = annual.annual_days(
+			k, conf.annual_policy or annual.POLICY_LAW, cint(conf.annual_fixed_days), cint(e.get("alphax_annual_leave_days")),
+			cint(conf.annual_base_days) or annual.ANNUAL_BASE_DAYS, cint(conf.annual_senior_days) or annual.ANNUAL_SENIOR_DAYS,
 			cint(conf.annual_senior_after_years) or annual.SENIOR_AFTER_YEARS)
 		existing = frappe.get_all("Leave Allocation", filters={
 			"employee": e.name, "leave_type": leave_type, "docstatus": 1,
@@ -155,7 +159,7 @@ def plan_annual_allocations(on=None, employees=None):
 		else:
 			action = "conflict"  # e.g. a calendar-year allocation from before; never overwritten
 		rows.append({"employee": e.name, "employee_name": e.employee_name, "service_year": k + 1,
-					 "from_date": str(start), "to_date": str(end), "days": days, "carry_forward": bool(carry),
+					 "from_date": str(start), "to_date": str(end), "days": days, "source": source, "carry_forward": bool(carry),
 					 "action": action, "existing": [x.name for x in existing]})
 	return {"configured": True, "leave_type": leave_type, "on": str(on), "rows": rows,
 			"counts": {a: sum(1 for r in rows if r["action"] == a) for a in ("create", "exists", "conflict")}}
@@ -225,3 +229,26 @@ def escalate_pending_leaves():
 			}).insert(ignore_permissions=True)
 		frappe.db.set_value("Leave Application", row.name, "alphax_escalated_on", now_datetime(), update_modified=False)
 	frappe.db.commit()
+
+
+# ------------------------------------------------- fixed leave type names
+def _protected_leave_types():
+	conf = _settings()
+	if not conf:
+		return set()
+	names = {r.leave_type for r in conf.leave_rules}
+	if conf.annual_leave_type:
+		names.add(conf.annual_leave_type)
+	return names
+
+
+def block_rename(doc, method=None, old=None, new=None, merge=False):
+	if (old or doc.name) in _protected_leave_types():
+		frappe.throw(_("{0} is used by AlphaX HR leave rules and cannot be renamed.").format(old or doc.name),
+					 title=_("Fixed leave type"))
+
+
+def block_delete(doc, method=None):
+	if doc.name in _protected_leave_types():
+		frappe.throw(_("{0} is used by AlphaX HR leave rules and cannot be deleted.").format(doc.name),
+					 title=_("Fixed leave type"))

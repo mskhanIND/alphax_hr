@@ -143,6 +143,7 @@ export const api = {
   createStatutoryLeaveTypes: () => call(A + 'leave_setup.create_statutory_leave_types'),
   allowWithoutAllocation: (leave_type: string) => call(A + 'leave_setup.allow_without_allocation', { leave_type }),
   updateLeaveRule: (name: string, data: Record<string, unknown>) => call(A + 'leave_setup.update_rule', { name, data }),
+  setupAnnualLeaveType: () => call(A + 'leave_setup.setup_annual_leave_type'),
   updateAnnualSettings: (data: Record<string, unknown>) => call(A + 'leave_setup.update_annual_settings', { data }),
   annualAllocation: (apply = 0) => call(A + 'leave_setup.annual_allocation', { apply }),
   expiring: (days: number) => call(A + 'compliance.expiring_documents', { days }),

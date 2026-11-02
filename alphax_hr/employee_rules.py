@@ -31,6 +31,16 @@ def validate(doc, method=None):
 	_validate_iban(doc, conf)
 	_validate_age(doc, conf)
 	_set_probation(doc, conf)
+	_validate_annual_days(doc)
+
+
+def _validate_annual_days(doc):
+	days = doc.get("alphax_annual_leave_days")
+	if days in (None, "", 0):
+		return
+	if cint(days) < 21 or cint(days) > 366:
+		frappe.throw(_("Annual leave days in the contract must be at least 21 (Saudi Labor Law, Art. 109)."),
+					 title=_("Annual leave"))
 
 
 def _validate_identity(doc):
