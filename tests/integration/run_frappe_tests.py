@@ -318,8 +318,9 @@ def run(site):
                 r = hr.create_employee({"first_name": "Nora", "last_name": "New", "gender": "Female",
                                         "date_of_birth": "1995-01-01", "date_of_joining": nowdate(), "company": COMPANY,
                                         "alphax_is_saudi": 1})
-                assert "gosi_registration_date_missing" in r["issues"], r["issues"]
-        check("create_employee validates + flags missing GOSI date", hr_create)
+                assert "gosi_registration_date_missing" not in r["issues"], r["issues"]
+                assert r["sections"]["saudi"]["alphax_gosi_registration_date"] == nowdate()  # defaults to joining date
+        check("create_employee validates; Saudi GOSI date defaults to the joining date", hr_create)
 
         def lookup_allowlist():
             frappe.set_user(f["hr"])
