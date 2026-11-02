@@ -67,6 +67,9 @@ jobs:
           bench new-site hr.test --db-host 127.0.0.1 --db-root-password root --admin-password admin --install-app erpnext
           bench --site hr.test install-app hrms
           bench --site hr.test install-app alphax_hr
+          # PDFs need Frappe's print stylesheet entry; assets are skipped above, so register an empty one.
+          mkdir -p sites/assets/frappe/dist/css && touch sites/assets/frappe/dist/css/print.bundle.css
+          [ -f sites/assets/assets.json ] || echo '{"print.bundle.css": "/assets/frappe/dist/css/print.bundle.css"}' > sites/assets/assets.json
       - name: API integration tests (all personas + security cases)
         working-directory: /home/runner/bench/sites
         run: ../env/bin/python ../apps/alphax_hr/tests/integration/run_frappe_tests.py hr.test

@@ -327,16 +327,30 @@ def _process(doc):
 	payable = company.get("default_payroll_payable_account")
 	if not payable:
 		frappe.throw(_("Set a Default Payroll Payable Account on company {0} first.").format(doc.company))
-	pe = frappe.get_doc({"doctype": "Payroll Entry", "company": doc.company, "posting_date": end, "start_date": start, "end_date": end,
-						 "payroll_frequency": "Monthly", "currency": company.default_currency, "exchange_rate": 1,
-						 "payroll_payable_account": payable, "cost_center": company.cost_center,
-						 "payment_account": company.get("default_bank_account")})
-	pe.insert()
+	# Reuse a draft left by an earlier failed attempt, otherwise create the entry.
+	draft = frappe.db.get_value("Payroll Entry", {"company": doc.company, "start_date": start, "end_date": end, "docstatus": 0})
+	if draft:
+		pe = frappe.get_doc("Payroll Entry", draft)
+	else:
+		pe = frappe.get_doc({"doctype": "Payroll Entry", "company": doc.company, "posting_date": end, "start_date": start, "end_date": end,
+							 "payroll_frequency": "Monthly", "currency": company.default_currency, "exchange_rate": 1,
+							 "payroll_payable_account": payable, "cost_center": company.cost_center,
+							 "payment_account": company.get("default_bank_account")})
+		pe.insert()
 	pe.fill_employee_details()
 	if not pe.employees:
 		frappe.throw(_("No employees with a salary structure for this month."))
 	pe.save()
-	pe.submit()
+	# HRMS rolls the whole transaction back when a salary slip fails; keep the entry so the error is visible.
+	frappe.db.commit()  # nosemgrep
+	try:
+		pe.submit()
+	except frappe.DoesNotExistError:
+		pass
+	state = frappe.db.get_value("Payroll Entry", pe.name, ["docstatus", "status", "error_message"], as_dict=True)
+	if not state or state.docstatus != 1 or state.status == "Failed":
+		frappe.throw(_("Salary slips could not be created ({0}): {1}").format(
+			pe.name, frappe.utils.strip_html(state.error_message or "") if state else _("entry missing")), title=_("Payroll failed"))
 	doc.payroll_entry = pe.name
 
 

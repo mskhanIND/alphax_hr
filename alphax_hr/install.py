@@ -8,6 +8,7 @@ def after_install():
 	seed_gosi_rates()
 	seed_settings()
 	seed_leave_rules()
+	seed_catalogues()
 
 
 def after_migrate():
@@ -18,11 +19,15 @@ def after_migrate():
 	from alphax_hr.api.salary import seed_components
 
 	seed_components()
+	seed_catalogues()
+
+
+def seed_catalogues():
+	"""Default request types and violations schedule (only missing ones; HR edits are kept)."""
+	from alphax_hr.api.penalties import seed_violations
 	from alphax_hr.api.requests import seed_types
 
 	seed_types()
-	from alphax_hr.api.penalties import seed_violations
-
 	seed_violations()
 
 
