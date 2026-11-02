@@ -5,12 +5,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { FieldInput, isEmpty, type FieldSpec } from '../components/FieldInput'
 import { Button, Card, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner } from '../components/ui'
-import { api } from '../lib/api'
+import { api, uploadFile } from '../lib/api'
 import { todayISO } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 import { useSession } from '../lib/session'
 
-interface Spec extends FieldSpec { mirrors?: string; step?: string }
+interface Spec extends FieldSpec { mirrors?: string; step?: string; auto?: 'contract_start' | 'contract_end' | 'nationality'; saudi_value?: string | null }
 
 const STEPS = [
   { key: 'employee', label: 'Employee & contract' },
@@ -61,6 +61,32 @@ export default function NewEmployee() {
     return out
   }
   const m = useMutation({ mutationFn: () => api.createEmployee(payload()), onSuccess: (d: any) => nav(`/people/${encodeURIComponent(d.name)}`) })
+  const [extra, setExtra] = useState<(Spec & { mandatory: boolean })[]>([])
+  const [uploading, setUploading] = useState<string | null>(null)
+  const allSpecs: Spec[] = form.data ? [...form.data.core, ...form.data.required] : []
+  const years = String(f.alphax_contract_years ?? '')
+  // Derived values: contract dates from the joining date and period, nationality from an ID starting with 1.
+  useEffect(() => {
+    if (!form.data) return
+    setF((cur) => {
+      const next = { ...cur }
+      let changed = false
+      const put = (k: string, v: any) => { if (next[k] !== v) { next[k] = v; changed = true } }
+      for (const spec of allSpecs) {
+        if (spec.auto === 'contract_start' && cur.date_of_joining) put(spec.fieldname, cur.date_of_joining)
+        if (spec.auto === 'contract_end' && cur.date_of_joining && /^\d$/.test(years)) put(spec.fieldname, contractEnd(cur.date_of_joining, Number(years)))
+        if (spec.auto === 'nationality' && spec.saudi_value) {
+          if (kind === 'saudi') put(spec.fieldname, spec.saudi_value)
+          else if (cur[spec.fieldname] === spec.saudi_value) put(spec.fieldname, '')
+        }
+      }
+      return changed ? next : cur
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.data, f.date_of_joining, years, kind])
+  const locked = (spec: Spec) => (spec.auto === 'contract_start')
+    || (spec.auto === 'contract_end' && /^\d$/.test(years))
+    || (spec.auto === 'nationality' && kind === 'saudi' && !!spec.saudi_value)
 
   const fields = useMemo(() => {
     if (!form.data) return [] as (Spec & { mandatory: boolean })[]
@@ -79,6 +105,20 @@ export default function NewEmployee() {
     ]
   }, [form.data, kind])
 
+  // On the Review step, ask the server which mandatory fields Frappe would still reject (attachments, hidden fields …).
+  const stepKeys = STEPS.filter((st) => st.key === 'review' || fields.some((x) => (x.step ?? 'personal') === st.key)).map((st) => st.key)
+  const onReview = stepKeys[step] === 'review'
+  useEffect(() => {
+    if (!onReview) return
+    const h = setTimeout(() => {
+      api.checkNewEmployee(payload()).then((r) => {
+        const known = new Set(fields.map((x) => x.fieldname))
+        setExtra(r.missing.filter((x: any) => !known.has(x.fieldname)).map((x: any) => ({ ...x, step: 'review', mandatory: true })))
+      }).catch(() => setExtra([]))
+    }, 300)
+    return () => clearTimeout(h)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onReview, f])
   if (form.isLoading) return <Spinner />
   if (form.error) return <ErrorBox error={form.error} onRetry={() => form.refetch()} />
 
@@ -86,7 +126,8 @@ export default function NewEmployee() {
   const current = steps[step]
   const inStep = (key: string) => fields.filter((x) => (x.step ?? 'personal') === key)
   const missingIn = (key: string) => inStep(key).filter((x) => x.mandatory && isEmpty(f[x.fieldname]))
-  const allMissing = fields.filter((x) => x.mandatory && isEmpty(f[x.fieldname]))
+  const extraMissing = extra.filter((x) => isEmpty(f[x.fieldname]))
+  const allMissing = [...fields.filter((x) => x.mandatory && isEmpty(f[x.fieldname])), ...extraMissing]
   const autoFilled = form.data!.required.filter((c) => c.mirrors && fields.some((x) => x.fieldname === c.mirrors))
 
   const next = () => {
@@ -96,27 +137,40 @@ export default function NewEmployee() {
     setStep((i) => Math.min(i + 1, steps.length - 1))
   }
   const create = () => {
-    setTried(new Set(steps.map((x) => x.key)))
+    setTried(new Set([...steps.map((x) => x.key), 'review']))
     if (allMissing.length) { setPopup(allMissing); return }
     m.mutate()
   }
   const goTo = (spec: Spec) => {
     setPopup(null)
-    setStep(steps.findIndex((x) => x.key === (spec.step ?? 'personal')))
+    setStep(Math.max(0, steps.findIndex((x) => x.key === (spec.step ?? 'personal'))))
     setTimeout(() => document.querySelector<HTMLElement>(`[data-field="${spec.fieldname}"] input, [data-field="${spec.fieldname}"] select`)?.focus(), 50)
   }
 
   const render = (spec: Spec & { mandatory: boolean }) => {
     const bad = tried.has(spec.step ?? 'personal') && spec.mandatory && isEmpty(f[spec.fieldname])
     return (
-      <div key={spec.fieldname} data-field={spec.fieldname} className={clsx(spec.fieldtype === 'Small Text' || spec.fieldtype === 'Text' ? 'sm:col-span-2' : '')}>
+      <div key={spec.fieldname} data-field={spec.fieldname} className={clsx((spec.fieldtype === 'Text' || spec.fieldtype === 'Long Text') && 'sm:col-span-2')}>
         <Field label={spec.label + (spec.mandatory ? ' *' : '')}
           hint={spec.fieldname === 'alphax_iqama_number' ? t('National ID (starts with 1), Iqama (2) or border number (3/4).')
             : spec.fieldname === 'alphax_gosi_registration_date' ? t('Decides Legacy vs New GOSI system. Defaults to the joining date if left blank.')
             : spec.fieldname === 'alphax_contract_years' ? (f.date_of_joining && /^\d$/.test(String(f.alphax_contract_years ?? '')) ? `${t('Contract ends')} ${contractEnd(f.date_of_joining, Number(f.alphax_contract_years))}` : t('Sets the contract end date from the joining date.'))
             : spec.description ?? undefined}
           error={bad ? t('Required') : undefined}>
-          {spec.fieldname === 'gender' ? (
+          {locked(spec) ? (
+            <div className="flex h-10 items-center rounded-xl border border-line bg-surface px-3 text-sm" title={t('Filled automatically')}>
+              {String(f[spec.fieldname] ?? '') || '—'}<span className="ms-auto text-xs text-muted">{t('auto')}</span>
+            </div>
+          ) : spec.fieldtype === 'Attach' || spec.fieldtype === 'Attach Image' ? (
+            <div className="flex items-center gap-2">
+              <Input type="file" className="py-1.5" onChange={async (e) => {
+                const file = e.target.files?.[0]; if (!file) return
+                setUploading(spec.fieldname)
+                try { const r: any = await uploadFile('', '', file, true); set(spec.fieldname, r.file_url) } finally { setUploading(null) }
+              }} />
+              {uploading === spec.fieldname ? <span className="text-xs text-muted">…</span> : f[spec.fieldname] ? <span className="text-xs text-emerald-700">✓</span> : null}
+            </div>
+          ) : spec.fieldname === 'gender' ? (
             <Select className={bad ? 'border-red-400 ring-2 ring-red-100' : undefined} value={f.gender ?? ''} onChange={(e) => set('gender', e.target.value)}>
               <option value="">—</option><option value="Male">{t('Male')}</option><option value="Female">{t('Female')}</option>
             </Select>
@@ -158,7 +212,12 @@ export default function NewEmployee() {
 
       <Card title={t(current.label)}>
         {current.key !== 'review' ? (
-          <div className="grid gap-4 sm:grid-cols-2">{inStep(current.key).map(render)}</div>
+          <div className="grid gap-4 sm:grid-cols-2">{inStep(current.key).flatMap((spec) => spec.fieldname === 'alphax_employee_name_ar' ? [
+            <div key="name_en">
+              <Field label={t('Full Name (English)')}>
+                <div className="flex h-10 items-center rounded-xl border border-line bg-surface px-3 text-sm">{[f.first_name, f.last_name].filter(Boolean).join(' ') || '—'}<span className="ms-auto text-xs text-muted">{t('auto')}</span></div>
+              </Field>
+            </div>, render(spec)] : [render(spec)])}</div>
         ) : (
           <div className="flex flex-col gap-4">
             {steps.filter((st) => st.key !== 'review').map((st) => (
@@ -179,6 +238,12 @@ export default function NewEmployee() {
                 </dl>
               </div>
             ))}
+            {extra.length > 0 && (
+              <div className="rounded-xl border border-red-200 bg-red-50/40 p-3">
+                <div className="mb-2 font-medium text-red-800">{t('Also required by your company')}</div>
+                <div className="grid gap-4 sm:grid-cols-2">{extra.map(render)}</div>
+              </div>
+            )}
             {autoFilled.length > 0 && <p className="text-xs text-muted">{t('Also filled automatically')}: {autoFilled.map((x) => x.label).join(', ')}</p>}
           </div>
         )}

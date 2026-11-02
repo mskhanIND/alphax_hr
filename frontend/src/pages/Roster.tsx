@@ -192,7 +192,7 @@ function WeekOffDialog({ employees, defaultStart, onClose, onDone }: { employees
       {res ? (
         <div className="flex flex-col gap-3 text-sm">
           <p className="text-emerald-700">{t('Updated')}: {res.done.length} {t('employees')}</p>
-          {res.done.some((d: any) => d.skipped_outside_list) && <p className="text-amber-800">{t('Some days are outside the holiday list period and were skipped.')}</p>}
+          {res.done.some((d: any) => d.beyond_company_list) && <p className="text-amber-800">{t('Some dates are beyond the company holiday list, so public holidays for them are not known yet. Extend the company holiday list (Setup & health shows which).')}</p>}
           {res.failed.length > 0 && <ul className="list-disc rounded-xl bg-amber-50 p-3 ps-8 text-amber-900">{res.failed.map((f: any) => <li key={f.employee}><b>{f.employee}</b>: {f.error.replace(/<[^>]+>/g, '')}</li>)}</ul>}
           <Button onClick={onClose}>{t('Close')}</Button>
         </div>

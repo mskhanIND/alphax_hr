@@ -54,15 +54,21 @@ def _auto_dates(doc):
 	"""Contract dates from the joining date and the contract period (1-5 years)."""
 	if not doc.date_of_joining:
 		return
-	years = doc.get("alphax_contract_years")
-	if years and doc.meta.has_field("contract_end_date") and _changed(doc, "alphax_contract_years", "date_of_joining"):
-		if str(years).isdigit():
-			doc.contract_end_date = add_days(add_months(doc.date_of_joining, 12 * cint(years)), -1)
-		elif years == "Indefinite":
-			doc.contract_end_date = None
-	for df in _fields_by_label(doc, r"contract\s*start", ("Date",)):  # site fields like "Contract Start Date"
-		if not doc.get(df.fieldname):
+	starts = _fields_by_label(doc, r"contract\s*start", ("Date",))  # site fields like "Contract Start Date"
+	for df in starts:
+		if not doc.get(df.fieldname) or _changed(doc, "date_of_joining"):
 			doc.set(df.fieldname, doc.date_of_joining)
+	start = doc.get(starts[0].fieldname) if starts else doc.date_of_joining
+	years = doc.get("alphax_contract_years")
+	ends = _fields_by_label(doc, r"contract\s*end", ("Date",))
+	if doc.meta.has_field("contract_end_date"):
+		ends = [doc.meta.get_field("contract_end_date")] + [d for d in ends if d.fieldname != "contract_end_date"]
+	if years and _changed(doc, "alphax_contract_years", "date_of_joining", *(d.fieldname for d in starts)):
+		for df in ends:
+			if str(years).isdigit():
+				doc.set(df.fieldname, add_days(add_months(start, 12 * cint(years)), -1))
+			elif years == "Indefinite" and not df.reqd:
+				doc.set(df.fieldname, None)
 
 
 def _saudi_defaults(doc):
@@ -71,19 +77,13 @@ def _saudi_defaults(doc):
 		return
 	if doc.meta.has_field("alphax_gosi_registration_date") and not doc.get("alphax_gosi_registration_date") and doc.date_of_joining:
 		doc.alphax_gosi_registration_date = doc.date_of_joining
+	from alphax_hr.api.hr import saudi_value
+
 	for df in _fields_by_label(doc, r"nationality", ("Link", "Select", "Data")):
-		if doc.get(df.fieldname):
-			continue
-		if df.fieldtype == "Link" and df.options == "Country" and frappe.db.exists("Country", "Saudi Arabia"):
-			doc.set(df.fieldname, "Saudi Arabia")
-		elif df.fieldtype == "Link" and df.options and frappe.db.exists(df.options, "Saudi"):
-			doc.set(df.fieldname, "Saudi")
-		elif df.fieldtype == "Select":
-			opt = next((o for o in (df.options or "").split("\n") if "saudi" in o.lower() and "non" not in o.lower()), None)
-			if opt:
-				doc.set(df.fieldname, opt)
-		elif df.fieldtype == "Data":
-			doc.set(df.fieldname, "Saudi")
+		if not doc.get(df.fieldname):
+			value = saudi_value(df)
+			if value:
+				doc.set(df.fieldname, value)
 
 
 def _passport_rule(doc, conf):

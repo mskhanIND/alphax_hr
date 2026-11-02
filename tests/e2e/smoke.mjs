@@ -256,6 +256,15 @@ try {
       await page.getByRole('dialog').getByRole('button', { name: 'Close' }).first().click()
     })
 
+    await step('setup & health page', async () => {
+      await page.goto(`${BASE}/alphax/setup`)
+      await page.getByText('Employee table space').waitFor()
+      await page.screenshot({ path: `${OUT}/18-setup-health.png`, fullPage: true })
+      await page.getByRole('tab', { name: 'Settings' }).click()
+      await page.getByText('Salary component mapping').waitFor()
+      await page.screenshot({ path: `${OUT}/18b-settings.png`, fullPage: true })
+    })
+
     await step('compliance dashboard', async () => {
       await page.goto(`${BASE}/alphax/compliance`)
       await page.getByText('Saudization (estimate)').waitFor()

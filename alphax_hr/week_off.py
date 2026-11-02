@@ -59,11 +59,7 @@ def set_week_offs(employee: str, weekdays, start, end, replace=True):
 	"""Make the chosen weekdays the employee's week-offs between start and end."""
 	start, end = getdate(start), getdate(end)
 	doc = personal_list(employee)
-	lo, hi = getdate(doc.from_date), getdate(doc.to_date)
-	skipped = 0
-	if start < lo or end > hi:
-		skipped = sum(1 for d in dates_for(weekdays, start, end) if d < lo or d > hi)
-		start, end = max(start, lo), min(end, hi)
+	beyond_base = _extend(doc, start, end)
 	public = {getdate(h.holiday_date) for h in doc.holidays if not h.weekly_off}
 	if replace:  # drop the old week-offs in the range, keep public holidays
 		doc.holidays = [h for h in doc.holidays if not (h.weekly_off and start <= getdate(h.holiday_date) <= end)]
@@ -75,15 +71,29 @@ def set_week_offs(employee: str, weekdays, start, end, replace=True):
 			added += 1
 	doc.holidays.sort(key=lambda h: getdate(h.holiday_date))
 	doc.save(ignore_permissions=True)
-	return {"employee": employee, "holiday_list": doc.name, "added": added, "skipped_outside_list": skipped}
+	return {"employee": employee, "holiday_list": doc.name, "added": added, "beyond_company_list": beyond_base}
+
+
+def _extend(doc, start, end):
+	"""Grow the personal list to cover [start, end]. Returns True when that goes past the base (company) list,
+	whose public holidays for those dates are therefore not known yet."""
+	lo, hi = getdate(doc.from_date), getdate(doc.to_date)
+	if start < lo:
+		doc.from_date = start
+	if end > hi:
+		doc.to_date = end
+	base = doc.get("alphax_base_list")
+	if not base:
+		return False
+	b_lo, b_hi = (getdate(x) for x in frappe.db.get_value("Holiday List", base, ["from_date", "to_date"]))
+	return start < b_lo or end > b_hi
 
 
 def toggle_week_off(employee: str, day):
 	"""Add or remove a single week-off day (public holidays are never removed here)."""
 	day = getdate(day)
 	doc = personal_list(employee)
-	if not (getdate(doc.from_date) <= day <= getdate(doc.to_date)):
-		frappe.throw(_("{0} is outside the holiday list {1}.").format(day, doc.name))
+	_extend(doc, day, day)
 	row = next((h for h in doc.holidays if getdate(h.holiday_date) == day), None)
 	if row and not row.weekly_off:
 		frappe.throw(_("{0} is a public holiday.").format(day))

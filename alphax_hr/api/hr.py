@@ -39,7 +39,8 @@ NEW_EMPLOYEE_CORE = ["first_name", "last_name", "alphax_employee_name_ar", "gend
 					 "cell_number", "personal_email", "marital_status",
 					 "company", "department", "designation", "branch", "employment_type", "reports_to"]
 INPUT_TYPES = {"Data", "Link", "Select", "Date", "Datetime", "Check", "Int", "Float", "Currency", "Percent",
-			   "Small Text", "Text", "Long Text", "Phone", "Dynamic Link"}
+			   "Small Text", "Text", "Long Text", "Phone", "Dynamic Link", "Attach", "Attach Image"}
+ATTACH_TYPES = {"Attach", "Attach Image"}
 NEVER_EDIT = {"name", "owner", "creation", "modified", "modified_by", "docstatus", "idx", "status",
 			  "naming_series", "employee", "user_id", "create_user_permission", "lft", "rgt", "old_parent"}
 
@@ -66,7 +67,37 @@ def _field_spec(df):
 		spec["options"] = [o for o in (df.options or "").split("\n")]
 	elif df.fieldtype == "Link":
 		spec["options"] = df.options
+	auto = _auto_kind(df)
+	if auto:
+		spec["auto"] = auto
+		if auto == "nationality":
+			spec["saudi_value"] = saudi_value(df)
 	return spec
+
+
+def _auto_kind(df):
+	"""Fields the form fills itself: contract dates from the joining date and period, nationality from the ID."""
+	label = df.label or ""
+	if df.fieldtype == "Date" and re.search(r"contract\s*start", label, re.I):
+		return "contract_start"
+	if df.fieldtype == "Date" and (df.fieldname == "contract_end_date" or re.search(r"contract\s*end", label, re.I)):
+		return "contract_end"
+	if df.fieldtype in ("Link", "Select", "Data") and re.search(r"nationality", label, re.I):
+		return "nationality"
+	return None
+
+
+def saudi_value(df):
+	"""The value that means 'Saudi' for a nationality field on this site (Link record, Select option or text)."""
+	if df.fieldtype == "Select":
+		return next((o for o in (df.options or "").split("\n") if "saudi" in o.lower() and "non" not in o.lower()), None)
+	if df.fieldtype == "Link" and df.options:
+		if df.options == "Country":
+			return "Saudi Arabia" if frappe.db.exists("Country", "Saudi Arabia") else None
+		hits = [n for n in frappe.get_all(df.options, filters={"name": ["like", "%saudi%"]}, pluck="name", limit_page_length=10)
+				if "non" not in n.lower()]
+		return sorted(hits, key=len)[0] if hits else None
+	return "Saudi"
 
 
 def _editable(meta):
@@ -379,23 +410,60 @@ def new_employee_form():
 	return {"core": core, "required": required}
 
 
-@frappe.whitelist()
-def create_employee(data):
-	require_hr()
-	payload = parse_json(data, {})
+def _draft_employee(payload):
+	"""An unsaved Employee built the way create_employee will build it (defaults, mirrors, company holiday list)."""
 	meta = frappe.get_meta("Employee")
 	allowed = _editable(meta) | set(NEW_EMPLOYEE_CORE)
-	missing = [_(df.label) for df in _site_required_fields(meta)
-			   if payload.get(df.fieldname) in (None, "") and not df.default
-			   and not _mirrored(meta, payload, df.fieldname)]
-	if missing:
-		frappe.throw(_("Please fill in: {0}").format(", ".join(missing)), title=_("Missing information"))
 	doc = frappe.new_doc("Employee")
 	doc.update({k: v for k, v in payload.items() if k in allowed and meta.has_field(k) and v not in (None, "")})
 	_sync_legacy_saudi_flag(doc, payload)
 	doc.status = "Active"
+	if not doc.get("holiday_list") and doc.get("company"):
+		doc.holiday_list = frappe.get_cached_value("Company", doc.company, "default_holiday_list")
+	return doc
+
+
+def _missing_specs(doc):
+	"""Mandatory fields Frappe itself would reject, with form specs (includes attachments and hidden-in-form fields)."""
+	out = []
+	for fieldname, _msg in doc._get_missing_mandatory_fields():
+		df = doc.meta.get_field(fieldname)
+		if df and df.fieldtype not in ("Table", "Table MultiSelect"):
+			out.append({**_field_spec(df), "step": _step_for(df), "mandatory": True})
+	return out
+
+
+@frappe.whitelist()
+def check_new_employee(data):
+	"""Dry run before Create: which mandatory fields are still empty (nothing is saved)."""
+	require_hr()
+	doc = _draft_employee(parse_json(data, {}))
+	return {"missing": _missing_specs(doc)}
+
+
+@frappe.whitelist()
+def create_employee(data):
+	require_hr()
+	payload = parse_json(data, {})
+	doc = _draft_employee(payload)
+	missing = _missing_specs(doc)
+	if missing:
+		frappe.throw(_("Please fill in: {0}").format(", ".join(m["label"] for m in missing)), title=_("Missing information"))
 	doc.insert()
+	_claim_attachments(doc, payload)
 	return employee(doc.name)
+
+
+def _claim_attachments(doc, payload):
+	"""Files uploaded in the form before the employee existed are attached to it now."""
+	for df in doc.meta.fields:
+		url = payload.get(df.fieldname) if df.fieldtype in ATTACH_TYPES else None
+		if not url:
+			continue
+		for name in frappe.get_all("File", filters={"file_url": url, "owner": frappe.session.user,
+													 "attached_to_name": ["is", "not set"]}, pluck="name"):
+			frappe.db.set_value("File", name, {"attached_to_doctype": "Employee", "attached_to_name": doc.name,
+											  "attached_to_field": df.fieldname})
 
 
 @frappe.whitelist()

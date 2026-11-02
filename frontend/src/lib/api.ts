@@ -118,6 +118,9 @@ export const api = {
   myRequests: () => call<any[]>(A + 'ess.my_requests'),
   activity: (doctype: string, name: string) => call(A + 'approvals.activity', { doctype, name }),
   decided: () => call(A + 'approvals.decided'),
+  health: () => call(A + 'setup.health'),
+  getSettings: () => call(A + 'setup.get_settings'),
+  saveSettings: (data: Record<string, unknown>) => call(A + 'setup.save_settings', { data }),
   trail: (doctype: string, name: string) => call(A + 'activity.trail', { doctype, name }),
   activityFeed: (args: Record<string, unknown>) => call(A + 'activity.feed', args),
   leaveSummary: (employee?: string) => call(A + 'leave_ledger.summary', employee ? { employee } : {}),
@@ -148,6 +151,7 @@ export const api = {
     call(A + 'hr.update_employee', { name, data, modified }),
   createEmployee: (data: Record<string, unknown>) => call(A + 'hr.create_employee', { data }),
   newEmployeeForm: () => call(A + 'hr.new_employee_form'),
+  checkNewEmployee: (data: Record<string, unknown>) => call<{ missing: any[] }>(A + 'hr.check_new_employee', { data }),
   lookup: (doctype: string, txt: string) => call<{ value: string; description?: string; label?: string }[]>(A + 'hr.lookup', { doctype, txt }),
   orgSummary: () => call(A + 'hr.org_summary'),
   setPhoto: (name: string, file_url: string) => call(A + 'hr.set_photo', { name, file_url }),
@@ -172,8 +176,10 @@ export const api = {
 export async function uploadFile(doctype: string, docname: string, file: File, isPrivate = true) {
   const form = new FormData()
   form.append('file', file, file.name)
-  form.append('doctype', doctype)
-  form.append('docname', docname)
+  if (doctype && docname) {  // without them the file is uploaded unattached (attached when the record is created)
+    form.append('doctype', doctype)
+    form.append('docname', docname)
+  }
   form.append('is_private', isPrivate ? '1' : '0')
   const res = await fetch('/api/method/upload_file', {
     method: 'POST', credentials: 'same-origin', headers: { 'X-Frappe-CSRF-Token': boot.csrf_token }, body: form,

@@ -746,6 +746,59 @@ def run(site):
             frappe.db.commit()
         check("contract period sets end date; Saudi defaults; passport only for non-Saudis; photo; org chart export", employee_v2_rules)
 
+        def hcs_wizard():
+            import random
+            from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+            frappe.set_user("Administrator")
+            fields = (("custom_contract_start_date", "Contract Start Date", "Date", None),
+                      ("custom_contract_end_date", "Contract End Date", "Date", None),
+                      ("custom_passport_attach", "Passport", "Attach", None),
+                      ("custom_employee_nationality", "Employee Nationality", "Link", "Country"))
+            made = []
+            for fn, label, ft, opt in fields:
+                if not frappe.db.exists("Custom Field", "Employee-" + fn):
+                    frappe.get_doc({"doctype": "Custom Field", "dt": "Employee", "fieldname": fn, "label": label, "fieldtype": ft,
+                                    "options": opt, "reqd": 1, "insert_after": "gender"}).insert(ignore_permissions=True)
+                made.append("Employee-" + fn)
+            make_property_setter("Employee", "holiday_list", "reqd", 1, "Check")
+            frappe.clear_cache(doctype="Employee"); frappe.db.commit()
+            emp = None
+            try:
+                frappe.set_user(f["hr"])
+                form = hr.new_employee_form()
+                req = {x["fieldname"]: x for x in form["required"]}
+                assert req["custom_contract_start_date"]["auto"] == "contract_start"
+                assert req["custom_contract_end_date"]["auto"] == "contract_end"
+                assert req["custom_employee_nationality"]["auto"] == "nationality"
+                assert req["custom_employee_nationality"]["saudi_value"] == "Saudi Arabia", req["custom_employee_nationality"]
+                assert req["custom_passport_attach"]["fieldtype"] == "Attach"
+                payload = {"first_name": "Wizard", "last_name": "Check", "gender": "Male", "date_of_birth": "1990-01-01",
+                           "date_of_joining": "2026-03-15", "company": COMPANY, "alphax_contract_years": "2",
+                           "alphax_iqama_number": "1" + "".join(random.choice("0123456789") for _ in range(9)),
+                           "custom_contract_start_date": "2026-03-15", "custom_contract_end_date": "2028-03-14",
+                           "custom_employee_nationality": "Saudi Arabia"}
+                missing = {m["fieldname"] for m in hr.check_new_employee(payload)["missing"]}
+                assert missing == {"custom_passport_attach"}, missing   # holiday list comes from the company
+                expect_error(lambda: hr.create_employee(payload), frappe.ValidationError)
+                f_ = frappe.get_doc({"doctype": "File", "file_name": "passport.txt", "content": b"passport scan", "is_private": 1}).insert()
+                created = hr.create_employee({**payload, "custom_passport_attach": f_.file_url,
+                                              "custom_contract_end_date": "2030-01-01"})  # server recomputes from the period
+                emp = created["name"]
+                row = frappe.db.get_value("Employee", emp, ["custom_contract_start_date", "custom_contract_end_date",
+                                                           "contract_end_date", "holiday_list"], as_dict=True)
+                assert str(row.custom_contract_start_date) == "2026-03-15" and str(row.custom_contract_end_date) == "2028-03-14", row
+                assert str(row.contract_end_date) == "2028-03-14" and row.holiday_list, row
+                assert frappe.db.get_value("File", f_.name, "attached_to_name") == emp
+            finally:
+                frappe.set_user("Administrator")
+                if emp:
+                    frappe.delete_doc("Employee", emp, force=True, ignore_permissions=True)
+                for n in made:
+                    frappe.delete_doc("Custom Field", n, ignore_permissions=True)
+                frappe.db.delete("Property Setter", {"doc_type": "Employee", "field_name": "holiday_list", "property": "reqd"})
+                frappe.clear_cache(doctype="Employee"); frappe.db.commit()
+        check("hcs-style wizard: contract dates from period, Saudi nationality, Passport attachment, company holiday list", hcs_wizard)
+
         print("\n== Phase 2: shifts and attendance")
         from alphax_hr.api import attendance as att_api, shifts as shift_api
 
@@ -827,6 +880,12 @@ def run(site):
             assert frappe.db.exists("Holiday", {"parent": personal, "holiday_date": ph, "weekly_off": 0})
             bl.reload(); bl.holidays = [h for h in bl.holidays if h.description != "AXT Test Holiday"]; bl.save()
             assert not frappe.db.exists("Holiday", {"parent": personal, "holiday_date": ph, "weekly_off": 0})
+            # an outdated company list: the personal list grows to cover the request instead of skipping days
+            frappe.set_user(f["hr"])
+            far = getdate(add_days(frappe.db.get_value("Holiday List", base, "to_date"), 30))
+            res = shift_api.set_week_off([emp], [5], str(far), str(add_days(far, 13)))
+            assert res["done"][0]["added"] == 2 and res["done"][0]["beyond_company_list"], res
+            assert getdate(frappe.db.get_value("Holiday List", personal, "to_date")) >= getdate(add_days(far, 13))
             frappe.db.commit()
         check("roster week-offs per employee via a personal holiday list (synced public holidays)", roster_week_offs)
 
@@ -926,6 +985,24 @@ def run(site):
             assert col["alphax_gosi_number"] == "varchar(64)" and col["alphax_employee_name_ar"] == "text", col
             assert install.employee_row_size()["used"] < install.ROW_LIMIT
         check("row-size guard: AlphaX narrows its own Employee columns before migrate", row_size_guard)
+
+        def setup_and_health():
+            from alphax_hr.api import setup
+            frappe.set_user(f["emp"])
+            expect_error(setup.health, frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            h = setup.health()
+            keys = {c["key"] for c in h["checks"]}
+            assert {"scheduler", "workers", "employee_row_size", "holiday_lists", "salary_mapping", "leave_approver"} <= keys, keys
+            assert "check_failed" not in keys, [c for c in h["checks"] if c["key"] == "check_failed"]
+            assert "alphax_hr" in h["versions"]
+            st = setup.get_settings()
+            assert any(f_["fieldname"] == "probation_days" for sec in st["sections"] for f_ in sec["fields"])
+            old = st["values"]["document_alert_days"]
+            saved = setup.save_settings({"values": {"document_alert_days": 45, "leave_rules": []}, "component_map": st["component_map"]})
+            assert saved["values"]["document_alert_days"] == 45 and saved["component_map"] == st["component_map"]
+            setup.save_settings({"values": {"document_alert_days": old}})
+        check("setup & health: checks run, settings save (HR only)", setup_and_health)
 
         print("\n== /alphax page")
         def www_page():

@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import {
-  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History } from 'lucide-react'
+  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History, Network, CalendarCheck, Activity, ChevronDown } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { NavLink, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -34,33 +34,72 @@ export function useNav(): { group: string; items: NavItem[] }[] {
         { to: '/team', label: t('Team Calendar'), icon: <CalendarRange className="size-5" /> },
       ],
     })
-  if (s.persona.hr)
+  if (s.persona.hr) {
     groups.push({
-      group: t('HR Team'),
+      group: t('People'),
       items: [
-        { to: '/people', label: t('People'), icon: <Users className="size-5" /> },
+        { to: '/people', label: t('Employees'), icon: <Users className="size-5" /> },
+        { to: '/people?view=org', label: t('Org chart'), icon: <Network className="size-5" /> },
+        { to: '/compliance', label: t('Compliance'), icon: <ShieldCheck className="size-5" /> },
+      ],
+    })
+    groups.push({
+      group: t('Time & attendance'),
+      items: [
         { to: '/roster', label: t('Roster'), icon: <CalendarClock className="size-5" /> },
         { to: '/attendance', label: t('Attendance'), icon: <Clock className="size-5" /> },
-        { to: '/compliance', label: t('Compliance'), icon: <ShieldCheck className="size-5" /> },
-        { to: '/leave-balances', label: t('Leave balances'), icon: <Scale className="size-5" /> },
-        { to: '/leave-setup', label: t('Leave setup'), icon: <Settings2 className="size-5" /> },
-        { to: '/payroll', label: t('Payroll'), icon: <Landmark className="size-5" /> },
+      ],
+    })
+    groups.push({
+      group: t('Leave'),
+      items: [
+        { to: '/leave-balances', label: t('Leave balances'), icon: <CalendarCheck className="size-5" /> },
+      ],
+    })
+    groups.push({
+      group: t('Payroll'),
+      items: [
+        { to: '/payroll', label: t('Payroll runs'), icon: <Landmark className="size-5" /> },
         { to: '/payroll/gosi', label: t('GOSI Register'), icon: <FileText className="size-5" /> },
         { to: '/payroll/eosb', label: t('End of Service'), icon: <Scale className="size-5" /> },
+      ],
+    })
+    groups.push({
+      group: t('Administration'),
+      items: [
+        { to: '/setup', label: t('Setup & health'), icon: <Activity className="size-5" /> },
+        { to: '/leave-setup', label: t('Leave setup'), icon: <Settings2 className="size-5" /> },
         { to: '/activity', label: t('Activity log'), icon: <History className="size-5" /> },
       ],
     })
+  }
   return groups
 }
 
+const NAV_KEY = 'alphax-nav-collapsed'
+
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const groups = useNav()
+  const [closed, setClosed] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem(NAV_KEY) ?? '[]')) } catch { return new Set() }
+  })
+  const toggle = (g: string) => {
+    const n = new Set(closed)
+    if (n.has(g)) n.delete(g); else n.add(g)
+    setClosed(n)
+    try { localStorage.setItem(NAV_KEY, JSON.stringify([...n])) } catch { /* storage blocked */ }
+  }
   return (
-    <nav className="flex flex-col gap-5">
+    <nav className="flex flex-col gap-4">
       {groups.map((g) => (
         <div key={g.group || 'root'}>
-          {g.group && <div className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-white/50">{g.group}</div>}
-          <ul className="flex flex-col gap-0.5">
+          {g.group && (
+            <button type="button" onClick={() => toggle(g.group)} aria-expanded={!closed.has(g.group)}
+              className="mb-1 flex w-full items-center justify-between px-3 text-xs font-semibold uppercase tracking-wider text-white/50 hover:text-white/80">
+              {g.group}<ChevronDown className={clsx('size-3.5 transition', closed.has(g.group) && '-rotate-90 rtl:rotate-90')} />
+            </button>
+          )}
+          {!closed.has(g.group) && <ul className="flex flex-col gap-0.5">
             {g.items.map((item) => (
               <li key={item.to}>
                 <NavLink
@@ -78,7 +117,7 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
                 </NavLink>
               </li>
             ))}
-          </ul>
+          </ul>}
         </div>
       ))}
     </nav>
