@@ -39,7 +39,7 @@ export default function Eosb() {
                 <div><dt className="text-muted">{t('Date of joining')}</dt><dd className="font-medium">{fmtDate(r.date_of_joining, lang)}</dd></div>
                 <div><dt className="text-muted">{t('Exit date')}</dt><dd className="font-medium">{fmtDate(r.exit_date, lang)}</dd></div>
                 <div><dt className="text-muted">{t('Service')}</dt><dd className="font-medium">{fmtNumber(r.service_years, lang, 2)} {t('years')}</dd></div>
-                <div><dt className="text-muted">{t('Monthly wage (optional)').replace(/ \(.*\)/, '')}</dt><dd className="font-medium">{fmtMoney(r.monthly_wage, lang)} <span className="text-xs text-muted">({r.wage_source})</span></dd></div>
+                <div><dt className="text-muted">{t('Monthly wage (optional)').replace(/ \(.*\)/, '')}</dt><dd className="font-medium">{fmtMoney(r.monthly_wage, lang)} <span className="text-xs text-muted">({t(r.wage_source)})</span></dd></div>
               </dl>
               <ul className="divide-y divide-line rounded-xl border border-line text-sm">
                 <li className="flex justify-between p-3"><span>{t('First 5 years (½ month/year)')} · {fmtNumber(r.breakdown[0].years, lang, 2)}</span><span className="tabular-nums">{fmtMoney(r.breakdown[0].amount, lang)}</span></li>

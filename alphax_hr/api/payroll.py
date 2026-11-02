@@ -119,10 +119,9 @@ def eosb(employee, exit_date=None, reason=eosb_rules.TERMINATION, monthly_wage=N
 	exit_on = getdate(exit_date or doc.relieving_date or nowdate())
 	source = "manual"
 	if monthly_wage in (None, ""):
-		w = wages([employee], get_first_day(exit_on), get_last_day(exit_on))[employee]
-		if w["source"] == "none":
-			# fall back to the most recent slip before exit
-			w = wages([employee], date(2000, 1, 1), get_last_day(exit_on))[employee]
+		# Last actual wage: the most recent payslip up to the exit month; the
+		# salary structure base is only a fallback.
+		w = wages([employee], date(2000, 1, 1), get_last_day(exit_on))[employee]
 		monthly_wage, source = w["eosb_wage"], w["source"]
 	try:
 		result = eosb_rules.calculate(getdate(doc.date_of_joining), exit_on, monthly_wage, reason)

@@ -197,6 +197,10 @@ const ar: Record<string, string> = {
   'Shift Request': 'طلب وردية',
   'Compensatory Leave Request': 'طلب إجازة تعويضية',
   'Language': 'اللغة',
+  'salary_slip': 'آخر قسيمة راتب',
+  'salary_structure_assignment': 'الراتب الأساسي في هيكل الرواتب',
+  'manual': 'مدخل يدويًا',
+  'none': 'لا توجد بيانات راتب',
   'Emergency phone': 'هاتف الطوارئ',
   'Iqama expiry': 'تاريخ انتهاء الإقامة',
   'First GOSI registration date': 'تاريخ أول تسجيل في التأمينات',
@@ -231,6 +235,7 @@ const en: Record<string, string> = {
   wage_capped: 'Wage capped at GOSI maximum', no_salary_slip_for_period: 'No salary slip for this month',
   component_mapping_missing: 'Salary components not mapped', no_contributory_wage: 'No contributory wage',
   high: 'High', medium: 'Medium',
+  salary_slip: 'last payslip', salary_structure_assignment: 'salary structure base', manual: 'entered manually', none: 'no salary data',
 }
 
 interface I18n {

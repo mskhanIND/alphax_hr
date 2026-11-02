@@ -33,7 +33,7 @@ def slip_components(employees, start, end):
 				 "start_date": ["<=", end], "end_date": [">=", start]},
 		fields=["name", "employee", "end_date"],
 		order_by="end_date asc",
-		page_length=5000,
+		page_length=50000,
 	)
 	latest = {}
 	for s in slips:
