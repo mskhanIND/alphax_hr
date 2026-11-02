@@ -100,7 +100,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false)
   return (
     <div className="flex min-h-full">
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col gap-6 overflow-y-auto bg-brand px-3 py-5 lg:flex">
+      <aside className="sticky top-0 hidden h-screen print:!hidden w-64 shrink-0 flex-col gap-6 overflow-y-auto bg-brand px-3 py-5 lg:flex">
         <Brand />
         <NavList />
       </aside>
@@ -114,7 +114,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
       )}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-line bg-white/90 px-4 backdrop-blur sm:px-6">
+        <header className="sticky top-0 z-30 flex h-16 print:hidden items-center gap-3 border-b border-line bg-white/90 px-4 backdrop-blur sm:px-6">
           <button className="rounded-lg p-2 hover:bg-surface lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu"><Menu /></button>
           <div className="flex-1" />
           <button

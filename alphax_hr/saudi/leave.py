@@ -80,9 +80,21 @@ POLICY_LAW = "Saudi Labor Law"
 POLICY_FIXED = "Fixed for all employees"
 
 
+def senior_year_index(joining: date, period_start: date, count_from: date | None) -> int:
+    """Completed years counted for the company's senior entitlement at the start of a service year.
+
+    By default that is the service year index. When the company counts
+    seniority from a later date (e.g. 2027-01-01), years before it are ignored.
+    """
+    start = max(joining, count_from) if count_from else joining
+    if period_start <= start:
+        return 0
+    return full_years(start, period_start)
+
+
 def annual_days(year_index: int, policy: str = POLICY_LAW, fixed_days: int | None = None,
                 contract_days: int | None = None, base: int = ANNUAL_BASE_DAYS, senior: int = ANNUAL_SENIOR_DAYS,
-                senior_after: int = SENIOR_AFTER_YEARS) -> tuple[int, str]:
+                senior_after: int = SENIOR_AFTER_YEARS, senior_index: int | None = None) -> tuple[int, str]:
     """Annual leave days for one service year and where the number came from.
 
     Order: the employee's contract, else the company policy. Art. 109's minimum
@@ -95,7 +107,8 @@ def annual_days(year_index: int, policy: str = POLICY_LAW, fixed_days: int | Non
     elif policy == POLICY_FIXED and fixed_days:
         days, source = int(fixed_days), "company"
     else:
-        days, source = entitlement_for_service_year(year_index, base, senior, senior_after), "law"
+        days = entitlement_for_service_year(year_index if senior_index is None else senior_index, base, senior, senior_after)
+        source = "law"
     if days < legal_min:
         return legal_min, "legal_minimum"
     return days, source

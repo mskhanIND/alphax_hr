@@ -60,6 +60,7 @@ def overview():
 			"annual_base_days": cint(conf.annual_base_days) or annual_law.ANNUAL_BASE_DAYS,
 			"annual_senior_days": cint(conf.annual_senior_days) or annual_law.ANNUAL_SENIOR_DAYS,
 			"annual_senior_after_years": cint(conf.annual_senior_after_years) or annual_law.SENIOR_AFTER_YEARS,
+			"annual_senior_count_from": str(conf.annual_senior_count_from) if conf.annual_senior_count_from else None,
 			"leave_escalation_hours": cint(conf.leave_escalation_hours),
 		},
 		"can_edit": bool(set(frappe.get_roles()) & {"HR Manager", "System Manager"}),
@@ -131,9 +132,9 @@ def update_annual_settings(data):
 	if "annual_senior_days" in payload and cint(payload["annual_senior_days"]) < annual_law.ANNUAL_SENIOR_DAYS:
 		frappe.throw(_("Annual leave after 5 years cannot be less than {0} days (Art. 109).").format(annual_law.ANNUAL_SENIOR_DAYS))
 	for key in ("annual_policy", "annual_fixed_days", "annual_auto_allocate", "annual_base_days", "annual_senior_days",
-				"annual_senior_after_years", "leave_escalation_hours"):
+				"annual_senior_after_years", "annual_senior_count_from", "leave_escalation_hours"):
 		if key in payload:
-			conf.set(key, payload[key])
+			conf.set(key, payload[key] or None if key == "annual_senior_count_from" else payload[key])
 	conf.save()
 	return overview()
 

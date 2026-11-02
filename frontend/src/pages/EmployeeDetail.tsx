@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ArrowLeft, Pencil } from 'lucide-react'
-import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { AlertTriangle, ArrowLeft, Pencil, Printer } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { FieldInput } from '../components/FieldInput'
 import { LinkInput } from '../components/LinkInput'
-import { Avatar, Badge, Button, Card, ErrorBox, Field, Input, PageHeader, Select, Spinner, statusTone } from '../components/ui'
+import { Avatar, Badge, Button, Card, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, statusTone } from '../components/ui'
 import { api } from '../lib/api'
 import { fmtDate } from '../lib/format'
 import { useI18n } from '../lib/i18n'
@@ -49,6 +49,18 @@ export default function EmployeeDetail() {
   const q = useQuery<any>({ queryKey: ['employee', id], queryFn: () => api.employee(id) })
   const [editing, setEditing] = useState<string | null>(null)
   const [draft, setDraft] = useState<Record<string, any>>({})
+  const [params] = useSearchParams()
+  const [popup, setPopup] = useState(false)
+  const seenKey = `alphax-missing-${id}`
+  useEffect(() => {
+    // Pop the missing mandatory fields once per employee per browser session.
+    if (!q.data?.missing_fields?.length || !q.data.can_write) return
+    try { if (sessionStorage.getItem(seenKey)) return; sessionStorage.setItem(seenKey, '1') } catch { /* storage blocked */ }
+    setPopup(true)
+  }, [q.data, seenKey])
+  useEffect(() => {
+    if (params.get('print') && q.data) setTimeout(() => window.print(), 300)
+  }, [params, q.data])
   const save = useMutation({
     mutationFn: () => api.updateEmployee(id, draft, q.data.modified),
     onSuccess: (d) => { qc.setQueryData(['employee', id], d); setEditing(null); setDraft({}) },
@@ -56,16 +68,35 @@ export default function EmployeeDetail() {
   if (q.isLoading) return <Spinner />
   if (q.error) return <ErrorBox error={q.error} onRetry={() => q.refetch()} />
   const e = q.data
+  const missing = new Set<string>(e.missing_fields ?? [])
+  const sectionOf = (f: string) => Object.entries(e.sections).find(([, fields]: [string, any]) => f in fields)?.[0]
+  const fillNow = (f?: string) => {
+    setPopup(false)
+    const key = sectionOf(f ?? [...missing][0])
+    if (!key) return
+    setEditing(key); setDraft({})
+    setTimeout(() => document.getElementById(`section-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
   return (
     <div>
       <Link to="/people" className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-ink"><ArrowLeft className="size-4 flip-rtl" />{t('People')}</Link>
-      <PageHeader title={e.employee_name} subtitle={e.name} />
+      <PageHeader title={e.employee_name} subtitle={e.name}
+        actions={<Button variant="secondary" className="print:hidden" onClick={() => window.print()}><Printer className="size-4" />{t('Print / PDF')}</Button>} />
       {e.missing_required?.length > 0 && (
-        <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+        <div className="mb-4 flex flex-wrap items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 print:hidden">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          <span>{t('Saving this employee needs these mandatory fields first')}: {e.missing_required.join(', ')}</span>
+          <span className="flex-1">{t('Saving this employee needs these mandatory fields first')}: {e.missing_required.join(', ')}</span>
+          {e.can_write && <Button size="sm" onClick={() => fillNow()}>{t('Fill now')}</Button>}
         </div>
       )}
+      <Modal open={popup} onClose={() => setPopup(false)} title={<span className="flex items-center gap-2"><AlertTriangle className="size-5 text-red-600" />{t('Mandatory fields missing')}</span>}>
+        <p className="mb-3 text-sm text-muted">{t('This employee cannot be saved until these are filled. Click one to fill it.')}</p>
+        <ul className="flex flex-col gap-1">
+          {[...missing].map((f) => (
+            <li key={f}><button onClick={() => fillNow(f)} className="w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-start text-sm text-red-800 hover:bg-red-100">{e.labels[f] ?? f}</button></li>
+          ))}
+        </ul>
+      </Modal>
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="flex flex-col gap-5">
           <Card>
@@ -100,14 +131,22 @@ export default function EmployeeDetail() {
           {Object.entries(e.sections).map(([key, fields]: [string, any]) => {
             const isEditing = editing === key
             return (
-              <Card key={key} title={t(SECTION_TITLES[key] ?? key)}
-                action={e.can_write && !isEditing ? <Button size="sm" variant="ghost" onClick={() => { setEditing(key); setDraft({}) }}><Pencil className="size-4" />{t('Edit')}</Button> : undefined}>
+              <div key={key} id={`section-${key}`} className="scroll-mt-4 break-inside-avoid">
+              <Card title={t(SECTION_TITLES[key] ?? key)}
+                action={e.can_write && !isEditing ? <Button size="sm" variant="ghost" className="print:hidden" onClick={() => { setEditing(key); setDraft({}) }}><Pencil className="size-4" />{t('Edit')}</Button> : undefined}>
                 <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
                   {Object.entries(fields).map(([f, v]) => (
                     isEditing && f !== 'status' ? (
-                      <Field key={f} label={e.labels[f] ?? f}><Editor field={f} spec={e.fields?.[f]} value={f in draft ? draft[f] : v} onChange={(nv) => setDraft({ ...draft, [f]: nv })} /></Field>
+                      <div key={f} className={missing.has(f) && !(draft[f] ?? '') ? 'rounded-xl ring-2 ring-red-300 ring-offset-2' : undefined}>
+                        <Field label={(e.labels[f] ?? f) + (missing.has(f) ? ' *' : '')} error={missing.has(f) && !(draft[f] ?? '') ? t('Required') : undefined}>
+                          <Editor field={f} spec={e.fields?.[f]} value={f in draft ? draft[f] : v} onChange={(nv) => setDraft({ ...draft, [f]: nv })} />
+                        </Field>
+                      </div>
                     ) : (
-                      <div key={f} className="text-sm"><div className="text-muted">{e.labels[f] ?? f}</div><div className="font-medium"><Value field={f} value={v} lang={lang} t={t} /></div></div>
+                      <div key={f} className={missing.has(f) ? 'rounded-lg bg-red-50 px-2 py-1 text-sm ring-1 ring-red-200' : 'text-sm'}>
+                        <div className={missing.has(f) ? 'text-red-700' : 'text-muted'}>{e.labels[f] ?? f}{missing.has(f) && ' *'}</div>
+                        <div className="font-medium">{missing.has(f) ? <span className="text-red-700">{t('Required')}</span> : <Value field={f} value={v} lang={lang} t={t} />}</div>
+                      </div>
                     )
                   ))}
                 </div>
@@ -119,6 +158,7 @@ export default function EmployeeDetail() {
                   </div>
                 )}
               </Card>
+              </div>
             )
           })}
         </div>

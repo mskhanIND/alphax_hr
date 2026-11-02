@@ -133,6 +133,7 @@ export const api = {
   newEmployeeForm: () => call(A + 'hr.new_employee_form'),
   lookup: (doctype: string, txt: string) => call<{ value: string; description?: string; label?: string }[]>(A + 'hr.lookup', { doctype, txt }),
   orgSummary: () => call(A + 'hr.org_summary'),
+  orgChart: (args: Record<string, unknown> = {}) => call(A + 'hr.org_chart', args),
   // payroll & compliance
   payrollRuns: (year: number) => call(A + 'payroll.payroll_runs', { year }),
   slipSummary: (month: string) => call(A + 'payroll.slip_summary', { month }),
@@ -163,4 +164,11 @@ export async function uploadFile(doctype: string, docname: string, file: File, i
   try { body = await res.json() } catch { /* non-JSON */ }
   if (!res.ok) throw extractError(body, res.status)
   return body?.message
+}
+
+/** Browser download of a whitelisted method that returns a file (GET keeps it a normal download). */
+export function downloadUrl(method: string, args: Record<string, unknown>) {
+  const qs = new URLSearchParams()
+  for (const [k, v] of Object.entries(args)) if (v !== undefined && v !== null && v !== '') qs.set(k, String(v))
+  return `/api/method/${A}${method}?${qs.toString()}`
 }

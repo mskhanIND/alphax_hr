@@ -1,6 +1,8 @@
 """HR core: employee directory, profile, create/update, lookups."""
 from __future__ import annotations
 
+import re
+
 import frappe
 from frappe import _
 from frappe.utils import cint, get_datetime, getdate, nowdate
@@ -9,7 +11,9 @@ from alphax_hr.api._common import clamp_page, parse_json, require_hr
 from alphax_hr.saudi import documents
 
 LIST_FIELDS = ["name", "employee_name", "image", "department", "designation", "branch", "company",
-			   "status", "date_of_joining", "user_id", "alphax_is_saudi"]
+			   "status", "date_of_joining", "user_id", "alphax_is_saudi", "cell_number", "company_email",
+			   "alphax_iqama_number", "alphax_iqama_expiry", "reports_to", "employment_type"]
+EXPORT_LIMIT = 5000
 
 SECTIONS = {
 	"personal": ["first_name", "middle_name", "last_name", "gender", "date_of_birth", "marital_status",
@@ -77,8 +81,41 @@ MIRRORS = {
 }
 
 
+_ID_LABEL = re.compile(r"iqama|national\s*id|border\s*(no|number)|identity\s*(no|number)", re.I)
+_EXPIRY_LABEL = re.compile(r"expir|valid", re.I)
+
+
+def _mirror_source(df):
+	"""The AlphaX field a legacy Employee field duplicates, if any.
+
+	Known fieldnames first; otherwise recognise custom fields by their label
+	(e.g. 'National ID / Iqama / Border No'), so each site only asks once.
+	"""
+	if df.fieldname in MIRRORS:
+		return MIRRORS[df.fieldname]
+	if df.fieldname.startswith("alphax_") or df.fieldname in ("passport_number", "valid_upto"):
+		return None
+	label = df.label or ""
+	if df.fieldtype in ("Data", "Int") and _ID_LABEL.search(label) and not _EXPIRY_LABEL.search(label):
+		return "alphax_iqama_number"
+	if df.fieldtype == "Date" and _ID_LABEL.search(label) and _EXPIRY_LABEL.search(label):
+		return "alphax_iqama_expiry"
+	if df.fieldtype == "Select" and _is_saudi_select(df):
+		return "alphax_is_saudi"
+	return None
+
+
+def _is_saudi_select(df):
+	options = [o.lower() for o in (df.options or "").split("\n") if o]
+	return any("non" in o and "saudi" in o for o in options) and any("saudi" in o and "non" not in o for o in options)
+
+
+def _mirror_map(meta):
+	return {df.fieldname: src for df in meta.fields if (src := _mirror_source(df)) and meta.has_field(src)}
+
+
 def _mirror_value(df, source_value):
-	if df.fieldname == "custom_saudinonsaudi":
+	if df.fieldtype == "Select" and _is_saudi_select(df):
 		options = [o for o in (df.options or "").split("\n") if o]
 		want_non = not cint(source_value)
 		return next((o for o in options if ("non" in o.lower()) == want_non), None)
@@ -86,14 +123,19 @@ def _mirror_value(df, source_value):
 
 
 def _sync_legacy_saudi_flag(doc, payload):
-	"""Fill empty legacy fields from their AlphaX equivalents (and vice versa)."""
-	for legacy, source in MIRRORS.items():
+	"""Fill empty legacy fields from their AlphaX equivalents (and vice versa).
+
+	Uses the value being saved, or the one already on the employee, so a hidden
+	duplicate (e.g. a second 'National ID / Iqama' field) never blocks a save.
+	"""
+	for legacy, source in _mirror_map(doc.meta).items():
 		df = doc.meta.get_field(legacy)
-		if not df or not doc.meta.has_field(source):
-			continue
-		if legacy not in payload and source in payload and doc.get(legacy) in (None, ""):
-			value = _mirror_value(df, payload.get(source))
-			if value not in (None, ""):
+		if legacy not in payload and doc.get(legacy) in (None, ""):
+			current = payload.get(source) if source in payload else doc.get(source)
+			if source == "alphax_is_saudi" and source not in payload and doc.get(source) is None:
+				continue
+			value = _mirror_value(df, current)
+			if value not in (None, "") and (source == "alphax_is_saudi" or current not in (None, "")):
 				doc.set(legacy, value)
 		elif legacy in payload and source != "alphax_is_saudi" and doc.get(source) in (None, ""):
 			doc.set(source, payload.get(legacy))
@@ -101,8 +143,8 @@ def _sync_legacy_saudi_flag(doc, payload):
 
 def _mirrored(meta, payload, fieldname):
 	"""True when a legacy field will be filled from an AlphaX field in the payload."""
-	source = MIRRORS.get(fieldname)
-	return bool(source and meta.has_field(source) and (source in payload) and
+	source = _mirror_map(meta).get(fieldname)
+	return bool(source and (source in payload) and
 				(payload.get(source) not in (None, "") or source == "alphax_is_saudi"))
 
 
@@ -110,11 +152,7 @@ def _fields(meta, names):
 	return [n for n in names if meta.has_field(n)]
 
 
-@frappe.whitelist()
-def employees(search=None, status="Active", department=None, company=None, saudi=None, start=0, page_length=25):
-	require_hr()
-	meta = frappe.get_meta("Employee")
-	start, page_length = clamp_page(start, page_length)
+def _list_filters(meta, search=None, status="Active", department=None, company=None, saudi=None):
 	filters = {}
 	if status in ("Active", "Inactive", "Suspended", "Left"):
 		filters["status"] = status
@@ -130,10 +168,84 @@ def employees(search=None, status="Active", department=None, company=None, saudi
 		or_filters = [["employee_name", "like", term], ["name", "like", term]]
 		if meta.has_field("alphax_iqama_number"):
 			or_filters.append(["alphax_iqama_number", "like", term])
-	rows = frappe.get_list("Employee", filters=filters, or_filters=or_filters, fields=_fields(meta, LIST_FIELDS) + ["name"],
+	return filters, or_filters
+
+
+def _required_to_check(meta):
+	"""Mandatory fields to count per employee; legacy duplicates count via their AlphaX field."""
+	mirrors = _mirror_map(meta)
+	return [df for df in _site_required_fields(meta) if df.fieldname not in mirrors]
+
+
+@frappe.whitelist()
+def employees(search=None, status="Active", department=None, company=None, saudi=None, start=0, page_length=25):
+	require_hr()
+	meta = frappe.get_meta("Employee")
+	start, page_length = clamp_page(start, page_length)
+	filters, or_filters = _list_filters(meta, search, status, department, company, saudi)
+	required = _required_to_check(meta)
+	fields = list(dict.fromkeys(_fields(meta, LIST_FIELDS) + ["name"] + [df.fieldname for df in required]))
+	rows = frappe.get_list("Employee", filters=filters, or_filters=or_filters, fields=fields,
 						   order_by="employee_name asc", start=start, page_length=page_length)
+	for r in rows:
+		r["missing"] = [_(df.label) for df in required if r.get(df.fieldname) in (None, "")]
+		for df in required:
+			if df.fieldname not in LIST_FIELDS:
+				r.pop(df.fieldname, None)
 	total = frappe.get_list("Employee", filters=filters, or_filters=or_filters, fields=["count(name) as n"])[0].n
-	return {"rows": rows, "total": total, "start": start, "page_length": page_length}
+	departments = [d.department for d in frappe.get_list("Employee", filters={"department": ["is", "set"]},
+				   fields=["department"], group_by="department", order_by="department asc", page_length=500)]
+	return {"rows": rows, "total": total, "start": start, "page_length": page_length, "departments": departments}
+
+
+@frappe.whitelist()
+def export_employees(search=None, status="Active", department=None, company=None, saudi=None, file_format="xlsx"):
+	"""Download the filtered directory (permission-aware) as Excel or CSV."""
+	require_hr()
+	meta = frappe.get_meta("Employee")
+	filters, or_filters = _list_filters(meta, search, status, department, company, saudi)
+	mirrors = _mirror_map(meta)
+	names = ["name", "employee_name"] + [f for sec in SECTIONS.values() for f in sec]
+	names += [df.fieldname for df in _site_required_fields(meta) if df.fieldname not in mirrors]
+	fields = [f for f in dict.fromkeys(names) if f == "name" or meta.has_field(f)]
+	rows = frappe.get_list("Employee", filters=filters, or_filters=or_filters, fields=fields,
+						   order_by="employee_name asc", page_length=EXPORT_LIMIT)
+	header = [_("Employee ID") if f == "name" else _(meta.get_label(f)) for f in fields]
+	data = [header] + [[_cell(r.get(f)) for f in fields] for r in rows]
+	stamp = nowdate()
+	if file_format == "csv":
+		from frappe.utils.csvutils import to_csv
+
+		frappe.response["filecontent"] = to_csv(data).encode("utf-8-sig")  # BOM so Excel shows Arabic correctly
+		frappe.response["filename"] = f"employees-{stamp}.csv"
+	else:
+		from frappe.utils.xlsxutils import make_xlsx
+
+		frappe.response["filecontent"] = make_xlsx(data, "Employees").getvalue()
+		frappe.response["filename"] = f"employees-{stamp}.xlsx"
+	frappe.response["type"] = "binary"
+
+
+def _cell(value):
+	if value is None:
+		return ""
+	if hasattr(value, "isoformat"):
+		return value.isoformat()
+	return value
+
+
+@frappe.whitelist()
+def org_chart(company=None, department=None):
+	"""Active employees with their manager, for the organisation chart."""
+	require_hr()
+	filters = {"status": "Active"}
+	if company:
+		filters["company"] = company
+	if department:
+		filters["department"] = department
+	rows = frappe.get_list("Employee", filters=filters, page_length=EXPORT_LIMIT, order_by="employee_name asc",
+						   fields=["name", "employee_name", "designation", "department", "reports_to", "image"])
+	return {"rows": rows}
 
 
 @frappe.whitelist()
@@ -147,13 +259,20 @@ def employee(name):
 	for key, names in SECTIONS.items():
 		sections[key] = {f: doc.get(f) for f in _fields(meta, names)}
 	curated = {f for names in SECTIONS.values() for f in names}
-	extra = [df for df in _site_required_fields(meta) if df.fieldname not in curated]
+	mirrors = _mirror_map(meta)
+	extra = [df for df in _site_required_fields(meta) if df.fieldname not in curated and df.fieldname not in mirrors]
 	if extra:
 		sections["company_required"] = {df.fieldname: doc.get(df.fieldname) for df in extra}
 	labels = {f: _(meta.get_label(f)) for names in SECTIONS.values() for f in _fields(meta, names)}
 	labels.update({df.fieldname: _(df.label) for df in extra})
 	fields = {df.fieldname: _field_spec(df) for df in meta.fields if df.fieldname in curated or df in extra}
-	missing_required = [_(df.label) for df in _site_required_fields(meta) if doc.get(df.fieldname) in (None, "")]
+	missing_fields = []
+	for df in _site_required_fields(meta):
+		if doc.get(df.fieldname) in (None, ""):
+			target = mirrors.get(df.fieldname, df.fieldname)  # a legacy duplicate is fixed via its AlphaX field
+			if target not in missing_fields:
+				missing_fields.append(target)
+	missing_required = [labels.get(f) or _(meta.get_label(f)) for f in missing_fields]
 	today = getdate(nowdate())
 	docs = {
 		"iqama": documents.bucket(getdate(doc.get("alphax_iqama_expiry")) if doc.get("alphax_iqama_expiry") else None, today),
@@ -164,7 +283,7 @@ def employee(name):
 	return {
 		"name": doc.name, "employee_name": doc.employee_name, "image": doc.image, "modified": str(doc.modified),
 		"sections": sections, "labels": labels, "fields": fields, "documents": docs,
-		"missing_required": missing_required,
+		"missing_required": missing_required, "missing_fields": missing_fields,
 		"can_write": bool(frappe.has_permission("Employee", "write", doc)),
 		"issues": _issues(doc),
 	}
@@ -211,20 +330,41 @@ def update_employee(name, data, modified):
 	return employee(doc.name)
 
 
+STEP_RULES = [  # first match wins; checked against fieldname + label
+	("identity", r"iqama|national|border|passport|gosi|visa|insurance|saudi|identity|nationality|religion"),
+	("contract", r"contract|notice|probation|confirmation|salary|ctc|bank|iban|payroll|cost.?center"),
+	("job", r"company|department|designation|branch|employment|reports|grade|division|class|joining|shift|holiday|approver|location|project"),
+	("personal", r"name|gender|birth|marital|blood|salutation|mobile|cell|phone|email|address|emergency|relation"),
+]
+
+
+def _step_for(df):
+	text = f"{df.fieldname} {df.label or ''}"
+	for step, pattern in STEP_RULES:
+		if re.search(pattern, text, re.I):
+			return step
+	return "contract"  # anything else: with the remaining company details
+
+
 @frappe.whitelist()
 def new_employee_form():
 	"""Fields the 'New employee' screen must show on this site."""
 	require_hr()
 	meta = frappe.get_meta("Employee")
-	core = [_field_spec(meta.get_field(f)) for f in NEW_EMPLOYEE_CORE if meta.get_field(f)]
+	core = []
+	for f in NEW_EMPLOYEE_CORE:
+		df = meta.get_field(f)
+		if df:
+			core.append({**_field_spec(df), "step": _step_for(df)})
 	core_names = {f["fieldname"] for f in core}
+	mirrors = _mirror_map(meta)
 	required = []
 	for df in _site_required_fields(meta):
 		if df.fieldname in core_names:
 			continue
-		spec = _field_spec(df)
-		if MIRRORS.get(df.fieldname) in core_names:
-			spec["mirrors"] = MIRRORS[df.fieldname]  # filled from the AlphaX field; not shown twice
+		spec = {**_field_spec(df), "step": _step_for(df)}
+		if mirrors.get(df.fieldname) in core_names:
+			spec["mirrors"] = mirrors[df.fieldname]  # filled from the AlphaX field; not shown twice
 		required.append(spec)
 	return {"core": core, "required": required}
 

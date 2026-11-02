@@ -31,6 +31,7 @@
   "annual_base_days",
   "annual_senior_days",
   "annual_senior_after_years",
+  "annual_senior_count_from",
   "leave_escalation_hours",
   "employee_section",
   "probation_days",
@@ -173,6 +174,12 @@
    "fieldtype": "Int",
    "label": "Senior Entitlement After (years)",
    "default": "5"
+  },
+  {
+   "fieldname": "annual_senior_count_from",
+   "fieldtype": "Date",
+   "label": "Count Seniority From",
+   "description": "Optional. Years for the senior entitlement are counted from this date (or the joining date, if later). The legal 30 days after 5 years from joining always applies."
   },
   {
    "fieldname": "leave_escalation_hours",

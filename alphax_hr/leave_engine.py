@@ -148,7 +148,8 @@ def plan_annual_allocations(on=None, employees=None):
 		days, source = annual.annual_days(
 			k, conf.annual_policy or annual.POLICY_LAW, cint(conf.annual_fixed_days), cint(e.get("alphax_annual_leave_days")),
 			cint(conf.annual_base_days) or annual.ANNUAL_BASE_DAYS, cint(conf.annual_senior_days) or annual.ANNUAL_SENIOR_DAYS,
-			cint(conf.annual_senior_after_years) or annual.SENIOR_AFTER_YEARS)
+			cint(conf.annual_senior_after_years) or annual.SENIOR_AFTER_YEARS,
+			annual.senior_year_index(getdate(e.date_of_joining), start, getdate(conf.annual_senior_count_from) if conf.annual_senior_count_from else None))
 		existing = frappe.get_all("Leave Allocation", filters={
 			"employee": e.name, "leave_type": leave_type, "docstatus": 1,
 			"from_date": ["<=", end], "to_date": [">=", start]}, fields=["name", "from_date", "to_date"])

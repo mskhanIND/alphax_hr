@@ -69,6 +69,7 @@ function AnnualCard({ annual, canEdit, onSaved }: { annual: any; canEdit: boolea
     mutationFn: () => api.updateAnnualSettings({
       annual_policy: form.annual_policy, annual_fixed_days: form.annual_fixed_days, annual_auto_allocate: form.annual_auto_allocate,
       annual_base_days: form.annual_base_days, annual_senior_days: form.annual_senior_days, annual_senior_after_years: form.annual_senior_after_years,
+      annual_senior_count_from: form.annual_senior_count_from || null,
     }),
     onSuccess: refresh,
   })
@@ -103,12 +104,15 @@ function AnnualCard({ annual, canEdit, onSaved }: { annual: any; canEdit: boolea
             </label>
           ))}
         </div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+        <div className="mt-3 grid gap-3 sm:grid-cols-4">
           {fixed ? <Field label={t('Days per year')}>{num('annual_fixed_days')}</Field> : (<>
             <Field label={t('Days per year')}>{num('annual_base_days')}</Field>
             <Field label={t('Senior days per year')}>{num('annual_senior_days')}</Field>
             <Field label={t('Senior after (years)')}><Input type="number" min={1} value={form.annual_senior_after_years ?? ''} disabled={!canEdit}
               onChange={(e) => setForm({ ...form, annual_senior_after_years: e.target.value })} /></Field>
+            <Field label={t('Count seniority from')} hint={t('Optional. Blank = from each joining date.')}>
+              <Input type="date" value={form.annual_senior_count_from ?? ''} disabled={!canEdit}
+                onChange={(e) => setForm({ ...form, annual_senior_count_from: e.target.value })} /></Field>
           </>)}
         </div>
         <p className="mt-2 text-xs text-muted">

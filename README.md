@@ -16,13 +16,13 @@ React SPA (/alphax)  ──►  alphax_hr API (permission-checked)  ──►  F
 |---|---|---|
 | ![HR home](docs/screenshots/09-hr-home.png) | ![Compliance](docs/screenshots/ar-compliance.png) | ![Phone](docs/screenshots/05-arabic-phone-home.png) |
 
-## Modules (v0.2)
+## Modules (v0.3)
 
 | Area | Who | What |
 |---|---|---|
 | Self-service | Every employee | Check in/out (with location), leave balance and requests, attendance month view, payslips with PDF, profile and contact updates, upcoming holidays |
 | Approvals | Leave/expense approvers, HR | One inbox for Leave, Expense, Attendance, Shift and Compensatory requests; follows active Workflows; team leave calendar |
-| HR core | HR User / HR Manager | Employee directory and search (incl. Iqama), profile with Saudi tab, edit with stale-write protection, new employee, data issues per employee |
+| HR core | HR User / HR Manager | People as list, table or organisation chart (from *Reports to*); department/status/nationality filters; quick view; Excel/CSV export; full profile with Print/PDF; missing mandatory fields highlighted with a popup; new employee as a step-by-step wizard (one ID field — the site's other ID fields are filled from it; Saudi/non-Saudi read from the ID) |
 | Payroll | HR | Payroll runs, month slip summary, GOSI register, end-of-service calculator |
 | Saudi leave engine | HR, every employee | Statutory leave rules checked on every request (maternity 84, paternity 3, marriage 5, bereavement 5/3, Iddah 130/15, exam, Hajj once after 2 years), sick-leave pay tiers 30/60/30 with certificate before approval, annual leave 21/30 days allocated per service year, escalation of leave requests left pending |
 | Employee rules | HR | National ID / Iqama / border number checks (Saudi flag set from the ID), duplicate IDs, Saudi IBAN check, minimum age, probation end date |
@@ -53,6 +53,7 @@ The built frontend is committed under `alphax_hr/public/frontend`, so no Node bu
    - **Create statutory leave types** adds any missing ones and links them to their rules. Existing leave types with matching names are linked automatically on install.
    - **Allow without allocation** on any statutory type flagged as needing an allocation (for example HRMS's own *Sick Leave*); the rule caps those leaves instead.
    - **Annual leave:** click **Set up Annual Leave** once (it links an existing *Annual Leave* type or creates it). Leave type names used by AlphaX are then fixed: they cannot be renamed or deleted.
+   - Optional **Count seniority from** date: years for a company's senior entitlement are counted from that date (or the joining date, if later). The legal 30 days after 5 years from joining always applies.
    - Pick the **company policy**: *Saudi Labor Law* (21 days, 30 after 5 years) or *Fixed for all employees* (e.g. 30 days, as at IRSAA). An employee whose contract says otherwise gets *Annual Leave Days (contract)* on their profile. The legal minimum always applies.
    - Check the **allocation plan** (it shows what each number is based on), then **Create allocations** or tick *Allocate automatically every night*.
 

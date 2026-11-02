@@ -374,7 +374,8 @@ def run(site):
                                     "label": "Insurance Class", "fieldtype": "Link", "options": "Branch",
                                     "reqd": 1, "insert_after": "gender"}).insert(ignore_permissions=True)
                     made.append(("Custom Field", "Employee-custom_insurance_class"))
-                for fn, label in (("custom_identity_number", "Identity Number"), ("iqama_national_id", "National ID / Iqama / Border No")):
+                for fn, label in (("custom_identity_number", "Identity Number"), ("iqama_national_id", "National ID / Iqama / Border No"),
+                                  ("custom_nid_border_no", "National ID / Iqama / Border No")):  # unknown name: found by label
                     if not frappe.db.exists("Custom Field", "Employee-" + fn):
                         frappe.get_doc({"doctype": "Custom Field", "dt": "Employee", "fieldname": fn, "label": label,
                                         "fieldtype": "Data", "reqd": 1, "insert_after": "gender"}).insert(ignore_permissions=True)
@@ -393,6 +394,9 @@ def run(site):
                 assert req["marital_status"]["options"][1:] == ["Single", "Married", "Divorced", "Widowed"], req["marital_status"]
                 assert req["custom_insurance_class"]["options"] == "Branch"
                 assert req["custom_identity_number"].get("mirrors") == "alphax_iqama_number", req["custom_identity_number"]
+                assert req["custom_nid_border_no"].get("mirrors") == "alphax_iqama_number", req["custom_nid_border_no"]
+                assert req["marital_status"]["step"] == "personal" and req["custom_insurance_class"]["step"] == "identity", req
+                assert {c["fieldname"]: c["step"] for c in form["core"]}["department"] == "job"
                 assert hr.lookup("Branch", "AXT"), "link lookup must allow site-specific Employee links"
 
                 base = {"first_name": "Mandatory", "last_name": "Check", "gender": "Male", "date_of_birth": "1990-01-01",
@@ -411,6 +415,7 @@ def run(site):
                                               "alphax_iqama_number": unique_id})
                 assert frappe.db.get_value("Employee", created["name"], "custom_identity_number") == unique_id
                 assert frappe.db.get_value("Employee", created["name"], "iqama_national_id") == unique_id
+                assert frappe.db.get_value("Employee", created["name"], "custom_nid_border_no") == unique_id
                 made.append(("Employee", created["name"]))
                 assert frappe.db.get_value("Employee", created["name"], "custom_saudinonsaudi") == "Non-Saudi"
                 assert created["sections"]["company_required"]["custom_insurance_class"] == "AXT VIP"
@@ -420,15 +425,18 @@ def run(site):
                 frappe.set_user("Administrator")
                 # Deleted custom fields keep their DB column: clear leftovers from earlier runs.
                 frappe.db.set_value("Employee", f["e_emp2"], {"custom_insurance_class": None, "marital_status": None,
-                                                              "custom_identity_number": None, "iqama_national_id": None},
+                                                              "custom_identity_number": None, "iqama_national_id": None,
+                                                              "custom_nid_border_no": None},
                                     update_modified=False)
                 old = frappe.get_doc("Employee", f["e_emp2"])
                 frappe.set_user(f["hr"])
                 d = hr.employee(old.name)
                 assert "Insurance Class" in d["missing_required"], d["missing_required"]
-                fixed = hr.update_employee(old.name, {"custom_insurance_class": "AXT VIP", "marital_status": "Married",
-                                                      "custom_saudinonsaudi": "Non-Saudi", "custom_identity_number": "2311112222",
-                                                      "iqama_national_id": "2311112222"}, d["modified"])
+                # The duplicate ID fields are hidden in AlphaX and filled from the employee's own Iqama number.
+                assert "custom_nid_border_no" not in d["sections"].get("company_required", {}), d["sections"]["company_required"]
+                fixed = hr.update_employee(old.name, {"custom_insurance_class": "AXT VIP", "marital_status": "Married"}, d["modified"])
+                iqama = frappe.db.get_value("Employee", old.name, "alphax_iqama_number")
+                assert iqama and frappe.db.get_value("Employee", old.name, "custom_nid_border_no") == iqama
                 assert "Insurance Class" not in fixed["missing_required"]
             finally:
                 frappe.set_user("Administrator")
@@ -579,6 +587,25 @@ def run(site):
             expect_error(leave_setup.setup_annual_leave_type, frappe.ValidationError)
             assert frappe.db.exists("Leave Type", lt)
         check("statutory and annual leave type names are fixed", fixed_leave_type_names)
+
+        def people_export_and_org_chart():
+            frappe.set_user(f["hr"])
+            listing = hr.employees(search="Omar")
+            row = next(r for r in listing["rows"] if r["name"] == f["e_emp2"])
+            assert "missing" in row and isinstance(listing["departments"], list), row
+            hr.export_employees(search="Test", file_format="xlsx")
+            assert frappe.response["type"] == "binary" and frappe.response["filename"].endswith(".xlsx")
+            assert frappe.response["filecontent"][:2] == b"PK"  # a real xlsx (zip)
+            hr.export_employees(search="Test", file_format="csv")
+            text = frappe.response["filecontent"].decode("utf-8-sig")
+            assert "Employee ID" in text.splitlines()[0] and "Omar Test" in text, text[:200]
+            frappe.response.pop("filecontent", None); frappe.response.pop("type", None)
+            frappe.db.set_value("Employee", f["e_emp"], "reports_to", f["e_mgr"])
+            chart = {r["name"]: r for r in hr.org_chart()["rows"]}
+            assert chart[f["e_emp"]]["reports_to"] == f["e_mgr"], chart[f["e_emp"]]
+            frappe.set_user(f["emp"])
+            expect_error(lambda: hr.export_employees(), frappe.PermissionError)
+        check("people: missing-field counts, Excel/CSV export, org chart; employees blocked", people_export_and_org_chart)
 
         def escalation():
             frappe.set_user(f["emp2"])

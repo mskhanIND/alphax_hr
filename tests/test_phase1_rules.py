@@ -121,3 +121,16 @@ def test_annual_days_policy_contract_and_legal_minimum():
     assert annual_days(0, POLICY_LAW, contract_days=25) == (25, "contract")
     assert annual_days(6, POLICY_LAW, contract_days=25) == (30, "legal_minimum")
     assert annual_days(6, POLICY_FIXED, 21) == (30, "legal_minimum")
+
+
+def test_senior_years_counted_from_company_date():
+    from datetime import date
+    from alphax_hr.saudi.leave import annual_days, senior_year_index
+    # joined 2020; company counts seniority from 2027-01-01
+    assert senior_year_index(date(2020, 3, 1), date(2027, 3, 1), date(2027, 1, 1)) == 0
+    assert senior_year_index(date(2020, 3, 1), date(2032, 3, 1), date(2027, 1, 1)) == 5
+    assert senior_year_index(date(2020, 3, 1), date(2027, 3, 1), None) == 7
+    # company gives 35 after 5 years counted from 2027: not yet, but the legal 30 still applies
+    assert annual_days(7, base=25, senior=35, senior_after=5, senior_index=0) == (30, "legal_minimum")
+    assert annual_days(12, base=25, senior=35, senior_after=5, senior_index=5) == (35, "law")
+    assert annual_days(2, base=25, senior=35, senior_after=5, senior_index=0) == (25, "law")
