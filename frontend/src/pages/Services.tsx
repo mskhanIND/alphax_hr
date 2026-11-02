@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Briefcase, CalendarDays, Clock, FileText, Folder, LogOut, Plane, Receipt, Star, Timer, Wallet } from 'lucide-react'
+import { Briefcase, CalendarDays, CalendarRange, Clock, FileText, Folder, LogOut, Plane, Receipt, Star, Timer, Wallet } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { RequestForm, typeTitle } from '../components/RequestForm'
@@ -32,8 +32,9 @@ export default function Services() {
     <div className="flex flex-col gap-5">
       <PageHeader title={t('Services')} subtitle={t('Everything you can ask HR for, in one place')} />
       <Card title={t('Everyday')}>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
           <Tile icon={<CalendarDays className="size-5" />} label={t('Apply for leave')} to="/me/leave" />
+          <Tile icon={<CalendarRange className="size-5" />} label={t('Vacation plan')} to="/me/vacation-plan" />
           <Tile icon={<Clock className="size-5" />} label={t('Attendance & corrections')} to="/me/attendance" />
           <Tile icon={<Receipt className="size-5" />} label={t('Expense claim')} to="/me/expenses" />
           <Tile icon={<Wallet className="size-5" />} label={t('My Payslips')} to="/me/payslips" />

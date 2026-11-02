@@ -10,6 +10,7 @@ import { useI18n } from '../lib/i18n'
 function summary(r: any, t: (s: string) => string, lang: string) {
   if (r.doctype === 'Leave Application') return `${r.leave_type} · ${fmtDate(r.from_date, lang)} → ${fmtDate(r.to_date, lang)} · ${fmtNumber(r.total_leave_days, lang, 1)} ${t('days')}`
   if (r.doctype === 'Expense Claim') return `${fmtMoney(r.total_claimed_amount, lang)} · ${fmtDate(r.posting_date, lang)}`
+  if (r.doctype === 'AlphaX Leave Plan') return `${t('Vacation plan')} ${r.year} · ${fmtNumber(r.total_days, lang, 0)} / ${fmtNumber(r.entitlement, lang, 0)} ${t('days')}`
   if (r.doctype === 'AlphaX Request') {
     let d: any = r.details
     try { if (typeof d === 'string') d = JSON.parse(d) } catch { d = {} }

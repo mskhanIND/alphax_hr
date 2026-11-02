@@ -49,8 +49,10 @@ scheduler_events = {
 }
 
 permission_query_conditions = {"AlphaX Request": "alphax_hr.api.requests.query_conditions",
-							   "AlphaX Penalty": "alphax_hr.api.penalties.query_conditions"}
+							   "AlphaX Penalty": "alphax_hr.api.penalties.query_conditions",
+							   "AlphaX Leave Plan": "alphax_hr.api.leave_plan.query_conditions"}
 has_permission = {"AlphaX Request": "alphax_hr.api.requests.has_permission",
-				  "AlphaX Penalty": "alphax_hr.api.penalties.has_permission"}
+				  "AlphaX Penalty": "alphax_hr.api.penalties.has_permission",
+				  "AlphaX Leave Plan": "alphax_hr.api.leave_plan.has_permission"}
 
 after_request = ["alphax_hr.api.pwa.after_request"]

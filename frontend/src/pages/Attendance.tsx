@@ -9,11 +9,11 @@ import { useI18n } from '../lib/i18n'
 
 const CODE_STYLE: Record<string, string> = {
   P: 'bg-emerald-500 text-white', A: 'bg-red-500 text-white', L: 'bg-sky-500 text-white', HD: 'bg-amber-400 text-ink',
-  W: 'bg-violet-500 text-white', H: 'bg-slate-100 text-slate-500', M: 'bg-orange-500 text-white', '?': 'bg-white text-muted ring-1 ring-line',
+  W: 'bg-violet-500 text-white', H: 'bg-slate-100 text-slate-500', M: 'bg-orange-500 text-white', '?': 'bg-white text-muted ring-1 ring-line', X: 'bg-slate-300 text-slate-700',
   '': 'bg-transparent',
 }
 const CODE_LABEL: Record<string, string> = {
-  P: 'Present', A: 'Absent', L: 'On leave', HD: 'Half day', W: 'Work from home', H: 'Holiday / weekly off', M: 'Missing punch', '?': 'Not marked yet',
+  P: 'Present', A: 'Absent', L: 'On leave', HD: 'Half day', W: 'Work from home', H: 'Holiday / weekly off', M: 'Missing punch', '?': 'Not marked yet', X: 'Exempt',
 }
 
 export default function Attendance() {

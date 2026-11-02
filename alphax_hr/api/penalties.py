@@ -276,6 +276,8 @@ def suggestions(month=None, department=None):
 	limit_day = getdate(add_days(nowdate(), -rules.DISCOVERY_LIMIT_DAYS))
 	out = []
 	for row in data["rows"]:
+		if row.get("no_penalties"):
+			continue
 		for c in row["cells"]:
 			if c.get("not_employed") or getdate(c["date"]) < limit_day:
 				continue

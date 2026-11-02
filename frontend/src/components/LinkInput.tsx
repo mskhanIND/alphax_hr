@@ -4,13 +4,13 @@ import { api } from '../lib/api'
 import { Input } from './ui'
 
 /** Text input with server-side suggestions for a Frappe Link field. */
-export function LinkInput({ doctype, value, onChange, disabled, required }: { doctype: string; value: string; onChange: (v: string) => void; disabled?: boolean; required?: boolean }) {
+export function LinkInput({ doctype, value, onChange, disabled, required, source = 'hr' }: { doctype: string; value: string; onChange: (v: string) => void; disabled?: boolean; required?: boolean; source?: 'hr' | 'ess' }) {
   const id = useId()
   const [txt, setTxt] = useState(value ?? '')
   const [debounced, setDebounced] = useState('')
   useEffect(() => setTxt(value ?? ''), [value])
   useEffect(() => { const h = setTimeout(() => setDebounced(txt), 250); return () => clearTimeout(h) }, [txt])
-  const q = useQuery({ queryKey: ['lookup', doctype, debounced], queryFn: () => api.lookup(doctype, debounced), enabled: !disabled, staleTime: 60_000 })
+  const q = useQuery({ queryKey: ['lookup', source, doctype, debounced], queryFn: () => (source === 'ess' ? api.essLookup : api.lookup)(doctype, debounced), enabled: !disabled, staleTime: 60_000 })
   return (
     <>
       <Input list={id} value={txt} disabled={disabled} required={required} autoComplete="off"

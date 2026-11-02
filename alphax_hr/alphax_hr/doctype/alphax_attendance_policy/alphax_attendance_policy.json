@@ -1,0 +1,166 @@
+{
+ "doctype": "DocType",
+ "name": "AlphaX Attendance Policy",
+ "module": "AlphaX HR",
+ "custom": 0,
+ "engine": "InnoDB",
+ "creation": "2026-11-02 00:00:00.000000",
+ "modified": "2026-11-02 00:00:00.000000",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "field_order": [
+  "policy_name",
+  "enabled",
+  "applies_to",
+  "company",
+  "department",
+  "designation",
+  "employee",
+  "description",
+  "rules_section",
+  "exempt",
+  "late_grace_minutes",
+  "early_grace_minutes",
+  "monthly_late_allowance",
+  "cb1",
+  "single_punch_ok",
+  "permissions_per_month",
+  "no_penalties"
+ ],
+ "fields": [
+  {
+   "fieldname": "policy_name",
+   "fieldtype": "Data",
+   "label": "Policy",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "applies_to",
+   "fieldtype": "Select",
+   "label": "Applies To",
+   "options": "Everyone\nCompany\nDepartment\nDesignation\nEmployee",
+   "default": "Department",
+   "reqd": 1,
+   "in_list_view": 1,
+   "description": "The most specific policy wins: Employee, then Designation, Department, Company, Everyone."
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "depends_on": "eval:doc.applies_to==\"Company\""
+  },
+  {
+   "fieldname": "department",
+   "fieldtype": "Link",
+   "label": "Department",
+   "options": "Department",
+   "depends_on": "eval:doc.applies_to==\"Department\""
+  },
+  {
+   "fieldname": "designation",
+   "fieldtype": "Link",
+   "label": "Designation",
+   "options": "Designation",
+   "depends_on": "eval:doc.applies_to==\"Designation\""
+  },
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "label": "Employee",
+   "options": "Employee",
+   "depends_on": "eval:doc.applies_to==\"Employee\""
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "rules_section",
+   "fieldtype": "Section Break",
+   "label": "Exceptions"
+  },
+  {
+   "fieldname": "exempt",
+   "fieldtype": "Check",
+   "label": "Exempt from attendance tracking",
+   "description": "No late, early, absent or missing-punch flags (e.g. executives, field staff, drivers)."
+  },
+  {
+   "fieldname": "late_grace_minutes",
+   "fieldtype": "Data",
+   "label": "Late grace (minutes)",
+   "description": "Overrides the shift's grace. Blank = use the shift."
+  },
+  {
+   "fieldname": "early_grace_minutes",
+   "fieldtype": "Data",
+   "label": "Early-exit grace (minutes)",
+   "description": "Overrides the shift's grace. Blank = use the shift."
+  },
+  {
+   "fieldname": "monthly_late_allowance",
+   "fieldtype": "Int",
+   "label": "Free late minutes per month",
+   "description": "Late minutes up to this total in a month are not counted (first come, first used)."
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "single_punch_ok",
+   "fieldtype": "Check",
+   "label": "A single punch counts as present",
+   "description": "Missing check-out is not flagged."
+  },
+  {
+   "fieldname": "permissions_per_month",
+   "fieldtype": "Data",
+   "label": "Late/early permissions per month",
+   "description": "Overrides the company setting. Blank = setting."
+  },
+  {
+   "fieldname": "no_penalties",
+   "fieldtype": "Check",
+   "label": "Never suggest penalties"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "HR Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "HR User",
+   "read": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1,
+ "states": [],
+ "autoname": "field:policy_name",
+ "title_field": "policy_name"
+}

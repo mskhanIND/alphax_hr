@@ -210,6 +210,11 @@ def _check_permission(employee, t, data):
 	if day in days:
 		frappe.throw(_("You already have a {0} for {1}.").format(t.request_type_name, frappe.utils.formatdate(day)))
 	limit = cint(settings().get("permissions_per_month"))
+	from alphax_hr.api.attendance_policy import for_employee
+
+	pol = for_employee(employee)
+	if pol and str(pol.permissions_per_month or "").strip() != "":
+		limit = cint(pol.permissions_per_month)
 	if limit:
 		all_types = frappe.get_all("AlphaX Request Type", filters={"effect": ["in", list(EFFECTS)]}, pluck="name")
 		month = [r for r in frappe.get_all("AlphaX Request", filters={"employee": employee, "request_type": ["in", all_types],

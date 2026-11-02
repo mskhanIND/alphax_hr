@@ -36,6 +36,9 @@
   "employee_section",
   "probation_days",
   "permissions_per_month",
+  "plan_max_off_percent",
+  "plan_min_block_days",
+  "plan_deadline",
   "min_employee_age",
   "validate_iban",
   "passport_non_saudi_only",
@@ -217,6 +220,25 @@
    "label": "Late/Early Permissions per Month",
    "default": "3",
    "description": "How many late-arrival / early-exit permissions an employee may request in a month. 0 = no limit."
+  },
+  {
+   "fieldname": "plan_max_off_percent",
+   "fieldtype": "Int",
+   "label": "Vacation plan: max % of a department off at once",
+   "default": "30",
+   "description": "Plans that push a department above this share on any day are flagged to the approver. 0 = no check."
+  },
+  {
+   "fieldname": "plan_min_block_days",
+   "fieldtype": "Int",
+   "label": "Vacation plan: at least one block of (days)",
+   "default": "0",
+   "description": "Ask employees to plan at least one continuous vacation of this many days. 0 = no rule."
+  },
+  {
+   "fieldname": "plan_deadline",
+   "fieldtype": "Date",
+   "label": "Vacation plan: submit by"
   },
   {
    "fieldname": "min_employee_age",

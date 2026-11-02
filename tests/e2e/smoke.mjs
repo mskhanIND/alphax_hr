@@ -118,6 +118,23 @@ try {
       await page.goto(`${BASE}/alphax/me/warnings`)
       await page.getByRole('heading', { name: 'My warnings' }).waitFor()
     })
+    await step('vacation plan: add a period next year and save', async () => {
+      await page.goto(`${BASE}/alphax/me/vacation-plan`)
+      await page.getByRole('heading', { name: 'Vacation plan' }).waitFor()
+      const next = String(new Date().getFullYear() + 1)
+      await page.locator('select').first().selectOption(next)
+      await page.getByText('Planned periods').waitFor()
+      const add = page.getByRole('button', { name: 'Add period' })
+      if (await add.isVisible()) {
+        await add.click()
+        const row = page.locator('li').filter({ has: page.locator('input[type=date]') }).last()
+        await row.locator('input[type=date]').nth(0).fill(`${next}-03-01`)
+        await row.locator('input[type=date]').nth(1).fill(`${next}-03-10`)
+        await page.getByRole('button', { name: 'Save draft' }).click()
+        await page.getByText('working days').first().waitFor()
+      }
+      await page.screenshot({ path: `${OUT}/27-vacation-plan.png`, fullPage: true })
+    })
     await step('HR pages are not reachable by URL', async () => {
       await page.goto(`${BASE}/alphax/people`)
       await page.waitForURL(/\/alphax\/?$/)
@@ -384,6 +401,17 @@ try {
       await page.goto(`${BASE}/alphax/cutover`)
       await page.getByText('Employee requests to import').waitFor()
       await page.screenshot({ path: `${OUT}/25-cutover.png`, fullPage: true })
+    })
+    await step('attendance exceptions and vacation planner', async () => {
+      await page.goto(`${BASE}/alphax/attendance-policies`)
+      await page.getByRole('heading', { name: 'Attendance exceptions' }).waitFor()
+      await page.getByRole('button', { name: 'New policy' }).click()
+      await page.getByRole('dialog').getByText('Exempt from attendance tracking').waitFor()
+      await page.screenshot({ path: `${OUT}/28-attendance-policy.png` })
+      await page.keyboard.press('Escape')
+      await page.goto(`${BASE}/alphax/vacation-planner`)
+      await page.getByText('Away per week').or(page.getByText('No plans yet')).first().waitFor()
+      await page.screenshot({ path: `${OUT}/29-vacation-planner.png`, fullPage: true })
     })
     await step('GOSI register', async () => {
       await page.goto(`${BASE}/alphax/payroll/gosi`)

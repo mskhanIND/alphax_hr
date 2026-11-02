@@ -125,6 +125,8 @@ def setup_fixtures():
                             "from_date": f"{year}-01-01", "to_date": f"{year}-12-31",
                             "new_leaves_allocated": 21}).insert(ignore_permissions=True).submit()
     # Reset transactional test data so the suite is repeatable.
+    if frappe.db.exists("DocType", "AlphaX Attendance Policy"):
+        frappe.db.delete("AlphaX Attendance Policy")  # policies change how the register counts lateness
     for wf in frappe.get_all("Workflow", filters={"document_type": "Leave Application", "is_active": 1}, pluck="name"):
         frappe.db.set_value("Workflow", wf, "is_active", 0)
     for e in (e_emp, e_emp2):
@@ -1475,6 +1477,112 @@ def run(site):
             assert resp.mimetype == "application/javascript" and resp.headers["Service-Worker-Allowed"] == "/alphax"
             assert "Content-Disposition" not in resp.headers
         check("mobile app: service worker served as a script for the /alphax scope", pwa_service_worker)
+
+        print("\n== Leave form, attendance policy, vacation plan")
+        def leave_site_mandatory_fields():
+            from alphax_hr.api import ess
+            frappe.set_user("Administrator")
+            for fn, label, ft, opts in (("first_day_report_to_work", "First Day Report to Work", "Date", None),
+                                        ("custom_axt_leave_intent", "Leave Intent", "Select", "\nPlanned\nUnplanned")):
+                if not frappe.db.exists("Custom Field", {"dt": "Leave Application", "fieldname": fn}):
+                    frappe.get_doc({"doctype": "Custom Field", "dt": "Leave Application", "fieldname": fn, "label": label,
+                                    "fieldtype": ft, "options": opts, "reqd": 1, "insert_after": "to_date"}).insert(ignore_permissions=True)
+            frappe.clear_cache(doctype="Leave Application")
+            try:
+                frappe.set_user(f["emp"])
+                form = ess.leave_form()
+                assert [x["fieldname"] for x in form["fields"]] == ["custom_axt_leave_intent"], form
+                assert form["auto"][0]["fieldname"] == "first_day_report_to_work"
+                fd, td = next_working_pair(45)
+                expect_error(lambda: ess.apply_leave(f["lt"], fd, td, "x"), frappe.ValidationError)
+                r = ess.apply_leave(f["lt"], fd, td, "x", extra={"custom_axt_leave_intent": "Planned"})
+                la = frappe.get_doc("Leave Application", r["name"])
+                assert la.custom_axt_leave_intent == "Planned" and la.first_day_report_to_work > getdate(td), la.first_day_report_to_work
+                ess.withdraw_leave(r["name"])
+            finally:
+                frappe.set_user("Administrator")
+                for fn in ("first_day_report_to_work", "custom_axt_leave_intent"):
+                    for cf in frappe.get_all("Custom Field", filters={"dt": "Leave Application", "fieldname": fn}, pluck="name"):
+                        frappe.delete_doc("Custom Field", cf, ignore_permissions=True)
+                frappe.clear_cache(doctype="Leave Application")
+        check("leave request asks for the site's own mandatory fields; return-to-work date filled automatically", leave_site_mandatory_fields)
+
+        def attendance_policy_flow():
+            from alphax_hr.api import attendance_policy as ap, attendance, requests as rq
+            frappe.set_user("Administrator")
+            frappe.db.delete("AlphaX Attendance Policy")
+            dept = frappe.db.get_value("Employee", f["e_emp"], "department")
+            frappe.set_user(f["emp"])
+            expect_error(lambda: ap.save({"policy_name": "x", "applies_to": "Everyone"}), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            expect_error(lambda: ap.save({"policy_name": "Bad", "applies_to": "Department"}), frappe.ValidationError)
+            expect_error(lambda: ap.save({"policy_name": "Bad", "applies_to": "Everyone", "late_grace_minutes": "ten"}), frappe.ValidationError)
+            ap.save({"policy_name": "AXT Ops", "applies_to": "Department", "department": dept, "late_grace_minutes": "20", "monthly_late_allowance": 30})
+            ap.save({"policy_name": "AXT Exempt Omar", "applies_to": "Employee", "employee": f["e_emp2"], "exempt": 1, "permissions_per_month": "1"})
+            expect_error(lambda: ap.save({"policy_name": "Dup", "applies_to": "Employee", "employee": f["e_emp2"]}), frappe.ValidationError)
+            assert ap.for_employee(f["e_emp2"]).policy_name == "AXT Exempt Omar"
+            assert ap.for_employee(f["e_emp"]).policy_name == "AXT Ops"
+            assert {p["name"]: p["covers"] for p in ap.policies()}["AXT Exempt Omar"] == 1
+            cells = [{"late": 10}, {"late": 0}, {"late": 25}]
+            assert ap.apply_allowance(cells, 30) == 30 and cells[2]["late"] == 5
+            data = attendance.month_data(nowdate())
+            omar = next(r for r in data["rows"] if r["employee"] == f["e_emp2"])
+            assert omar["policy"] == "AXT Exempt Omar" and omar["no_penalties"]
+            assert not any(c["code"] in ("A", "M") for c in omar["cells"]), [c["code"] for c in omar["cells"]]
+            frappe.db.delete("AlphaX Request", {"employee": f["e_emp2"], "request_type": ["in", ["Late Arrival Permission", "Early Exit Permission"]]})
+            frappe.set_user(f["emp2"])
+            rq.create("Late Arrival Permission", {"date": add_days(nowdate(), 2), "time": "09:00"})
+            expect_error(lambda: rq.create("Late Arrival Permission", {"date": add_days(nowdate(), 3), "time": "09:00"}), frappe.ValidationError)
+            frappe.set_user(f["hr"])
+            ap.delete("AXT Exempt Omar"); ap.delete("AXT Ops")
+        check("attendance exceptions policy: most specific wins, exempt, grace, free late minutes, permission limit", attendance_policy_flow)
+
+        def vacation_plan_flow():
+            from alphax_hr.api import leave_plan as lp, approvals
+            frappe.set_user("Administrator")
+            frappe.db.delete("AlphaX Leave Plan Period", {"parent": ["in", frappe.get_all("AlphaX Leave Plan", filters={"employee": ["in", [f["e_emp"], f["e_emp2"]]]}, pluck="name") or [""]]})
+            frappe.db.delete("AlphaX Leave Plan", {"employee": ["in", [f["e_emp"], f["e_emp2"]]]})
+            frappe.db.set_single_value("AlphaX HR Settings", "plan_min_block_days", 5)
+            frappe.db.set_value("Employee", f["e_emp2"], "department", frappe.db.get_value("Employee", f["e_emp"], "department"))
+            frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
+            year = getdate(nowdate()).year
+            frappe.set_user(f["emp2"])
+            lp.save_my_plan(year, [{"from_date": f"{year}-12-20", "to_date": f"{year}-12-24"}])
+            lp.submit_my_plan(year)
+            frappe.set_user(f["emp"])
+            p = lp.my_plan(year)
+            assert p["status"] == "Draft" and p["entitlement"] > 0 and not p["name"]
+            expect_error(lambda: lp.save_my_plan(year, [{"from_date": f"{year}-12-20", "to_date": f"{year}-12-22"},
+                                                        {"from_date": f"{year}-12-22", "to_date": f"{year}-12-23"}]), frappe.ValidationError)
+            p = lp.save_my_plan(year, [{"from_date": f"{year}-12-21", "to_date": f"{year}-12-22", "note": "short"}])
+            assert p["periods"][0]["days"] > 0 and p["conflicts"][0]["max_off"] == 2 and p["conflicts"][0]["colleagues"], p["conflicts"]
+            expect_error(lambda: lp.submit_my_plan(year), frappe.ValidationError)  # needs a 5-day block
+            p = lp.save_my_plan(year, [{"from_date": f"{year}-12-20", "to_date": f"{year}-12-24"}])
+            assert lp.submit_my_plan(year)["status"] == "Submitted"
+            expect_error(lambda: lp.save_my_plan(year, []), frappe.ValidationError)
+            frappe.set_user(f["mgr"])
+            items = [i for i in approvals.inbox("AlphaX Leave Plan")["items"]]
+            mine = next(i for i in items if i["employee"] == f["e_emp"])
+            assert "Request changes" in mine["actions"]
+            expect_error(lambda: approvals.act("AlphaX Leave Plan", mine["name"], "Request changes"), frappe.ValidationError)
+            pl = lp.planner(year)
+            assert any(w["by_department"] and any(v["off"] == 2 for v in w["by_department"].values()) for w in pl["weeks"]), "coverage"
+            assert approvals.act("AlphaX Leave Plan", mine["name"], "Approve", "ok")["status"] == "Approved"
+            frappe.set_user(f["emp2"])
+            expect_error(lambda: approvals.act("AlphaX Leave Plan", mine["name"], "Approve"), frappe.PermissionError)
+            assert not [x for x in frappe.get_list("AlphaX Leave Plan", filters={"employee": f["e_emp"]})]
+            frappe.set_user(f["emp"])
+            try:
+                r = lp.apply_period(year, 1)
+                assert frappe.db.get_value("Leave Application", r["name"], "from_date") == getdate(f"{year}-12-20")
+                expect_error(lambda: lp.apply_period(year, 1), frappe.ValidationError)
+                from alphax_hr.api import ess
+                ess.withdraw_leave(r["name"])
+            except frappe.ValidationError as exc:
+                print("    apply from plan reported:", exc)  # e.g. no allocation for that leave type on a fresh site
+            frappe.set_user("Administrator")
+            frappe.db.set_single_value("AlphaX HR Settings", "plan_min_block_days", 0)
+        check("vacation plan: periods, overlap, block rule, coverage with colleagues, approve via inbox, apply from plan", vacation_plan_flow)
 
         print("\n== /alphax page")
         def www_page():

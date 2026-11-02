@@ -9,6 +9,22 @@ import { api } from '../lib/api'
 import { daysInMonth, fmtMonth, fmtNumber, monthStart, shiftMonth, todayISO } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 
+function MyPolicy() {
+  const { t } = useI18n()
+  const q = useQuery({ queryKey: ['my-attendance-policy'], queryFn: api.myAttendancePolicy, staleTime: 300_000 })
+  const p = q.data
+  if (!p) return null
+  const items = [
+    p.exempt && t('You are exempt from attendance tracking.'),
+    p.late_grace_minutes && `${t('Late grace')}: ${p.late_grace_minutes} ${t('min')}`,
+    p.monthly_late_allowance > 0 && `${p.monthly_late_allowance} ${t('free late minutes / month')}`,
+    p.single_punch_ok && t('Single punch OK'),
+    p.permissions_per_month && `${p.permissions_per_month} ${t('permissions / month')}`,
+  ].filter(Boolean)
+  if (!items.length) return null
+  return <p className="rounded-xl bg-brand/5 px-3 py-2 text-sm text-brand">{t('Your attendance rules')}: {items.join(' · ')}</p>
+}
+
 const COLORS: Record<string, string> = {
   Present: 'bg-emerald-500 text-white',
   Absent: 'bg-red-500 text-white',
@@ -31,6 +47,7 @@ export default function MyAttendance() {
     <div className="flex flex-col gap-5">
       <PageHeader title={t('My Attendance')} />
       <CheckInCard />
+      <MyPolicy />
       <AttendanceRequests />
       {q.error && <ErrorBox error={q.error} onRetry={() => q.refetch()} />}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

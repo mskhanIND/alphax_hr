@@ -1,6 +1,8 @@
 """Employee self-service: everything here is scoped to the signed-in employee."""
 from __future__ import annotations
 
+import re as _re
+
 import frappe
 from frappe import _
 from frappe.utils import add_days, cint, flt, get_first_day, get_last_day, getdate, now_datetime, nowdate
@@ -111,11 +113,98 @@ def leave_types():
 	return [{"leave_type": n, "rule": rule_to_dict(rules.get(n))} for n in sorted(names)]
 
 
+# Fields AlphaX fills itself on a Leave Application; anything else the site makes mandatory is asked for.
+LEAVE_HANDLED = {"employee", "employee_name", "company", "leave_type", "from_date", "to_date", "half_day", "half_day_date",
+				 "description", "posting_date", "leave_approver", "leave_approver_name", "status", "follow_via_email",
+				 "alphax_event_date", "alphax_relation", "department", "total_leave_days", "leave_balance", "workflow_state",
+				 "naming_series", "amended_from", "letter_head", "color"}
+LEAVE_INPUT_TYPES = {"Data", "Link", "Select", "Date", "Datetime", "Int", "Float", "Currency", "Small Text", "Text", "Long Text",
+					 "Phone", "Attach", "Attach Image"}
+_RETURN_DATE = _re.compile(r"report(ing)?\s*(back\s*)?to\s*work|return(ing)?\s*(to\s*work|date)|resum|re-?join|back\s*to\s*work|duty\s*resumption", _re.I)
+
+
+def _leave_auto_kind(df):
+	if df.fieldtype == "Date" and (_RETURN_DATE.search(df.label or "") or _RETURN_DATE.search(df.fieldname.replace("_", " "))):
+		return "return_date"
+	return None
+
+
+def _leave_required_fields():
+	meta = frappe.get_meta("Leave Application")
+	out = []
+	for df in meta.fields:
+		if not df.reqd or df.fetch_from or cint(df.permlevel) or df.fieldtype not in LEAVE_INPUT_TYPES or df.fieldname in LEAVE_HANDLED:
+			continue
+		out.append(df)
+	return out
+
+
 @frappe.whitelist()
-def apply_leave(leave_type, from_date, to_date, reason=None, half_day=0, half_day_date=None, event_date=None, relation=None):
+def leave_form():
+	"""Extra fields this site requires on a leave request (custom mandatory fields), and ones AlphaX fills."""
+	current_employee()
+	fields, auto = [], []
+	for df in _leave_required_fields():
+		kind = _leave_auto_kind(df)
+		if kind:
+			auto.append({"fieldname": df.fieldname, "label": _(df.label or df.fieldname), "kind": kind})
+			continue
+		spec = {"fieldname": df.fieldname, "label": _(df.label or df.fieldname), "fieldtype": df.fieldtype, "reqd": 1,
+				"description": _(df.description) if df.description else None, "default": df.default}
+		if df.fieldtype == "Select":
+			spec["options"] = (df.options or "").split("\n")
+		elif df.fieldtype == "Link":
+			spec["options"] = df.options
+		fields.append(spec)
+	return {"fields": fields, "auto": auto}
+
+
+def next_working_day(employee, after):
+	"""First day after ``after`` that is not a holiday / week-off for the employee."""
+	from hrms.hr.utils import get_holiday_list_for_employee
+
+	hl = get_holiday_list_for_employee(employee, raise_exception=False)
+	day = getdate(add_days(after, 1))
+	if not hl:
+		return day
+	off = set(frappe.get_all("Holiday", filters={"parent": hl, "holiday_date": ["between", [day, add_days(day, 60)]]}, pluck="holiday_date"))
+	while day in off:
+		day = getdate(add_days(day, 1))
+	return day
+
+
+@frappe.whitelist()
+def lookup(doctype, txt=""):
+	"""Suggestions for Link fields on the employee's own forms (only doctypes those forms link to)."""
+	current_employee()
+	allowed = {f["options"] for f in leave_form()["fields"] if f["fieldtype"] == "Link"}
+	if doctype not in allowed:
+		frappe.throw(_("Lookup not allowed."), frappe.PermissionError)
+	meta = frappe.get_meta(doctype)
+	title = meta.title_field if meta.title_field and meta.title_field != "name" else None
+	filters = {"disabled": 0} if meta.has_field("disabled") else {}
+	or_filters = {"name": ["like", f"%{str(txt)[:80]}%"]}
+	if title:
+		or_filters[title] = ["like", f"%{str(txt)[:80]}%"]
+	rows = frappe.get_all(doctype, filters=filters, or_filters=or_filters, fields=["name"] + ([title] if title else []),
+						  limit_page_length=20, order_by="name asc")  # names of a master list the form links to
+	return [{"value": r.name, "description": r.get(title) if title else None} for r in rows]
+
+
+def _leave_approver_for(employee):
+	from hrms.hr.doctype.leave_application.leave_application import get_leave_approver
+
+	approver = get_leave_approver(employee)
+	if approver:
+		return approver
+	reports_to = frappe.db.get_value("Employee", employee, "reports_to")
+	return frappe.db.get_value("Employee", reports_to, "user_id") if reports_to else None
+
+
+@frappe.whitelist()
+def apply_leave(leave_type, from_date, to_date, reason=None, half_day=0, half_day_date=None, event_date=None, relation=None, extra=None):
 	employee = current_employee()
 	emp = frappe.db.get_value("Employee", employee, ["company", "holiday_list"], as_dict=True)
-	from hrms.hr.doctype.leave_application.leave_application import get_leave_approver
 
 	doc = frappe.new_doc("Leave Application")
 	doc.update({
@@ -128,12 +217,36 @@ def apply_leave(leave_type, from_date, to_date, reason=None, half_day=0, half_da
 		"half_day_date": half_day_date if cint(half_day) else None,
 		"description": (reason or "")[:1000],
 		"posting_date": nowdate(),
-		"leave_approver": get_leave_approver(employee),
+		"leave_approver": _leave_approver_for(employee),
 		"follow_via_email": 1,
 		"alphax_event_date": event_date or None,
 		"alphax_relation": relation or None,
 	})
-	doc.insert()  # permissions + HRMS validation (balance, overlap, holidays ...)
+	# The site's own mandatory fields: AlphaX fills what it can work out, the employee answers the rest.
+	values = frappe.parse_json(extra) if extra else {}
+	missing = []
+	for df in _leave_required_fields():
+		if _leave_auto_kind(df) == "return_date":
+			doc.set(df.fieldname, values.get(df.fieldname) or next_working_day(employee, to_date))
+		elif values.get(df.fieldname) not in (None, ""):
+			doc.set(df.fieldname, values[df.fieldname])
+		elif df.default:
+			doc.set(df.fieldname, df.default)
+		else:
+			missing.append(_(df.label or df.fieldname))
+	if missing:
+		frappe.throw(_("Please fill in: {0}").format(", ".join(missing)), title=_("Missing information"))
+	try:
+		doc.insert()  # permissions + HRMS validation (balance, overlap, holidays ...)
+	except frappe.MandatoryError as exc:
+		frappe.throw(_("Your company requires more information on leave requests ({0}). Please ask HR.").format(str(exc)[:300]),
+					 title=_("Missing information"))
+	for df in _leave_required_fields():  # files uploaded for attach fields belong to this request now
+		if df.fieldtype in ("Attach", "Attach Image") and doc.get(df.fieldname):
+			for f in frappe.get_all("File", filters={"file_url": doc.get(df.fieldname), "owner": frappe.session.user,
+													 "attached_to_name": ["is", "not set"]}, pluck="name"):
+				frappe.db.set_value("File", f, {"attached_to_doctype": "Leave Application", "attached_to_name": doc.name,
+												"attached_to_field": df.fieldname})
 	warnings = []
 	if not doc.leave_approver:
 		warnings.append(_("No leave approver is set for you. HR has been asked to review this request."))
@@ -141,7 +254,21 @@ def apply_leave(leave_type, from_date, to_date, reason=None, half_day=0, half_da
 		warnings.append(_("This request counts as 0 working days. Your holiday list may not cover these dates — please check with HR."))
 	if doc.get("alphax_sick_breakdown"):
 		warnings.append(doc.alphax_sick_breakdown)
+	warnings += _outside_plan(employee, leave_type, from_date, to_date)
 	return {"name": doc.name, "total_leave_days": doc.total_leave_days, "status": doc.status, "warnings": warnings}
+
+
+def _outside_plan(employee, leave_type, from_date, to_date):
+	"""Annual leave outside an approved vacation plan is allowed, but the approver should know."""
+	from alphax_hr.api._common import settings
+
+	if leave_type != settings().get("annual_leave_type") or not frappe.db.exists("DocType", "AlphaX Leave Plan"):
+		return []
+	plan = frappe.db.get_value("AlphaX Leave Plan", {"employee": employee, "year": getdate(from_date).year, "status": "Approved"})
+	if not plan:
+		return []
+	inside = frappe.db.exists("AlphaX Leave Plan Period", {"parent": plan, "from_date": ["<=", from_date], "to_date": [">=", to_date]})
+	return [] if inside else [_("These dates are outside your approved vacation plan; your approver will see that.")]
 
 
 @frappe.whitelist()
@@ -155,7 +282,8 @@ def withdraw_leave(name):
 		frappe.throw(_("Only open requests that have not been approved can be withdrawn."))
 	if doc.meta.has_field("workflow_state") and doc.get("workflow_state") not in (None, "", "Draft", "Open"):
 		frappe.throw(_("This request is already in the approval workflow."))
-	frappe.delete_doc("Leave Application", name)  # checks delete permission
+	# HRMS gives employees no delete right on Leave Application; ownership and state are checked above.
+	frappe.delete_doc("Leave Application", name, ignore_permissions=True)
 	return True
 
 

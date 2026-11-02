@@ -23,6 +23,7 @@ export function useNav(): { group: string; items: NavItem[] }[] {
       items: [
         { to: '/me/services', label: t('Services'), icon: <LayoutGrid className="size-5" /> },
         { to: '/me/leave', label: t('My Leave'), icon: <CalendarDays className="size-5" /> },
+        { to: '/me/vacation-plan', label: t('Vacation plan'), icon: <CalendarRange className="size-5" /> },
         { to: '/me/attendance', label: t('My Attendance'), icon: <Clock className="size-5" /> },
         { to: '/me/requests', label: t('My Requests'), icon: <Inbox className="size-5" /> },
         { to: '/me/expenses', label: t('My expenses'), icon: <Receipt className="size-5" /> },
@@ -39,6 +40,7 @@ export function useNav(): { group: string; items: NavItem[] }[] {
       items: [
         { to: '/approvals', label: t('Approvals'), icon: <BadgeCheck className="size-5" />, badge: (inbox.data as any)?.total },
         { to: '/my-team', label: t('My team'), icon: <Users className="size-5" /> },
+        { to: '/vacation-planner', label: t('Vacation planner'), icon: <CalendarRange className="size-5" /> },
         { to: '/team', label: t('Team Calendar'), icon: <CalendarRange className="size-5" /> },
       ],
     })
@@ -59,6 +61,7 @@ export function useNav(): { group: string; items: NavItem[] }[] {
       items: [
         { to: '/roster', label: t('Roster'), icon: <CalendarClock className="size-5" /> },
         { to: '/attendance', label: t('Attendance'), icon: <Clock className="size-5" /> },
+        { to: '/attendance-policies', label: t('Attendance exceptions'), icon: <ShieldCheck className="size-5" /> },
       ],
     })
     groups.push({

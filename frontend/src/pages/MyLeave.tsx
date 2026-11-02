@@ -6,6 +6,7 @@ import { LeaveLedger } from '../components/LeaveLedger'
 import { api, uploadFile, type LeaveTypeOption } from '../lib/api'
 import { fmtDate, fmtNumber, todayISO } from '../lib/format'
 import { useI18n } from '../lib/i18n'
+import { FieldInput, isEmpty } from '../components/FieldInput'
 
 function ApplyForm({ onDone }: { onDone: (warnings: string[]) => void }) {
   const { t } = useI18n()
@@ -13,11 +14,19 @@ function ApplyForm({ onDone }: { onDone: (warnings: string[]) => void }) {
   const today = todayISO()
   const [form, setForm] = useState({ leave_type: '', from_date: today, to_date: today, half_day: false, reason: '', event_date: '', relation: '' })
   const [file, setFile] = useState<File | null>(null)
+  const extraSpec = useQuery({ queryKey: ['leaveForm'], queryFn: api.leaveForm, staleTime: 300_000 })
+  const [extra, setExtra] = useState<Record<string, any>>({})
+  const [extraFiles, setExtraFiles] = useState<Record<string, File>>({})
+  const extraMissing = (extraSpec.data?.fields ?? []).filter((f: any) =>
+    (f.fieldtype === 'Attach' || f.fieldtype === 'Attach Image') ? !extraFiles[f.fieldname] : isEmpty(extra[f.fieldname]))
   const rule = types.data?.find((x) => x.leave_type === form.leave_type)?.rule ?? null
   const qc = useQueryClient()
   const m = useMutation({
     mutationFn: async () => {
+      const values: Record<string, any> = { ...extra }
+      for (const [k, f] of Object.entries(extraFiles)) values[k] = (await uploadFile('', '', f))?.file_url
       const r: any = await api.applyLeave({
+        extra: values,
         leave_type: form.leave_type, from_date: form.from_date, to_date: form.to_date, reason: form.reason,
         half_day: form.half_day ? 1 : 0, half_day_date: form.half_day ? form.from_date : undefined,
         event_date: rule?.requires_event_date ? form.event_date || undefined : undefined,
@@ -73,8 +82,18 @@ function ApplyForm({ onDone }: { onDone: (warnings: string[]) => void }) {
       <Field label={t('Supporting document') + (rule?.requires_attachment ? ' *' : '')} hint={t('Medical certificate, birth certificate or other proof (PDF or image).')}>
         <Input type="file" accept=".pdf,image/*" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="py-1.5" />
       </Field>
+      {(extraSpec.data?.fields ?? []).map((f: any) => (
+        <Field key={f.fieldname} label={`${f.label} *`} hint={f.description ?? undefined}>
+          {f.fieldtype === 'Attach' || f.fieldtype === 'Attach Image'
+            ? <Input type="file" accept=".pdf,image/*" className="py-1.5" onChange={(e) => { const x = e.target.files?.[0]; setExtraFiles((s) => { const n = { ...s }; if (x) n[f.fieldname] = x; else delete n[f.fieldname]; return n }) }} />
+            : <FieldInput spec={f} value={extra[f.fieldname]} lookupSource="ess" onChange={(v) => { if (m.error) m.reset(); setExtra((s) => ({ ...s, [f.fieldname]: v })) }} />}
+        </Field>
+      ))}
+      {!!extraSpec.data?.auto?.length && (
+        <p className="text-xs text-muted">{t('Filled automatically')}: {extraSpec.data.auto.map((a) => `${a.label} (${t('next working day after the leave')})`).join(', ')}</p>
+      )}
       {m.error && <ErrorBox error={m.error} />}
-      <Button type="submit" loading={m.isPending}>{t('Submit request')}</Button>
+      <Button type="submit" loading={m.isPending} disabled={extraMissing.length > 0}>{t('Submit request')}</Button>
     </form>
   )
 }

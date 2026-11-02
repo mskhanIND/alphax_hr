@@ -5,7 +5,7 @@ from collections import defaultdict
 
 import frappe
 from frappe import _
-from frappe.utils import add_days, get_datetime, get_first_day, get_last_day, getdate, nowdate
+from frappe.utils import add_days, cint, get_datetime, get_first_day, get_last_day, getdate, nowdate
 
 from alphax_hr.api import shifts as sh
 from alphax_hr.api._common import require_hr
@@ -15,8 +15,9 @@ from alphax_hr.saudi import attendance as rules
 CODES_LEGEND = {
 	rules.PRESENT: "Present", rules.ABSENT: "Absent", rules.LEAVE: "On leave", rules.HALF_DAY: "Half day",
 	rules.WFH: "Work from home", rules.HOLIDAY: "Holiday / weekly off", rules.MISSING_PUNCH: "Missing punch",
-	rules.NOT_MARKED: "Not marked yet",
+	rules.NOT_MARKED: "Not marked yet", "X": "Exempt",
 }
+EXEMPT = "X"
 
 
 def _checkins(employees, start, end):
@@ -64,10 +65,14 @@ def month_data(month=None, department=None, company=None):
 	from alphax_hr.api.requests import excused as _excused
 
 	permits = _excused(ids, start, end)
+	from alphax_hr.api import attendance_policy
+
+	policy = attendance_policy.resolve([dict(e) for e in emps])
 	days = [getdate(add_days(start, i)) for i in range((end - start).days + 1)]
 	rows = []
 	for e in emps:
 		cells, totals = [], defaultdict(float)
+		pol = policy.get(e.name)
 		joined = getdate(e.date_of_joining) if e.date_of_joining else None
 		left = getdate(e.relieving_date) if e.relieving_date else None
 		for d in days:
@@ -81,19 +86,32 @@ def month_data(month=None, department=None, company=None):
 			holiday = hols.get(e._holiday_list, {}).get(d)
 			code = rules.day_code(day=d, today=today, holiday=bool(holiday), attendance_status=att.status if att else None,
 								  on_leave=d in leaves.get(e.name, {}), logs=day_logs)
+			if pol and pol.single_punch_ok and code == rules.MISSING_PUNCH:
+				code = rules.PRESENT
+			if pol and pol.exempt and code in (rules.ABSENT, rules.MISSING_PUNCH, rules.NOT_MARKED, rules.HALF_DAY, rules.PRESENT):
+				code = EXEMPT
 			late = early = 0
 			ot = 0.0
 			st = types.get(shift) if shift else None
 			worked = day_logs.hours if day_logs else 0.0
+			late_grace = int(st.late_entry_grace_period or 0) if st else 0
+			early_grace = int(st.early_exit_grace_period or 0) if st else 0
+			if pol and str(pol.late_grace_minutes or '').strip() != '':
+				late_grace = cint(pol.late_grace_minutes)
+			if pol and str(pol.early_grace_minutes or '').strip() != '':
+				early_grace = cint(pol.early_grace_minutes)
 			if st and day_logs and code in (rules.PRESENT, rules.HALF_DAY, rules.MISSING_PUNCH):
 				s, en = rules.shift_window(d, _time(st.start_time), _time(st.end_time))
-				late = rules.late_minutes(s, day_logs.first_in, int(st.late_entry_grace_period or 0))
-				early = rules.early_minutes(en, day_logs.last_out, int(st.early_exit_grace_period or 0)) if not day_logs.missing_punch else 0
+				late = rules.late_minutes(s, day_logs.first_in, late_grace)
+				early = rules.early_minutes(en, day_logs.last_out, early_grace) if not day_logs.missing_punch else 0
+				ot = rules.overtime_hours(worked, (en - s).total_seconds() / 3600)
+			elif st and day_logs and code == EXEMPT:
+				s, en = rules.shift_window(d, _time(st.start_time), _time(st.end_time))
 				ot = rules.overtime_hours(worked, (en - s).total_seconds() / 3600)
 			elif holiday and day_logs and worked:
 				ot = round(worked, 2)  # work on a rest day / public holiday is all overtime
-			if att and att.late_entry and not late:
-				late = int(st.late_entry_grace_period or 0) + 1 if st else 1  # marked late by HRMS
+			if att and att.late_entry and not late and code != EXEMPT:
+				late = late_grace + 1 if st else 1  # marked late by HRMS
 			permit = permits.get((e.name, d))
 			late_excused = early_excused = 0
 			if permit and late and permit.get("late"):
@@ -117,7 +135,14 @@ def month_data(month=None, department=None, company=None):
 						  "overtime": ot, "hours": worked, "leave": leaves.get(e.name, {}).get(d),
 						  "holiday": holiday, "first_in": str(day_logs.first_in) if day_logs and day_logs.first_in else None,
 						  "last_out": str(day_logs.last_out) if day_logs and day_logs.last_out else None})
+		if pol and cint(pol.monthly_late_allowance):
+			forgiven = attendance_policy.apply_allowance([c for c in cells if not c.get("not_employed")], pol.monthly_late_allowance)
+			if forgiven:
+				totals["late_minutes"] -= forgiven
+				totals["late_allowance_used"] = forgiven
+				totals["late_count"] = sum(1 for c in cells if c.get("late"))
 		rows.append({"employee": e.name, "employee_name": e.employee_name, "department": e.department,
+					 "policy": pol.policy_name if pol else None, "no_penalties": bool(pol and (pol.no_penalties or pol.exempt)),
 					 "cells": cells, "totals": {k: round(v, 2) for k, v in totals.items()}})
 	return {"month": str(start), "start": str(start), "end": str(end), "dates": [str(d) for d in days], "rows": rows,
 			"legend": {k: _(v) for k, v in CODES_LEGEND.items()}}

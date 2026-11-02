@@ -12,13 +12,13 @@ export interface FieldSpec {
 }
 
 /** Renders an input for any Frappe field type the site defines on Employee. */
-export function FieldInput({ spec, value, onChange, invalid }: { spec: FieldSpec; value: any; onChange: (v: any) => void; invalid?: boolean }) {
+export function FieldInput({ spec, value, onChange, invalid, lookupSource }: { spec: FieldSpec; value: any; onChange: (v: any) => void; invalid?: boolean; lookupSource?: 'hr' | 'ess' }) {
   const cls = invalid ? 'border-red-400 ring-2 ring-red-100' : undefined
   switch (spec.fieldtype) {
     case 'Check':
       return <input type="checkbox" className="size-5 accent-[var(--color-brand)]" checked={!!value} onChange={(e) => onChange(e.target.checked ? 1 : 0)} />
     case 'Link':
-      return <div className={invalid ? 'rounded-xl ring-2 ring-red-100' : undefined}><LinkInput doctype={String(spec.options)} value={value ?? ''} onChange={onChange} /></div>
+      return <div className={invalid ? 'rounded-xl ring-2 ring-red-100' : undefined}><LinkInput doctype={String(spec.options)} value={value ?? ''} onChange={onChange} source={lookupSource} /></div>
     case 'Select': {
       const opts = Array.isArray(spec.options) ? spec.options : String(spec.options ?? '').split('\n')
       return (
