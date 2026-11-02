@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, BadgeCheck, CalendarDays, ChevronRight, ShieldCheck, Users } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { CheckInCard } from '../components/CheckInCard'
-import { Badge, Card, Empty, Spinner, Stat } from '../components/ui'
+import { Badge, Card, Empty, ErrorBox, Spinner, Stat } from '../components/ui'
 import { api } from '../lib/api'
 import { fmtDate, fmtNumber } from '../lib/format'
 import { useI18n } from '../lib/i18n'
@@ -67,18 +67,20 @@ function HRSummary() {
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <div className="grid grid-cols-2 gap-4 lg:col-span-2 lg:grid-cols-4">
-        <Stat label={t('Active employees')} value={fmtNumber(org.data?.active, lang)} icon={<Users className="size-4" />} />
-        <Stat label={t('Saudization (estimate)')} value={comp.data ? `${fmtNumber(comp.data.nitaqat.saudization_percent, lang, 1)}%` : '—'} icon={<ShieldCheck className="size-4" />} />
-        <Stat label={t('Joiners (30 days)')} value={fmtNumber(org.data?.joiners_30d, lang)} icon={<CalendarDays className="size-4" />} tone="blue" />
-        <Stat label={t('Iqama') + ' · ' + t('within_30')} value={fmtNumber((comp.data?.documents?.iqama?.within_30 ?? 0) + (comp.data?.documents?.iqama?.expired ?? 0), lang)} icon={<AlertTriangle className="size-4" />} tone="amber" />
+        <Link to="/people" className="rounded-2xl transition hover:-translate-y-0.5 hover:shadow-md"><Stat label={t('Active employees')} value={fmtNumber(org.data?.active, lang)} icon={<Users className="size-4" />} /></Link>
+        <Link to="/compliance" className="rounded-2xl transition hover:-translate-y-0.5 hover:shadow-md"><Stat label={t('Saudization (estimate)')} value={comp.data ? `${fmtNumber(comp.data.nitaqat.saudization_percent, lang, 1)}%` : '—'} icon={<ShieldCheck className="size-4" />} /></Link>
+        <Link to="/people?view=table" className="rounded-2xl transition hover:-translate-y-0.5 hover:shadow-md"><Stat label={t('Joiners (30 days)')} value={fmtNumber(org.data?.joiners_30d, lang)} icon={<CalendarDays className="size-4" />} tone="blue" /></Link>
+        <Link to="/compliance?open=documents" className="rounded-2xl transition hover:-translate-y-0.5 hover:shadow-md"><Stat label={t('Iqama') + ' · ' + t('within_30')} value={fmtNumber((comp.data?.documents?.iqama?.within_30 ?? 0) + (comp.data?.documents?.iqama?.expired ?? 0), lang)} icon={<AlertTriangle className="size-4" />} tone="amber" /></Link>
       </div>
       <Card title={t('Data readiness')} action={<Link to="/compliance" className="text-sm font-medium text-brand">{t('Open compliance')}</Link>} className="lg:row-span-2">
-        {comp.isLoading ? <Spinner /> : issues.length === 0 ? <Empty title={t('All caught up')} /> : (
+        {comp.isLoading ? <Spinner /> : comp.error ? <ErrorBox error={comp.error} onRetry={() => comp.refetch()} /> : issues.length === 0 ? <Empty title={t('All caught up')} /> : (
           <ul className="divide-y divide-line">
             {issues.slice(0, 6).map((c: any) => (
-              <li key={c.key} className="flex items-center justify-between gap-2 py-2 text-sm">
-                <span>{t(c.key)}</span>
-                <Badge tone={c.severity === 'high' ? 'red' : 'amber'}>{fmtNumber(c.count, lang)}</Badge>
+              <li key={c.key}>
+                <Link to={`/compliance?open=${c.key}`} className="flex items-center justify-between gap-2 rounded-lg px-1 py-2 text-sm hover:bg-surface">
+                  <span>{t(c.key)}</span>
+                  <Badge tone={c.severity === 'high' ? 'red' : 'amber'}>{fmtNumber(c.count, lang)}</Badge>
+                </Link>
               </li>
             ))}
           </ul>
@@ -89,10 +91,10 @@ function HRSummary() {
           {(org.data?.by_department ?? []).slice(0, 8).map((d: any) => {
             const pct = org.data.active ? (100 * d.n) / org.data.active : 0
             return (
-              <div key={d.department ?? 'none'} className="text-sm">
+              <Link key={d.department ?? 'none'} to={d.department ? `/people?view=table&department=${encodeURIComponent(d.department)}` : '/people'} className="block rounded-lg px-1 py-0.5 text-sm hover:bg-surface">
                 <div className="flex justify-between"><span>{d.department ?? '—'}</span><span className="tabular-nums text-muted">{d.n}</span></div>
                 <div className="mt-1 h-2 rounded-full bg-surface"><div className="h-2 rounded-full bg-brand" style={{ width: `${pct}%` }} /></div>
-              </div>
+              </Link>
             )
           })}
         </div>

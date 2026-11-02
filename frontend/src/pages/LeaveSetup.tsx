@@ -33,9 +33,10 @@ function RuleRow({ r, canEdit, onSaved }: { r: any; canEdit: boolean; onSaved: (
         {(save.error || allow.error) && <ErrorBox error={save.error || allow.error} />}
       </td>
       <td className="py-2.5 pe-3">
+        {r.rule === 'Sick' ? <span className="text-xs text-muted">{t('120 days per sick-leave year (Art. 117)')}</span> :
         <Input type="number" min={0} step="1" className="!w-24" placeholder={t('No limit')} value={maxDays} disabled={!canEdit}
           onChange={(e) => setMaxDays(e.target.value)}
-          onBlur={() => String(maxDays) !== String(r.max_days ?? '') && save.mutate({ max_days: maxDays === '' ? null : Number(maxDays) })} />
+          onBlur={() => String(maxDays) !== String(r.max_days ?? '') && save.mutate({ max_days: maxDays === '' ? null : Number(maxDays) })} />}
       </td>
       <td className="py-2.5 pe-3 text-xs text-muted">
         {[r.gender && t(r.gender), r.lifetime_limit && `${r.lifetime_limit}× ${t('per employment')}`,

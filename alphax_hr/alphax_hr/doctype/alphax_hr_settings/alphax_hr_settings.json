@@ -37,6 +37,7 @@
   "probation_days",
   "min_employee_age",
   "validate_iban",
+  "passport_non_saudi_only",
   "documents_section",
   "document_alert_days"
  ],
@@ -211,6 +212,13 @@
    "fieldtype": "Check",
    "label": "Validate IBAN",
    "default": "1"
+  },
+  {
+   "fieldname": "passport_non_saudi_only",
+   "fieldtype": "Check",
+   "label": "Passport Mandatory Only for Non-Saudis",
+   "default": "1",
+   "description": "Saudis (ID starting with 1) do not need a passport number. AlphaX relaxes the site's blanket 'passport mandatory' setting and checks non-Saudis itself."
   },
   {
    "fieldname": "documents_section",

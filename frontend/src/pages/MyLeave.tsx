@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarPlus } from 'lucide-react'
 import { useState } from 'react'
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, StatusBadge, Textarea } from '../components/ui'
+import { LeaveLedger } from '../components/LeaveLedger'
 import { api, uploadFile, type LeaveTypeOption } from '../lib/api'
 import { fmtDate, fmtNumber, todayISO } from '../lib/format'
 import { useI18n } from '../lib/i18n'
@@ -114,6 +115,10 @@ export default function MyLeave() {
           })}
         </div>
       )}
+      <details className="group mb-5 rounded-2xl border border-line bg-white p-4 shadow-sm sm:p-5">
+        <summary className="cursor-pointer list-none font-semibold text-ink"><span className="me-2 inline-block transition group-open:rotate-90 rtl:group-open:-rotate-90">›</span>{t('Leave ledger & sick-leave year')}</summary>
+        <div className="mt-4"><LeaveLedger /></div>
+      </details>
       <Card title={t('My requests')}>
         {leaves.isLoading ? <Spinner /> : !leaves.data?.length ? <Empty title={t('All caught up')} /> : (
           <ul className="divide-y divide-line">

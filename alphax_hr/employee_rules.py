@@ -1,9 +1,11 @@
 """Employee master rules (requirements A1-A9), run on every Employee save."""
 from __future__ import annotations
 
+import re
+
 import frappe
 from frappe import _
-from frappe.utils import add_days, cint, date_diff, getdate, nowdate
+from frappe.utils import add_days, add_months, cint, date_diff, getdate, nowdate
 
 from alphax_hr.saudi import identity
 
@@ -32,6 +34,66 @@ def validate(doc, method=None):
 	_validate_age(doc, conf)
 	_set_probation(doc, conf)
 	_validate_annual_days(doc)
+	_auto_dates(doc)
+	_saudi_defaults(doc)
+	_passport_rule(doc, conf)
+
+
+def _changed(doc, *fields):
+	previous = doc.get_doc_before_save()
+	return previous is None or any(previous.get(f) != doc.get(f) for f in fields)
+
+
+def _fields_by_label(doc, pattern, fieldtypes):
+	rx = re.compile(pattern, re.I)
+	return [df for df in doc.meta.fields if df.fieldtype in fieldtypes and rx.search(df.label or "")
+			and not df.fieldname.startswith("alphax_")]
+
+
+def _auto_dates(doc):
+	"""Contract dates from the joining date and the contract period (1-5 years)."""
+	if not doc.date_of_joining:
+		return
+	years = doc.get("alphax_contract_years")
+	if years and doc.meta.has_field("contract_end_date") and _changed(doc, "alphax_contract_years", "date_of_joining"):
+		if str(years).isdigit():
+			doc.contract_end_date = add_days(add_months(doc.date_of_joining, 12 * cint(years)), -1)
+		elif years == "Indefinite":
+			doc.contract_end_date = None
+	for df in _fields_by_label(doc, r"contract\s*start", ("Date",)):  # site fields like "Contract Start Date"
+		if not doc.get(df.fieldname):
+			doc.set(df.fieldname, doc.date_of_joining)
+
+
+def _saudi_defaults(doc):
+	"""For Saudi nationals (ID starting with 1): nationality and first GOSI registration default from the record."""
+	if not cint(doc.get("alphax_is_saudi")):
+		return
+	if doc.meta.has_field("alphax_gosi_registration_date") and not doc.get("alphax_gosi_registration_date") and doc.date_of_joining:
+		doc.alphax_gosi_registration_date = doc.date_of_joining
+	for df in _fields_by_label(doc, r"nationality", ("Link", "Select", "Data")):
+		if doc.get(df.fieldname):
+			continue
+		if df.fieldtype == "Link" and df.options == "Country" and frappe.db.exists("Country", "Saudi Arabia"):
+			doc.set(df.fieldname, "Saudi Arabia")
+		elif df.fieldtype == "Link" and df.options and frappe.db.exists(df.options, "Saudi"):
+			doc.set(df.fieldname, "Saudi")
+		elif df.fieldtype == "Select":
+			opt = next((o for o in (df.options or "").split("\n") if "saudi" in o.lower() and "non" not in o.lower()), None)
+			if opt:
+				doc.set(df.fieldname, opt)
+		elif df.fieldtype == "Data":
+			doc.set(df.fieldname, "Saudi")
+
+
+def _passport_rule(doc, conf):
+	if not cint(conf.get("passport_non_saudi_only")) or not doc.meta.has_field("passport_number"):
+		return
+	# Enforced for new employees and ID changes; older records show it under Data issues instead of blocking edits.
+	if not (doc.is_new() or _changed(doc, "alphax_iqama_number")):
+		return
+	if not cint(doc.get("alphax_is_saudi")) and not (doc.get("passport_number") or "").strip() and doc.get("alphax_iqama_number"):
+		frappe.throw(_("Passport number is required for non-Saudi employees."), title=_("Missing information"))
 
 
 def _validate_annual_days(doc):

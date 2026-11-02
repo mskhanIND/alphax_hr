@@ -110,7 +110,7 @@ export default function People() {
   const [debounced, setDebounced] = useState('')
   const [status, setStatus] = useState('Active')
   const [saudi, setSaudi] = useState('')
-  const [department, setDepartment] = useState('')
+  const [department, setDepartment] = useState(params.get('department') ?? '')
   const [start, setStart] = useState(0)
   const [quick, setQuick] = useState<string | null>(null)
   useEffect(() => { const h = setTimeout(() => { setDebounced(search); setStart(0) }, 300); return () => clearTimeout(h) }, [search])

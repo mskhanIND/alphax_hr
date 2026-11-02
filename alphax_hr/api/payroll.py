@@ -14,18 +14,25 @@ from alphax_hr.saudi import gosi as gosi_rules
 
 
 @frappe.whitelist()
-def payroll_runs(year=None):
+def payroll_runs(year=None, month=None):
+	"""Payroll Entries for a month (runs whose period overlaps it) or, without a month, a whole year."""
 	require_hr()
-	year = int(year or getdate(nowdate()).year)
+	if month:
+		ref = getdate(month)
+		year = ref.year
+		filters = {"start_date": ["<=", get_last_day(ref)], "end_date": [">=", get_first_day(ref)]}
+	else:
+		year = int(year or getdate(nowdate()).year)
+		filters = {"posting_date": ["between", [f"{year}-01-01", f"{year}-12-31"]]}
 	rows = frappe.get_list(
 		"Payroll Entry",
-		filters={"posting_date": ["between", [f"{year}-01-01", f"{year}-12-31"]]},
+		filters=filters,
 		fields=["name", "company", "posting_date", "start_date", "end_date", "payroll_frequency",
 				"number_of_employees", "status", "docstatus", "department", "branch"],
 		order_by="posting_date desc",
 		page_length=500,
 	)
-	return {"year": year, "rows": rows,
+	return {"year": year, "month": str(get_first_day(getdate(month))) if month else None, "rows": rows,
 			"counts": {s: sum(1 for r in rows if r.status == s) for s in {r.status for r in rows}}}
 
 

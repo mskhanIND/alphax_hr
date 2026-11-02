@@ -1,16 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, ArrowLeft, Pencil, Printer } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Camera, ChevronDown, ChevronsDownUp, ChevronsUpDown, History, Pencil, Printer } from 'lucide-react'
+import { ActivityDrawer } from '../components/ActivityDrawer'
+import { LeaveLedger } from '../components/LeaveLedger'
 import { useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { FieldInput } from '../components/FieldInput'
 import { LinkInput } from '../components/LinkInput'
 import { Avatar, Badge, Button, Card, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, statusTone } from '../components/ui'
-import { api } from '../lib/api'
+import { api, uploadFile } from '../lib/api'
 import { fmtDate } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 
 const SECTION_TITLES: Record<string, string> = {
-  personal: 'Personal', job: 'Job', attendance_leave: 'Attendance & Leave', contact: 'Contact', saudi: 'Saudi compliance', exit: 'Exit',
+  personal: 'Personal', job: 'Organization & role', attendance_leave: 'Attendance & Leave', contact: 'Contact', saudi: 'Saudi compliance', exit: 'Exit',
   company_required: 'Required by your company',
 }
 const LINKS: Record<string, string> = {
@@ -27,6 +29,7 @@ const SELECTS: Record<string, string[]> = {
 }
 
 function Value({ field, value, lang, t }: { field: string; value: any; lang: string; t: (s: string) => string }) {
+  if (field === 'alphax_annual_leave_days' && !Number(value)) return <span className="text-muted">{t('Company policy')}</span>
   if (value === null || value === undefined || value === '') return <span className="text-muted">—</span>
   if (field === 'alphax_is_saudi') return <>{value ? t('Saudi') : t('Non-Saudi')}</>
   if (DATE.test(field)) return <>{fmtDate(String(value), lang)}</>
@@ -42,6 +45,14 @@ function Editor({ field, value, onChange, spec }: { field: string; value: any; o
   return <Input value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
 }
 
+// Fields that only apply to non-Saudis (Iqama holders); hidden for Saudi nationals.
+const NON_SAUDI_ONLY = new Set(['alphax_iqama_expiry', 'alphax_border_number', 'alphax_work_permit_expiry', 'passport_number', 'valid_upto'])
+const COLLAPSE_KEY = 'alphax-profile-collapsed'
+
+function loadCollapsed(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? '[]')) } catch { return new Set() }
+}
+
 export default function EmployeeDetail() {
   const { id = '' } = useParams()
   const { t, lang } = useI18n()
@@ -50,7 +61,20 @@ export default function EmployeeDetail() {
   const [editing, setEditing] = useState<string | null>(null)
   const [draft, setDraft] = useState<Record<string, any>>({})
   const [params] = useSearchParams()
+  const [collapsed, setCollapsed] = useState<Set<string>>(loadCollapsed)
+  const saveCollapsed = (next: Set<string>) => {
+    setCollapsed(next)
+    try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...next])) } catch { /* storage blocked */ }
+  }
+  const photo = useMutation({
+    mutationFn: async (file: File) => {
+      const f: any = await uploadFile('Employee', id, file, false)
+      return api.setPhoto(id, f.file_url)
+    },
+    onSuccess: (d) => qc.setQueryData(['employee', id], d),
+  })
   const [popup, setPopup] = useState(false)
+  const [showActivity, setShowActivity] = useState(false)
   const seenKey = `alphax-missing-${id}`
   useEffect(() => {
     // Pop the missing mandatory fields once per employee per browser session.
@@ -69,19 +93,29 @@ export default function EmployeeDetail() {
   if (q.error) return <ErrorBox error={q.error} onRetry={() => q.refetch()} />
   const e = q.data
   const missing = new Set<string>(e.missing_fields ?? [])
+  const isSaudi = !!(editing === 'saudi' && 'alphax_is_saudi' in draft ? draft.alphax_is_saudi : e.sections.saudi?.alphax_is_saudi)
+  const visible = (f: string) => !(isSaudi && NON_SAUDI_ONLY.has(f))
+  const label = (f: string) => (f === 'alphax_iqama_number' && isSaudi ? t('National ID') : e.labels[f] ?? f)
   const sectionOf = (f: string) => Object.entries(e.sections).find(([, fields]: [string, any]) => f in fields)?.[0]
   const fillNow = (f?: string) => {
     setPopup(false)
     const key = sectionOf(f ?? [...missing][0])
     if (!key) return
     setEditing(key); setDraft({})
+    if (collapsed.has(key)) { const n = new Set(collapsed); n.delete(key); saveCollapsed(n) }
     setTimeout(() => document.getElementById(`section-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
   }
   return (
     <div>
       <Link to="/people" className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-ink"><ArrowLeft className="size-4 flip-rtl" />{t('People')}</Link>
-      <PageHeader title={e.employee_name} subtitle={e.name}
-        actions={<Button variant="secondary" className="print:hidden" onClick={() => window.print()}><Printer className="size-4" />{t('Print / PDF')}</Button>} />
+      <PageHeader title={e.employee_name} subtitle={[e.name, e.sections.personal?.alphax_employee_name_ar].filter(Boolean).join(' · ')}
+        actions={<div className="flex gap-2 print:hidden">
+          <Button variant="ghost" onClick={() => saveCollapsed(new Set())}><ChevronsUpDown className="size-4" />{t('Expand all')}</Button>
+          <Button variant="ghost" onClick={() => saveCollapsed(new Set(Object.keys(e.sections)))}><ChevronsDownUp className="size-4" />{t('Collapse all')}</Button>
+          <Button variant="secondary" onClick={() => setShowActivity(true)}><History className="size-4" />{t('Activity')}</Button>
+          <Button variant="secondary" onClick={() => window.print()}><Printer className="size-4" />{t('Print / PDF')}</Button>
+        </div>} />
+      {showActivity && <ActivityDrawer doctype="Employee" name={id} onClose={() => setShowActivity(false)} />}
       {e.missing_required?.length > 0 && (
         <div className="mb-4 flex flex-wrap items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 print:hidden">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
@@ -101,17 +135,27 @@ export default function EmployeeDetail() {
         <div className="flex flex-col gap-5">
           <Card>
             <div className="flex items-center gap-4">
-              <Avatar name={e.employee_name} image={e.image} size={64} />
+              <label className={e.can_write ? 'group relative cursor-pointer' : 'relative'} title={e.can_write ? t('Change photo') : undefined}>
+                <Avatar name={e.employee_name} image={e.image} size={64} />
+                {e.can_write && <>
+                  <span className="absolute inset-0 grid place-items-center rounded-full bg-black/40 text-white opacity-0 transition group-hover:opacity-100 print:hidden">
+                    {photo.isPending ? '…' : <Camera className="size-5" />}
+                  </span>
+                  <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" aria-label={t('Change photo')}
+                    onChange={(ev) => { const file = ev.target.files?.[0]; if (file) photo.mutate(file); ev.target.value = '' }} />
+                </>}
+              </label>
               <div>
                 <div className="font-semibold">{e.sections.job.designation ?? '—'}</div>
                 <div className="text-sm text-muted">{e.sections.job.department ?? '—'}</div>
                 <div className="mt-1"><Badge tone={statusTone(e.sections.job.status)}>{t(e.sections.job.status)}</Badge></div>
               </div>
             </div>
+            {photo.error && <div className="mt-3"><ErrorBox error={photo.error} /></div>}
           </Card>
           <Card title={t('Documents')}>
             <ul className="divide-y divide-line text-sm">
-              {Object.entries(e.documents).map(([k, v]) => (
+              {Object.entries(e.documents).filter(([k]) => !(isSaudi && ['iqama', 'passport', 'work_permit'].includes(k))).map(([k, v]) => (
                 <li key={k} className="flex items-center justify-between py-2">
                   <span>{t(k === 'work_permit' ? 'Work permit' : k.charAt(0).toUpperCase() + k.slice(1))}</span>
                   <Badge tone={statusTone(String(v))}>{t(String(v))}</Badge>
@@ -130,26 +174,33 @@ export default function EmployeeDetail() {
         <div className="flex flex-col gap-5 lg:col-span-2">
           {Object.entries(e.sections).map(([key, fields]: [string, any]) => {
             const isEditing = editing === key
+            const sectionMissing = Object.keys(fields).filter((f) => missing.has(f) && visible(f)).length
+            const closed = collapsed.has(key) && !isEditing
             return (
               <div key={key} id={`section-${key}`} className="scroll-mt-4 break-inside-avoid">
-              <Card title={t(SECTION_TITLES[key] ?? key)}
+              <Card title={<button type="button" className="flex items-center gap-2" aria-expanded={!closed}
+                  onClick={() => { const n = new Set(collapsed); if (n.has(key)) n.delete(key); else n.add(key); saveCollapsed(n) }}>
+                  <ChevronDown className={`size-4 text-muted transition print:hidden ${closed ? '-rotate-90 rtl:rotate-90' : ''}`} />
+                  {t(SECTION_TITLES[key] ?? key)}
+                  {sectionMissing > 0 && <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 ring-1 ring-red-200">{sectionMissing} {t('missing')}</span>}
+                </button>}
                 action={e.can_write && !isEditing ? <Button size="sm" variant="ghost" className="print:hidden" onClick={() => { setEditing(key); setDraft({}) }}><Pencil className="size-4" />{t('Edit')}</Button> : undefined}>
-                <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-                  {Object.entries(fields).map(([f, v]) => (
+                {!closed && <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+                  {Object.entries(fields).filter(([f]) => visible(f)).map(([f, v]) => (
                     isEditing && f !== 'status' ? (
                       <div key={f} className={missing.has(f) && !(draft[f] ?? '') ? 'rounded-xl ring-2 ring-red-300 ring-offset-2' : undefined}>
-                        <Field label={(e.labels[f] ?? f) + (missing.has(f) ? ' *' : '')} error={missing.has(f) && !(draft[f] ?? '') ? t('Required') : undefined}>
+                        <Field label={label(f) + (missing.has(f) ? ' *' : '')} error={missing.has(f) && !(draft[f] ?? '') ? t('Required') : undefined}>
                           <Editor field={f} spec={e.fields?.[f]} value={f in draft ? draft[f] : v} onChange={(nv) => setDraft({ ...draft, [f]: nv })} />
                         </Field>
                       </div>
                     ) : (
                       <div key={f} className={missing.has(f) ? 'rounded-lg bg-red-50 px-2 py-1 text-sm ring-1 ring-red-200' : 'text-sm'}>
-                        <div className={missing.has(f) ? 'text-red-700' : 'text-muted'}>{e.labels[f] ?? f}{missing.has(f) && ' *'}</div>
+                        <div className={missing.has(f) ? 'text-red-700' : 'text-muted'}>{label(f)}{missing.has(f) && ' *'}</div>
                         <div className="font-medium">{missing.has(f) ? <span className="text-red-700">{t('Required')}</span> : <Value field={f} value={v} lang={lang} t={t} />}</div>
                       </div>
                     )
                   ))}
-                </div>
+                </div>}
                 {isEditing && (
                   <div className="mt-4 flex flex-wrap items-center gap-2">
                     <Button loading={save.isPending} disabled={!Object.keys(draft).length} onClick={() => save.mutate()}>{t('Save')}</Button>
@@ -161,6 +212,14 @@ export default function EmployeeDetail() {
               </div>
             )
           })}
+          <div className="break-inside-avoid">
+            <Card title={<button type="button" className="flex items-center gap-2" aria-expanded={!collapsed.has('leave')}
+                onClick={() => { const n = new Set(collapsed); if (n.has('leave')) n.delete('leave'); else n.add('leave'); saveCollapsed(n) }}>
+                <ChevronDown className={`size-4 text-muted transition print:hidden ${collapsed.has('leave') ? '-rotate-90 rtl:rotate-90' : ''}`} />{t('Leave')}
+              </button>}>
+              {!collapsed.has('leave') && <LeaveLedger employee={id} />}
+            </Card>
+          </div>
         </div>
       </div>
     </div>

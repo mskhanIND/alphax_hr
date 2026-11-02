@@ -11,7 +11,8 @@ export default function Payroll() {
   const [month, setMonth] = useState(monthStart(todayISO()))
   const year = Number(month.slice(0, 4))
   const sum = useQuery<any>({ queryKey: ['slipSummary', month], queryFn: () => api.slipSummary(month) })
-  const runs = useQuery<any>({ queryKey: ['payrollRuns', year], queryFn: () => api.payrollRuns(year) })
+  const [scope, setScope] = useState<'month' | 'year'>('month')
+  const runs = useQuery<any>({ queryKey: ['payrollRuns', scope, scope === 'month' ? month : year], queryFn: () => api.payrollRuns(year, scope === 'month' ? month : undefined) })
   const sub = sum.data?.submitted ?? {}
   const draft = sum.data?.draft ?? {}
   return (
@@ -29,8 +30,14 @@ export default function Payroll() {
         <Stat label={t('Gross pay')} value={fmtMoney(sub.gross ?? 0, lang)} icon={<Landmark className="size-4" />} />
         <Stat label={t('Net pay')} value={fmtMoney(sub.net ?? 0, lang)} icon={<Landmark className="size-4" />} tone="amber" />
       </div>
-      <Card title={`${t('Payroll runs')} · ${year}`}>
-        {runs.isLoading ? <Spinner /> : runs.error ? <ErrorBox error={runs.error} /> : !runs.data.rows.length ? <Empty title={t('All caught up')} /> : (
+      <Card title={`${t('Payroll runs')} · ${scope === 'month' ? fmtMonth(month, lang) : year}`}
+        action={<div className="flex rounded-xl border border-line p-0.5" role="tablist">
+          {(['month', 'year'] as const).map((v) => (
+            <button key={v} role="tab" aria-selected={scope === v} onClick={() => setScope(v)}
+              className={`rounded-lg px-3 py-1 text-sm ${scope === v ? 'bg-brand text-white' : 'text-muted hover:bg-surface'}`}>{t(v === 'month' ? 'This month' : 'Whole year')}</button>
+          ))}
+        </div>}>
+        {runs.isLoading ? <Spinner /> : runs.error ? <ErrorBox error={runs.error} /> : !runs.data.rows.length ? <Empty title={t('No payroll runs for this period')} /> : (
           <Table head={[t('Month'), t('Company'), t('Employee'), t('Status')]}>
             {runs.data.rows.map((r: any) => (
               <tr key={r.name}>

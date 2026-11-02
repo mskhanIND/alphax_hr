@@ -106,7 +106,8 @@ def check(rule: Rule, req: Request) -> list[tuple[str, dict]]:
     errors: list[tuple[str, dict]] = []
     if rule.gender and req.gender and req.gender != rule.gender:
         errors.append(("leave_gender", {"gender": rule.gender}))
-    if rule.max_days is not None and req.total_days > rule.max_days:
+    # Sick leave is limited by the 120-day sick-leave year (Art. 117), not per request.
+    if rule.kind != SICK and rule.max_days and req.total_days > rule.max_days:
         errors.append(("leave_max_days", {"max": rule.max_days}))
     if rule.min_service_days and req.date_of_joining:
         served = (req.from_date - req.date_of_joining).days

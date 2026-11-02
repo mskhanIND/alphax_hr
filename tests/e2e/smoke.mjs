@@ -200,7 +200,6 @@ try {
       await page.getByRole('dialog').getByText('These fields are mandatory').waitFor()
       await page.screenshot({ path: `${OUT}/10d-new-employee-missing.png` })
       await page.keyboard.press('Escape')
-      await page.getByRole('button', { name: /Identity/ }).click()
       await page.locator('[data-field="alphax_iqama_number"] input').fill('2123456789')
       await page.getByText('Non-Saudi (Iqama)').waitFor()
       await page.screenshot({ path: `${OUT}/10e-new-employee-identity.png` })
@@ -228,6 +227,33 @@ try {
       await page.getByRole('tab', { name: 'Overtime' }).click()
       await page.getByText('Overtime (Art. 107)').waitFor()
       await page.screenshot({ path: `${OUT}/13b-overtime.png`, fullPage: true })
+    })
+
+    await step('approvals: activity trail of a request', async () => {
+      await page.goto(`${BASE}/alphax/approvals`)
+      await page.getByRole('tab', { name: 'Decided' }).click()
+      await page.getByTitle('Show activity').first().click()
+      await page.getByRole('dialog', { name: 'Activity' }).getByText('created the request').waitFor()
+      await page.screenshot({ path: `${OUT}/14-activity-trail.png` })
+      await page.keyboard.press('Escape')
+    })
+
+    await step('activity log, leave balances, week-off dialog', async () => {
+      await page.goto(`${BASE}/alphax/activity`)
+      await page.getByText('events', { exact: false }).first().waitFor()
+      await page.screenshot({ path: `${OUT}/15-activity-log.png`, fullPage: true })
+      await page.goto(`${BASE}/alphax/leave-balances`)
+      await page.getByText('Sick left (of 120)').waitFor()
+      await page.getByRole('row').nth(1).click()
+      await page.getByRole('dialog', { name: 'Leave ledger' }).getByText('Leave ledger').first().waitFor()
+      await page.screenshot({ path: `${OUT}/16-leave-ledger.png` })
+      await page.keyboard.press('Escape').catch(() => {})
+      await page.goto(`${BASE}/alphax/roster`)
+      await page.getByRole('row').nth(1).locator('input[type=checkbox]').check()
+      await page.getByRole('button', { name: 'Set week-off' }).click()
+      await page.getByRole('dialog').getByText('Replace their current week-offs').waitFor()
+      await page.screenshot({ path: `${OUT}/17-week-off.png` })
+      await page.getByRole('dialog').getByRole('button', { name: 'Close' }).first().click()
     })
 
     await step('compliance dashboard', async () => {

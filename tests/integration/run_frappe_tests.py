@@ -390,13 +390,15 @@ def run(site):
                 frappe.set_user(f["hr"])
                 form = hr.new_employee_form()
                 req = {x["fieldname"]: x for x in form["required"]}
-                assert {"custom_saudinonsaudi", "custom_insurance_class", "marital_status"} <= set(req), list(req)
-                assert req["marital_status"]["options"][1:] == ["Single", "Married", "Divorced", "Widowed"], req["marital_status"]
+                assert {"custom_saudinonsaudi", "custom_insurance_class"} <= set(req), list(req)
+                core = {c["fieldname"]: c for c in form["core"]}
+                assert core["marital_status"]["options"][1:] == ["Single", "Married", "Divorced", "Widowed"], core["marital_status"]
                 assert req["custom_insurance_class"]["options"] == "Branch"
                 assert req["custom_identity_number"].get("mirrors") == "alphax_iqama_number", req["custom_identity_number"]
                 assert req["custom_nid_border_no"].get("mirrors") == "alphax_iqama_number", req["custom_nid_border_no"]
-                assert req["marital_status"]["step"] == "personal" and req["custom_insurance_class"]["step"] == "identity", req
-                assert {c["fieldname"]: c["step"] for c in form["core"]}["department"] == "job"
+                assert core["marital_status"]["step"] == "personal" and req["custom_insurance_class"]["step"] == "personal", req
+                steps = {c["fieldname"]: c["step"] for c in form["core"]}
+                assert steps["department"] == "organization" and steps["alphax_contract_years"] == "employee", steps
                 assert hr.lookup("Branch", "AXT"), "link lookup must allow site-specific Employee links"
 
                 base = {"first_name": "Mandatory", "last_name": "Check", "gender": "Male", "date_of_birth": "1990-01-01",
@@ -412,7 +414,7 @@ def run(site):
                 unique_id = "23" + frappe.generate_hash(length=12).translate(str.maketrans("abcdef", "123456"))[:8]
                 unique_id = "".join(ch if ch.isdigit() else "7" for ch in unique_id)
                 created = hr.create_employee({**base, "custom_insurance_class": "AXT VIP", "marital_status": "Single",
-                                              "alphax_iqama_number": unique_id})
+                                              "alphax_iqama_number": unique_id, "passport_number": "P1234567"})
                 assert frappe.db.get_value("Employee", created["name"], "custom_identity_number") == unique_id
                 assert frappe.db.get_value("Employee", created["name"], "iqama_national_id") == unique_id
                 assert frappe.db.get_value("Employee", created["name"], "custom_nid_border_no") == unique_id
@@ -514,6 +516,14 @@ def run(site):
             second = ess.apply_leave("Sick Leave", *leave_dates(86, 10))
             text = frappe.db.get_value("Leave Application", second["name"], "alphax_sick_breakdown")
             assert text.startswith("5 day(s) full pay · 5 day(s) 75% pay"), text
+            try:  # 35 days used; 90 more would pass the 120-day sick-leave year (Art. 117)
+                ess.apply_leave("Sick Leave", *leave_dates(100, 90))
+                raise AssertionError("expected the 120-day limit")
+            except frappe.ValidationError as exc:
+                frappe.clear_messages(); assert "unpaid leave" in str(exc), str(exc)
+            from alphax_hr.api import leave_ledger
+            st = leave_ledger.summary()["sick"]
+            assert st is not None and "tiers" in st
             frappe.set_user(f["mgr"])
             frappe.db.savepoint("before_approve")  # an HTTP request rolls back on error; mimic that
             try:
@@ -528,6 +538,24 @@ def run(site):
             frappe.set_user(f["mgr"])
             assert approvals.act("Leave Application", first["name"], "Approve")["docstatus"] == 1
         check("sick leave tiers across requests; certificate required to approve", sick_tiers_and_attachment)
+
+        def ledger_and_balances():
+            from alphax_hr.api import leave_ledger
+            frappe.set_user(f["emp"])
+            mine = leave_ledger.summary()
+            assert any(b["leave_type"] == "AXT Annual" for b in mine["balances"]), mine["balances"]
+            alloc = [e for e in mine["ledger"] if e["leave_type"] == "AXT Annual" and e["transaction_type"] == "Leave Allocation"]
+            assert alloc and "balance" in alloc[0], mine["ledger"][:3]
+            expect_error(lambda: leave_ledger.summary(f["e_emp2"]), frappe.PermissionError)
+            frappe.set_user(f["mgr"])
+            assert leave_ledger.summary(f["e_emp"])["employee"] == f["e_emp"]  # the leave approver may look
+            frappe.set_user(f["hr"])
+            wf = leave_ledger.workforce()
+            assert "AXT Annual" in wf["leave_types"] and any(r["employee"] == f["e_emp"] for r in wf["rows"])
+            leave_ledger.export_workforce(file_format="xlsx")
+            assert frappe.response["filecontent"][:2] == b"PK"
+            frappe.response.pop("filecontent", None); frappe.response.pop("type", None)
+        check("leave ledger with running balance; workforce balances + export; privacy", ledger_and_balances)
 
         def annual_allocation():
             frappe.set_user("Administrator")
@@ -641,7 +669,7 @@ def run(site):
             except frappe.ValidationError as exc:
                 frappe.clear_messages(); assert "already belongs" in str(exc), str(exc)
             d = hr.employee(f["e_emp2"])
-            hr.update_employee(f["e_emp2"], {"alphax_iqama_number": "2311112222"}, d["modified"])  # restore
+            hr.update_employee(f["e_emp2"], {"alphax_iqama_number": "2311112222", "passport_number": "P7654321"}, d["modified"])  # restore
             frappe.set_user("Administrator")
             emp = frappe.get_doc("Employee", f["e_emp2"])
             emp.iban = "SA0380000000608010167518"
@@ -653,6 +681,68 @@ def run(site):
             assert emp.iban == "SA0380000000608010167519"
             assert str(emp.alphax_probation_end_date) == str(add_days(emp.date_of_joining, 89)), emp.alphax_probation_end_date
         check("ID number rules, Saudi flag from ID, duplicates, IBAN, probation date", employee_rules)
+
+        def hcs_style_site():
+            """Regressions seen on hcs: a 'nationality' field and a mandatory checkbox."""
+            from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+            frappe.set_user("Administrator")
+            made_field = False
+            if not frappe.get_meta("Employee").has_field("nationality"):
+                frappe.get_doc({"doctype": "Custom Field", "dt": "Employee", "fieldname": "nationality", "label": "Nationality",
+                                "fieldtype": "Data", "insert_after": "gender"}).insert(ignore_permissions=True)
+                made_field = True
+            make_property_setter("Employee", "alphax_is_saudi", "reqd", 1, "Check")
+            frappe.clear_cache(doctype="Employee"); frappe.db.commit()
+            try:
+                frappe.set_user(f["hr"])
+                ov = compliance.overview()
+                assert any(c["key"] == "saudi_flag_mismatch" for c in ov["checks"]), ov["checks"]
+                form = hr.new_employee_form()
+                assert "alphax_is_saudi" not in {x["fieldname"] for x in form["required"]}
+                assert "Saudi National" not in hr.employee(f["e_emp2"])["missing_required"]
+            finally:
+                frappe.set_user("Administrator")
+                frappe.db.delete("Property Setter", {"doc_type": "Employee", "field_name": "alphax_is_saudi", "property": "reqd"})
+                if made_field:
+                    frappe.delete_doc("Custom Field", "Employee-nationality", ignore_permissions=True)
+                frappe.clear_cache(doctype="Employee"); frappe.db.commit()
+        check("hcs-style site: nationality check works; a mandatory checkbox is never 'missing'", hcs_style_site)
+
+        def employee_v2_rules():
+            import random
+            from frappe.utils import add_months
+            frappe.set_user(f["hr"])
+            uid = lambda p: p + "".join(random.choice("0123456789") for _ in range(9))
+            base = {"first_name": "Rules", "last_name": "Check", "gender": "Male", "date_of_birth": "1990-05-05",
+                    "date_of_joining": "2026-01-01", "company": COMPANY, "alphax_contract_years": "2"}
+            saudi = hr.create_employee({**base, "alphax_iqama_number": uid("1"), "alphax_employee_name_ar": "فحص القواعد"})
+            row = frappe.db.get_value("Employee", saudi["name"], ["contract_end_date", "alphax_gosi_registration_date",
+                                                                  "alphax_is_saudi", "alphax_employee_name_ar"], as_dict=True)
+            assert str(row.contract_end_date) == "2027-12-31", row          # 2 years from 01-01-2026
+            assert str(row.alphax_gosi_registration_date) == "2026-01-01" and row.alphax_is_saudi == 1, row
+            assert row.alphax_employee_name_ar == "فحص القواعد"
+            assert "passport_missing" not in saudi["issues"]                 # Saudis need no passport
+            expect_error(lambda: hr.create_employee({**base, "first_name": "NoPassport", "alphax_iqama_number": uid("2")}),
+                         frappe.ValidationError)
+            foreign = hr.create_employee({**base, "first_name": "Expat", "alphax_iqama_number": uid("2"),
+                                          "passport_number": "P" + uid("1")[:8], "alphax_contract_years": "Indefinite"})
+            assert not frappe.db.get_value("Employee", foreign["name"], "contract_end_date")
+            # photo: only a file attached to this employee is accepted
+            frappe.set_user("Administrator")
+            pic = frappe.get_doc({"doctype": "File", "file_name": "face.png", "content": b"\x89PNG fake", "is_private": 0,
+                                  "attached_to_doctype": "Employee", "attached_to_name": saudi["name"]}).insert()
+            frappe.set_user(f["hr"])
+            assert hr.set_photo(saudi["name"], pic.file_url)["image"] == pic.file_url
+            expect_error(lambda: hr.set_photo(foreign["name"], pic.file_url), frappe.ValidationError)
+            hr.export_org_chart(file_format="csv")
+            head = frappe.response["filecontent"].decode("utf-8-sig").splitlines()[0]
+            assert "Reports to" in head and "Team size" in head, head
+            frappe.response.pop("filecontent", None); frappe.response.pop("type", None)
+            frappe.set_user("Administrator")
+            for n in (saudi["name"], foreign["name"]):
+                frappe.delete_doc("Employee", n, force=True, ignore_permissions=True)
+            frappe.db.commit()
+        check("contract period sets end date; Saudi defaults; passport only for non-Saudis; photo; org chart export", employee_v2_rules)
 
         print("\n== Phase 2: shifts and attendance")
         from alphax_hr.api import attendance as att_api, shifts as shift_api
@@ -690,6 +780,53 @@ def run(site):
             assert any(c["holiday"] for c in row["cells"]), "the weekly off (Friday) shows in a 7-day roster"
             return day
         check("shift assignment (overlaps refused per employee) and roster grid", shifts_and_roster)
+
+        def roster_week_offs():
+            from alphax_hr import week_off
+            frappe.set_user("Administrator")
+            emp = frappe.db.get_value("Employee", {"first_name": "Weekoff", "last_name": "Tester"}, "name")
+            if not emp:
+                emp = frappe.get_doc({"doctype": "Employee", "first_name": "Weekoff", "last_name": "Tester", "gender": "Female",
+                                      "date_of_birth": "1992-02-02", "date_of_joining": "2024-01-01", "company": COMPANY,
+                                      "status": "Active"}).insert(ignore_permissions=True).name
+            base = frappe.db.get_value("Company", COMPANY, "default_holiday_list")
+            frappe.db.set_value("Employee", emp, "holiday_list", base)  # start from the company list each run
+            frappe.db.commit()
+            start = getdate(add_days(nowdate(), 7))
+            end = getdate(add_days(start, 27))
+            frappe.set_user(f["hr"])
+            res = shift_api.set_week_off([emp], [5], str(start), str(end))  # Saturdays
+            assert not res["failed"] and res["done"][0]["added"] == 4, res
+            personal = frappe.db.get_value("Employee", emp, "holiday_list")
+            assert personal != base and frappe.db.get_value("Holiday List", personal, "alphax_base_list") == base
+            hol = {str(h.holiday_date): h for h in frappe.get_all("Holiday", filters={"parent": personal}, fields=["holiday_date", "weekly_off"])}
+            sat = next(d for d in week_off.dates_for([5], start, end))
+            fri = next(d for d in week_off.dates_for([4], start, end))
+            assert str(sat) in hol and str(fri) not in hol, "the chosen days replace the usual week-offs in the period"
+            shift_api.set_week_off([emp], [4], str(start), str(end), replace=0)  # add Fridays back, keep Saturdays
+            hol = {str(h.holiday_date) for h in frappe.get_all("Holiday", filters={"parent": personal}, fields=["holiday_date"])}
+            assert str(sat) in hol and str(fri) in hol
+            grid = shift_api.roster(str(start), days=7)
+            row = next(r for r in grid["rows"] if r["employee"] == emp)
+            assert any(c["holiday"] == "weekly_off" and c["date"] == str(sat) for c in row["cells"]), row["cells"]
+            mon = next(d for d in week_off.dates_for([0], start, end))
+            assert shift_api.toggle_week_off(emp, str(mon))["off"] is True
+            assert shift_api.toggle_week_off(emp, str(mon))["off"] is False
+            # replacing: Sundays instead of Saturdays
+            shift_api.set_week_off([emp], [6], str(start), str(end))
+            days = {getdate(d) for d in frappe.get_all("Holiday", filters={"parent": personal, "weekly_off": 1,
+                                                                            "holiday_date": ["between", [start, end]]}, pluck="holiday_date")}
+            assert sat not in days and any(d.weekday() == 6 for d in days), days
+            # a public holiday added to the company list reaches the personal list
+            frappe.set_user("Administrator")
+            bl = frappe.get_doc("Holiday List", base)
+            ph = next(d for d in week_off.dates_for([2], start, end))
+            bl.append("holidays", {"holiday_date": ph, "description": "AXT Test Holiday", "weekly_off": 0}); bl.save()
+            assert frappe.db.exists("Holiday", {"parent": personal, "holiday_date": ph, "weekly_off": 0})
+            bl.reload(); bl.holidays = [h for h in bl.holidays if h.description != "AXT Test Holiday"]; bl.save()
+            assert not frappe.db.exists("Holiday", {"parent": personal, "holiday_date": ph, "weekly_off": 0})
+            frappe.db.commit()
+        check("roster week-offs per employee via a personal holiday list (synced public holidays)", roster_week_offs)
 
         def register_late_and_overtime():
             frappe.set_user("Administrator")
@@ -745,9 +882,38 @@ def run(site):
             inbox = approvals.inbox()
             names = {i["name"] for i in inbox["items"]} if isinstance(inbox, dict) else {i["name"] for i in inbox}
             assert sr["name"] in names, "shift request reaches the approver's inbox"
-            approvals.act("Shift Request", sr["name"], "Approve")
+            approvals.act("Shift Request", sr["name"], "Approve", comment="OK for next month")
             assert frappe.db.exists("Shift Assignment", {"shift_request": sr["name"], "docstatus": 1})
+            trail = approvals.activity("Shift Request", sr["name"])
+            kinds = [e["kind"] for e in trail["events"]]
+            assert kinds[0] == "created" and trail["events"][0]["user"] == f["emp2"], trail["events"][0]
+            status_change = [e for e in trail["events"] if e["kind"] == "changed" and any(c["field"] == "status" for c in e["changes"])]
+            assert status_change and status_change[-1]["user"] == f["mgr"], trail["events"]
+            assert any(e["kind"] == "comment" and "next month" in e["text"] for e in trail["events"]), trail["events"]
+            assert trail["desk_url"] == f"/app/shift-request/{sr['name']}" and not trail["pending_with"]
+            assert sr["name"] in {d["name"] for d in approvals.decided()["items"]}
+            frappe.set_user(f["emp"])
+            expect_error(lambda: approvals.activity("Shift Request", sr["name"]), frappe.PermissionError)
         check("employee shift and attendance requests reach the approver; approval creates the assignment", employee_requests)
+
+        def system_activity():
+            from alphax_hr.api import activity
+            frappe.set_user(f["hr"])
+            d = hr.employee(f["e_emp2"])
+            phone = "055" + frappe.generate_hash(length=10).translate(str.maketrans("abcdef", "123456"))[:7]
+            phone = "".join(ch if ch.isdigit() else "7" for ch in phone)
+            hr.update_employee(f["e_emp2"], {"cell_number": phone}, d["modified"])
+            t = activity.trail("Employee", f["e_emp2"])
+            hit = [e for e in t["events"] if e["kind"] == "changed" and any(c["field"] == "cell_number" and c["to"] == phone for c in e["changes"])]
+            assert hit and hit[-1]["user"] == f["hr"], t["events"][-3:]
+            feed = activity.feed(employee=f["e_emp2"])
+            assert any(i["doctype"] == "Employee" and i["docname"] == f["e_emp2"] and i["exists"] for i in feed["items"]), feed["items"][:3]
+            assert all(i["user"] == f["hr"] for i in activity.feed(user=f["hr"])["items"])
+            frappe.set_user(f["emp"])
+            expect_error(lambda: activity.feed(), frappe.PermissionError)
+            expect_error(lambda: activity.trail("Employee", f["e_emp2"]), frappe.PermissionError)
+            expect_error(lambda: activity.trail("User", f["emp"]), frappe.PermissionError)  # not an HR record type
+        check("system-wide activity: record trail with field changes, HR feed with filters, privacy", system_activity)
 
         print("\n== /alphax page")
         def www_page():

@@ -4,7 +4,7 @@ import { AlertTriangle, ArrowLeft, Check } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { FieldInput, isEmpty, type FieldSpec } from '../components/FieldInput'
-import { Button, Card, ErrorBox, Field, Modal, PageHeader, Spinner } from '../components/ui'
+import { Button, Card, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner } from '../components/ui'
 import { api } from '../lib/api'
 import { todayISO } from '../lib/format'
 import { useI18n } from '../lib/i18n'
@@ -13,19 +13,27 @@ import { useSession } from '../lib/session'
 interface Spec extends FieldSpec { mirrors?: string; step?: string }
 
 const STEPS = [
+  { key: 'employee', label: 'Employee & contract' },
   { key: 'personal', label: 'Personal & contact' },
-  { key: 'job', label: 'Job' },
-  { key: 'identity', label: 'Identity & Saudi details' },
-  { key: 'contract', label: 'Contract & other' },
+  { key: 'organization', label: 'Organization & role' },
   { key: 'review', label: 'Review' },
 ] as const
-const CORE_REQUIRED = new Set(['first_name', 'gender', 'date_of_birth', 'company', 'date_of_joining', 'alphax_iqama_number'])
+const CORE_REQUIRED = new Set(['first_name', 'last_name', 'gender', 'date_of_birth', 'company', 'date_of_joining', 'alphax_iqama_number', 'alphax_contract_years'])
+const NON_SAUDI_ONLY = new Set(['alphax_iqama_expiry', 'passport_number', 'valid_upto'])
+const NON_SAUDI_REQUIRED = new Set(['alphax_iqama_expiry', 'passport_number'])
 const HIDDEN = new Set(['alphax_is_saudi']) // derived from the ID number (1 = Saudi)
 
 /** What the ID number says about the employee (Saudi national ID starts with 1, Iqama with 2). */
 function idKind(id: unknown): 'saudi' | 'iqama' | 'border' | null {
   const d = String(id ?? '').trim()[0]
   return d === '1' ? 'saudi' : d === '2' ? 'iqama' : d === '3' || d === '4' ? 'border' : null
+}
+
+function contractEnd(joining: string, years: number) {
+  const d = new Date(joining + 'T00:00:00Z')
+  d.setUTCFullYear(d.getUTCFullYear() + years)
+  d.setUTCDate(d.getUTCDate() - 1)
+  return d.toISOString().slice(0, 10)
 }
 
 export default function NewEmployee() {
@@ -47,7 +55,11 @@ export default function NewEmployee() {
   }, [form.data])
   const set = (k: string, v: any) => setF((x) => ({ ...x, [k]: v }))
   const kind = idKind(f.alphax_iqama_number)
-  const payload = () => ({ ...f, alphax_is_saudi: kind === 'saudi' ? 1 : 0 })
+  const payload = () => {
+    const out: Record<string, any> = { ...f, alphax_is_saudi: kind === 'saudi' ? 1 : 0 }
+    if (kind === 'saudi') for (const k of NON_SAUDI_ONLY) delete out[k]
+    return out
+  }
   const m = useMutation({ mutationFn: () => api.createEmployee(payload()), onSuccess: (d: any) => nav(`/people/${encodeURIComponent(d.name)}`) })
 
   const fields = useMemo(() => {
@@ -56,23 +68,23 @@ export default function NewEmployee() {
     const visibleCore = form.data.core.filter((c) => {
       if (HIDDEN.has(c.fieldname)) return false
       if (c.fieldname === 'alphax_gosi_registration_date') return kind === 'saudi'
-      if (c.fieldname === 'alphax_iqama_expiry') return kind !== 'saudi'
+      if (NON_SAUDI_ONLY.has(c.fieldname)) return kind !== 'saudi'
       return true
     })
     // Company fields that duplicate an AlphaX field (another "National ID / Iqama" box) are filled automatically.
     const required = form.data.required.filter((c) => !(c.mirrors && coreNames.has(c.mirrors)))
     return [
-      ...visibleCore.map((c) => ({ ...c, mandatory: CORE_REQUIRED.has(c.fieldname) })),
-      ...required.map((c) => ({ ...c, mandatory: true })),
+      ...visibleCore.map((c) => ({ ...c, mandatory: CORE_REQUIRED.has(c.fieldname) || (kind !== null && kind !== 'saudi' && NON_SAUDI_REQUIRED.has(c.fieldname)) })),
+      ...required.filter((c) => !(kind === 'saudi' && NON_SAUDI_ONLY.has(c.fieldname))).map((c) => ({ ...c, mandatory: true })),
     ]
   }, [form.data, kind])
 
   if (form.isLoading) return <Spinner />
   if (form.error) return <ErrorBox error={form.error} onRetry={() => form.refetch()} />
 
-  const steps = STEPS.filter((st) => st.key === 'review' || fields.some((x) => (x.step ?? 'contract') === st.key))
+  const steps = STEPS.filter((st) => st.key === 'review' || fields.some((x) => (x.step ?? 'personal') === st.key))
   const current = steps[step]
-  const inStep = (key: string) => fields.filter((x) => (x.step ?? 'contract') === key)
+  const inStep = (key: string) => fields.filter((x) => (x.step ?? 'personal') === key)
   const missingIn = (key: string) => inStep(key).filter((x) => x.mandatory && isEmpty(f[x.fieldname]))
   const allMissing = fields.filter((x) => x.mandatory && isEmpty(f[x.fieldname]))
   const autoFilled = form.data!.required.filter((c) => c.mirrors && fields.some((x) => x.fieldname === c.mirrors))
@@ -90,19 +102,27 @@ export default function NewEmployee() {
   }
   const goTo = (spec: Spec) => {
     setPopup(null)
-    setStep(steps.findIndex((x) => x.key === (spec.step ?? 'contract')))
+    setStep(steps.findIndex((x) => x.key === (spec.step ?? 'personal')))
     setTimeout(() => document.querySelector<HTMLElement>(`[data-field="${spec.fieldname}"] input, [data-field="${spec.fieldname}"] select`)?.focus(), 50)
   }
 
   const render = (spec: Spec & { mandatory: boolean }) => {
-    const bad = tried.has(spec.step ?? 'contract') && spec.mandatory && isEmpty(f[spec.fieldname])
+    const bad = tried.has(spec.step ?? 'personal') && spec.mandatory && isEmpty(f[spec.fieldname])
     return (
       <div key={spec.fieldname} data-field={spec.fieldname} className={clsx(spec.fieldtype === 'Small Text' || spec.fieldtype === 'Text' ? 'sm:col-span-2' : '')}>
         <Field label={spec.label + (spec.mandatory ? ' *' : '')}
           hint={spec.fieldname === 'alphax_iqama_number' ? t('National ID (starts with 1), Iqama (2) or border number (3/4).')
-            : spec.fieldname === 'alphax_gosi_registration_date' ? t('Decides Legacy vs New GOSI system — not the hire date.') : spec.description ?? undefined}
+            : spec.fieldname === 'alphax_gosi_registration_date' ? t('Decides Legacy vs New GOSI system. Defaults to the joining date if left blank.')
+            : spec.fieldname === 'alphax_contract_years' ? (f.date_of_joining && /^\d$/.test(String(f.alphax_contract_years ?? '')) ? `${t('Contract ends')} ${contractEnd(f.date_of_joining, Number(f.alphax_contract_years))}` : t('Sets the contract end date from the joining date.'))
+            : spec.description ?? undefined}
           error={bad ? t('Required') : undefined}>
-          <FieldInput spec={spec} value={f[spec.fieldname]} onChange={(v) => set(spec.fieldname, v)} invalid={bad} />
+          {spec.fieldname === 'gender' ? (
+            <Select className={bad ? 'border-red-400 ring-2 ring-red-100' : undefined} value={f.gender ?? ''} onChange={(e) => set('gender', e.target.value)}>
+              <option value="">—</option><option value="Male">{t('Male')}</option><option value="Female">{t('Female')}</option>
+            </Select>
+          ) : spec.fieldname === 'alphax_employee_name_ar' ? (
+            <Input dir="rtl" lang="ar" className={bad ? 'border-red-400 ring-2 ring-red-100' : undefined} value={f[spec.fieldname] ?? ''} onChange={(e) => set(spec.fieldname, e.target.value)} placeholder="الاسم الكامل" />
+          ) : <FieldInput spec={spec} value={f[spec.fieldname]} onChange={(v) => set(spec.fieldname, v)} invalid={bad} />}
         </Field>
         {spec.fieldname === 'alphax_iqama_number' && kind && (
           <span className={clsx('mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium', kind === 'saudi' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700')}>
@@ -179,7 +199,7 @@ export default function NewEmployee() {
           {(popup ?? []).map((x) => (
             <li key={x.fieldname}>
               <button type="button" onClick={() => goTo(x)} className="flex w-full items-center justify-between rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-start text-sm text-red-800 hover:bg-red-100">
-                {x.label}<span className="text-xs text-red-600">{t(STEPS.find((st) => st.key === (x.step ?? 'contract'))?.label ?? '')}</span>
+                {x.label}<span className="text-xs text-red-600">{t(STEPS.find((st) => st.key === (x.step ?? 'personal'))?.label ?? '')}</span>
               </button>
             </li>
           ))}

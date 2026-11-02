@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import frappe
 from frappe import _
-from frappe.utils import add_to_date, cint, flt, getdate, now_datetime, nowdate
+from frappe.utils import add_days, add_to_date, cint, flt, getdate, now_datetime, nowdate
 
 from alphax_hr.saudi import leave as annual
 from alphax_hr.saudi import leave_rules as lr
@@ -111,8 +111,11 @@ def _set_sick_breakdown(doc, rules):
 	if doc.meta.has_field("alphax_sick_breakdown"):
 		doc.alphax_sick_breakdown = _("{0} (sick-leave year from {1}, {2:g} day(s) used before)").format(
 			text, frappe.utils.formatdate(start), used)
-	if any(p["tier"] == "exceeds_statutory" for p in parts):
-		frappe.msgprint(_("This request goes beyond the 120 days of sick leave in Art. 117."), indicator="orange", alert=True)
+	beyond = sum(p["days"] for p in parts if p["tier"] == "exceeds_statutory")
+	if beyond:
+		frappe.throw(_("Only {0:g} sick day(s) are left in the sick-leave year that started on {1} (Art. 117 allows 120). "
+					   "Shorten this request by {2:g} day(s) and use unpaid leave for the rest.").format(
+			max(0, 120 - used), frappe.utils.formatdate(start), beyond), title=_("Sick leave limit"))
 
 
 def before_submit_leave_application(doc, method=None):
@@ -253,3 +256,27 @@ def block_delete(doc, method=None):
 	if doc.name in _protected_leave_types():
 		frappe.throw(_("{0} is used by AlphaX HR leave rules and cannot be deleted.").format(doc.name),
 					 title=_("Fixed leave type"))
+
+
+def sick_status(employee, on=None):
+	"""Sick-leave year (Art. 117) for an employee on a date: start, used and what is left per pay tier."""
+	on = getdate(on or nowdate())
+	sick_types = [lt for lt, r in rules_by_leave_type().items() if r.kind == lr.SICK]
+	if not sick_types:
+		return None
+	previous = frappe.get_all("Leave Application", filters={
+		"employee": employee, "leave_type": ["in", sick_types], "docstatus": ["<", 2],
+		"status": ["not in", ["Rejected", "Cancelled"]], "from_date": ["<=", on]},
+		fields=["from_date", "total_leave_days"])
+	start, used = lr.sick_cycle_usage([(getdate(p.from_date), flt(p.total_leave_days)) for p in previous], add_days(on, 1))
+	if not previous or start > on:
+		start, used = None, 0.0
+	tiers = []
+	cursor = 0.0
+	for size, factor in annual.SICK_TIERS:
+		left = max(0.0, min(size, cursor + size - used))
+		tiers.append({"days": size, "pay_factor": factor, "left": left})
+		cursor += size
+	return {"leave_types": sick_types, "cycle_start": str(start) if start else None,
+			"cycle_end": str(add_days(start, 364)) if start else None, "used": used,
+			"left": max(0.0, 120 - used), "tiers": tiers}

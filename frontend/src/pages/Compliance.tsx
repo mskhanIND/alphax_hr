@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { AlertTriangle, CheckCircle2, ChevronDown } from 'lucide-react'
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Badge, Card, ErrorBox, PageHeader, Spinner, Stat } from '../components/ui'
 import { api } from '../lib/api'
 import { fmtDate, fmtNumber } from '../lib/format'
@@ -31,7 +31,8 @@ export default function Compliance() {
   const { t, lang } = useI18n()
   const q = useQuery<any>({ queryKey: ['compliance'], queryFn: api.compliance })
   const exp = useQuery<any[]>({ queryKey: ['expiring', 90], queryFn: () => api.expiring(90) })
-  const [open, setOpen] = useState<string | null>(null)
+  const [params] = useSearchParams()
+  const [open, setOpen] = useState<string | null>(params.get('open'))
   if (q.isLoading) return <Spinner />
   if (q.error) return <ErrorBox error={q.error} onRetry={() => q.refetch()} />
   const d = q.data

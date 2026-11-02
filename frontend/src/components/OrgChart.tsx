@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, Download } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { api } from '../lib/api'
+import { api, downloadUrl } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 import { Avatar, ErrorBox, Spinner } from './ui'
 
@@ -67,6 +67,7 @@ export function OrgChart({ department, search, onOpen }: { department?: string; 
   const q = useQuery<{ rows: Person[] }>({ queryKey: ['orgChart', department], queryFn: () => api.orgChart({ department }) })
   const tree = useMemo(() => buildTree(q.data?.rows ?? []), [q.data])
   const [open, setOpen] = useState<Set<string> | null>(null)
+  const [orphans, setOrphans] = useState(false)
   // Expand the top level by default; when searching, expand the path to every match.
   const expanded = useMemo(() => {
     if (search) {
@@ -89,20 +90,44 @@ export function OrgChart({ department, search, onOpen }: { department?: string; 
   }
   if (q.isLoading) return <Spinner />
   if (q.error) return <ErrorBox error={q.error} onRetry={() => q.refetch()} />
-  const withManager = (q.data?.rows ?? []).filter((r) => r.reports_to).length
+  const all = q.data?.rows ?? []
+  const ids = new Set(all.map((r) => r.name))
+  // No manager at all, or a manager who is not an active employee here.
+  const noManager = all.filter((r) => !r.reports_to || !ids.has(r.reports_to))
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-muted">
         <span>{tree.filter((n) => n.children.length).length} {t('managers at the top')}</span>
         <span>·</span>
-        <span>{(q.data?.rows.length ?? 0) - withManager} {t('without "Reports to"')}</span>
+        <button className={`rounded-full px-2 py-0.5 ${orphans ? 'bg-amber-100 text-amber-900' : 'hover:bg-surface'}`} aria-pressed={orphans} onClick={() => setOrphans((o) => !o)}>
+          {noManager.length} {t('without a reporting manager')}
+        </button>
         <span className="flex-1" />
+        <a className="inline-flex items-center gap-1 text-brand hover:underline" href={downloadUrl('hr.export_org_chart', { department, file_format: 'xlsx' })}><Download className="size-4" />{t('Export')}</a>
         <button className="text-brand hover:underline" onClick={() => setOpen(new Set((q.data?.rows ?? []).map((r) => r.name)))}>{t('Expand all')}</button>
         <button className="text-brand hover:underline" onClick={() => setOpen(new Set())}>{t('Collapse all')}</button>
       </div>
-      <ul className="flex flex-col gap-0.5">
-        {tree.map((n) => <Branch key={n.name} node={n} depth={0} onOpen={onOpen} open={expanded} toggle={toggle} highlight={search} />)}
-      </ul>
+      {orphans ? (
+        <div>
+          <p className="mb-2 text-sm text-amber-900">{t('Set "Reports to" on these employees so they appear under their manager.')}</p>
+          <ul className="divide-y divide-line">
+            {noManager.map((r) => (
+              <li key={r.name}>
+                <button onClick={() => onOpen(r.name)} className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-start hover:bg-surface">
+                  <Avatar name={r.employee_name} image={r.image} size={32} />
+                  <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{r.employee_name}</span>
+                    <span className="block truncate text-xs text-muted">{[r.designation, r.department].filter(Boolean).join(' · ')}</span></span>
+                  <span className="text-xs text-amber-800">{r.reports_to ? t('Manager not active / not in filter') : t('No reporting manager')}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <ul className="flex flex-col gap-0.5">
+          {tree.map((n) => <Branch key={n.name} node={n} depth={0} onOpen={onOpen} open={expanded} toggle={toggle} highlight={search} />)}
+        </ul>
+      )}
     </div>
   )
 }

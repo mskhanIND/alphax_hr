@@ -134,3 +134,11 @@ def test_senior_years_counted_from_company_date():
     assert annual_days(7, base=25, senior=35, senior_after=5, senior_index=0) == (30, "legal_minimum")
     assert annual_days(12, base=25, senior=35, senior_after=5, senior_index=5) == (35, "law")
     assert annual_days(2, base=25, senior=35, senior_after=5, senior_index=0) == (25, "law")
+
+
+def test_sick_leave_ignores_a_per_request_max():
+    from datetime import date
+    from alphax_hr.saudi import leave_rules as lr
+    rule = lr.Rule(lr.SICK, max_days=30, requires_attachment=True)  # e.g. a value saved on a customer site
+    req = lr.Request(date(2026, 1, 1), date(2026, 2, 14), 45, "Male", date(2020, 1, 1))
+    assert lr.check(rule, req) == []

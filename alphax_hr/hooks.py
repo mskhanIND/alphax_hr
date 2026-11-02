@@ -28,6 +28,7 @@ after_migrate = "alphax_hr.install.after_migrate"
 
 doc_events = {
 	"Employee": {"validate": "alphax_hr.employee_rules.validate"},
+	"Holiday List": {"on_update": "alphax_hr.week_off.sync_public_holidays"},
 	"Leave Type": {
 		"before_rename": "alphax_hr.leave_engine.block_rename",
 		"on_trash": "alphax_hr.leave_engine.block_delete",

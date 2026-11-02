@@ -14,6 +14,20 @@ def after_migrate():
 	seed_gosi_rates()
 	seed_settings()
 	seed_leave_rules()
+	apply_field_rules()
+
+
+def apply_field_rules():
+	"""Site field settings AlphaX owns: passport is checked by AlphaX for non-Saudis only."""
+	if not frappe.db.exists("DocType", "AlphaX HR Settings"):
+		return
+	if not frappe.db.get_single_value("AlphaX HR Settings", "passport_non_saudi_only"):
+		return
+	if frappe.get_meta("Employee").get_field("passport_number") and frappe.get_meta("Employee").get_field("passport_number").reqd:
+		from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+
+		make_property_setter("Employee", "passport_number", "reqd", 0, "Check", validate_fields_for_doctype=False)
+		frappe.clear_cache(doctype="Employee")
 
 
 def _fill_new_setting_defaults():

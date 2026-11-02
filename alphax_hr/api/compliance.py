@@ -76,8 +76,8 @@ def overview(company=None):
 	check("iqama_expiry_missing", [e for e in foreign if not e.get("alphax_iqama_expiry")], "high")
 	check("no_salary_data", [e for e in emps if wage_map[e.name]["source"] == "none"], "medium")
 	if frappe.get_meta("Employee").has_field("nationality"):
-		saudi_names = {r.name for r in frappe.get_list(
-			"Employee", filters={"status": "Active", "nationality": ["like", "%saudi%"]}, pluck="name", page_length=10000)}
+		saudi_names = set(frappe.get_list(
+			"Employee", filters={"status": "Active", "nationality": ["like", "%saudi%"]}, pluck="name", page_length=10000))
 		check("saudi_flag_mismatch", [e for e in emps if e.name in saudi_names and not e.get("alphax_is_saudi")], "high")
 
 	# HR staff restricted to their own Employee record by an auto-created User Permission

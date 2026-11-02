@@ -145,6 +145,56 @@ def act(doctype, name, action, comment=None):
 			"workflow_state": doc.get("workflow_state")}
 
 
+def _who(user):
+	return {"user": user, "name": frappe.utils.get_fullname(user) if user else None}
+
+
+def pending_with(doc):
+	"""Who the request is waiting for: workflow roles, the named approver, or HR."""
+	if doc.docstatus != 0:
+		return []
+	workflow = get_workflow_name(doc.doctype)
+	if workflow:
+		state = doc.get(doc.meta.get("workflow_state_field") or "workflow_state")
+		roles = frappe.get_all("Workflow Transition", filters={"parent": workflow, "state": state}, pluck="allowed", distinct=True)
+		return [{"role": r} for r in roles]
+	field = SOURCES[doc.doctype]["approver_field"]
+	if field and doc.get(field):
+		return [_who(doc.get(field))]
+	return [{"role": "HR Manager"}]
+
+
+@frappe.whitelist()
+def activity(doctype, name):
+	"""Full trail of one request (see alphax_hr.api.activity.trail)."""
+	if doctype not in SOURCES:
+		frappe.throw(_("Unsupported request type."), frappe.PermissionError)
+	from alphax_hr.api.activity import trail
+
+	return trail(doctype, name)
+
+
+@frappe.whitelist()
+def decided(doctype=None, limit=50):
+	"""Requests that are no longer waiting (approved, rejected, cancelled) that the user may read."""
+	user = login_required()
+	out = []
+	for dt in ([doctype] if doctype in SOURCES else list(SOURCES)):
+		if not _installed(dt) or not frappe.has_permission(dt, "read"):
+			continue
+		filters = {"docstatus": ["in", [1, 2]]}
+		conf = SOURCES[dt]
+		if conf["approver_field"] and not is_hr(user):
+			filters[conf["approver_field"]] = user
+		rows = frappe.get_list(dt, filters=filters, fields=list(dict.fromkeys(_row_fields(dt))),
+							   order_by="modified desc", page_length=min(cint(limit) or 50, 200))
+		for r in rows:
+			r["doctype"] = dt
+			out.append(r)
+	out.sort(key=lambda r: str(r.get("modified")), reverse=True)
+	return {"items": out[: min(cint(limit) or 50, 200)]}
+
+
 @frappe.whitelist()
 def team_leave_calendar(start, end):
 	"""Approved/open leave of employees the user approves (or everyone for HR)."""

@@ -169,3 +169,41 @@ def end_assignment(name, end_date=None):
 	else:
 		doc.cancel()
 	return {"name": doc.name, "docstatus": doc.docstatus}
+
+
+@frappe.whitelist()
+def set_week_off(employees, weekdays, start_date, end_date, replace=1):
+	"""Roster: chosen weekdays become week-offs for these employees in the date range."""
+	require_hr()
+	from alphax_hr import week_off
+
+	names = parse_json(employees, [])
+	days = [int(d) for d in parse_json(weekdays, [])]
+	if not names or not days or any(d < 0 or d > 6 for d in days):
+		frappe.throw(_("Choose employees and at least one weekday."))
+	if len(names) > MAX_ASSIGN:
+		frappe.throw(_("At most {0} employees at a time.").format(MAX_ASSIGN))
+	allowed = {e.name for e in _employees(names=names)}
+	done, failed = [], []
+	for emp in names:
+		if emp not in allowed:
+			failed.append({"employee": emp, "error": _("Not an active employee you can access.")})
+			continue
+		frappe.db.savepoint("alphax_weekoff")
+		try:
+			done.append(week_off.set_week_offs(emp, days, start_date, end_date, replace=bool(int(replace))))
+		except Exception as exc:
+			frappe.db.rollback(save_point="alphax_weekoff")
+			frappe.clear_messages()
+			failed.append({"employee": emp, "error": str(exc)[:300]})
+	return {"done": done, "failed": failed}
+
+
+@frappe.whitelist()
+def toggle_week_off(employee, date):
+	require_hr()
+	from alphax_hr import week_off
+
+	if employee not in {e.name for e in _employees(names=[employee])}:
+		frappe.throw(_("Not an active employee you can access."), frappe.PermissionError)
+	return week_off.toggle_week_off(employee, date)

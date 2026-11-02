@@ -16,10 +16,11 @@ LIST_FIELDS = ["name", "employee_name", "image", "department", "designation", "b
 EXPORT_LIMIT = 5000
 
 SECTIONS = {
-	"personal": ["first_name", "middle_name", "last_name", "gender", "date_of_birth", "marital_status",
+	"personal": ["first_name", "middle_name", "last_name", "alphax_employee_name_ar", "gender", "date_of_birth", "marital_status",
 				 "blood_group", "salutation"],
 	"job": ["company", "department", "designation", "branch", "employment_type", "grade", "reports_to",
-			"date_of_joining", "final_confirmation_date", "contract_end_date", "notice_number_of_days", "status"],
+			"date_of_joining", "alphax_contract_years", "final_confirmation_date", "contract_end_date", "notice_number_of_days",
+			"alphax_probation_end_date", "status"],
 	"attendance_leave": ["holiday_list", "default_shift", "attendance_device_id", "leave_approver",
 						 "expense_approver", "shift_request_approver"],
 	"contact": ["cell_number", "personal_email", "company_email", "prefered_contact_email", "user_id",
@@ -32,9 +33,11 @@ SECTIONS = {
 EDITABLE = {f for fields in SECTIONS.values() for f in fields} - {"status"}
 LOOKUP_DOCTYPES = {"Company", "Department", "Designation", "Branch", "Employment Type", "Employee Grade",
 				   "Holiday List", "Shift Type", "Gender", "User", "Employee", "Leave Type", "Salary Component"}
-NEW_EMPLOYEE_CORE = ["first_name", "last_name", "gender", "date_of_birth", "company", "date_of_joining",
-					 "department", "designation", "alphax_is_saudi", "alphax_gosi_registration_date",
-					 "alphax_iqama_number", "alphax_iqama_expiry"]
+NEW_EMPLOYEE_CORE = ["first_name", "last_name", "alphax_employee_name_ar", "gender", "date_of_birth", "date_of_joining",
+					 "alphax_contract_years", "notice_number_of_days", "alphax_iqama_number", "alphax_is_saudi",
+					 "alphax_iqama_expiry", "alphax_gosi_registration_date", "passport_number", "valid_upto",
+					 "cell_number", "personal_email", "marital_status",
+					 "company", "department", "designation", "branch", "employment_type", "reports_to"]
 INPUT_TYPES = {"Data", "Link", "Select", "Date", "Datetime", "Check", "Int", "Float", "Currency", "Percent",
 			   "Small Text", "Text", "Long Text", "Phone", "Dynamic Link"}
 NEVER_EDIT = {"name", "owner", "creation", "modified", "modified_by", "docstatus", "idx", "status",
@@ -47,6 +50,8 @@ def _site_required_fields(meta):
 	out = []
 	for df in meta.fields:
 		if not df.reqd or df.hidden or df.read_only or cint(df.permlevel) or df.fieldtype not in INPUT_TYPES:
+			continue
+		if df.fieldtype == "Check":  # unticked is a valid answer; Frappe never treats it as missing
 			continue
 		if df.fieldname in NEVER_EDIT:
 			continue
@@ -102,6 +107,8 @@ def _mirror_source(df):
 		return "alphax_iqama_expiry"
 	if df.fieldtype == "Select" and _is_saudi_select(df):
 		return "alphax_is_saudi"
+	if df.fieldtype == "Data" and re.search(r"arabic", label, re.I) and re.search(r"name", label, re.I):
+		return "alphax_employee_name_ar"
 	return None
 
 
@@ -285,7 +292,7 @@ def employee(name):
 		"sections": sections, "labels": labels, "fields": fields, "documents": docs,
 		"missing_required": missing_required, "missing_fields": missing_fields,
 		"can_write": bool(frappe.has_permission("Employee", "write", doc)),
-		"issues": _issues(doc),
+		"issues": (["mandatory_fields_missing"] if missing_fields else []) + _issues(doc),
 	}
 
 
@@ -309,6 +316,8 @@ def _issues(doc):
 		issues.append("iqama_missing")
 	if not doc.get("alphax_is_saudi") and not doc.get("alphax_iqama_expiry"):
 		issues.append("iqama_expiry_missing")
+	if not doc.get("alphax_is_saudi") and doc.meta.has_field("passport_number") and not doc.get("passport_number"):
+		issues.append("passport_missing")
 	return issues
 
 
@@ -331,10 +340,11 @@ def update_employee(name, data, modified):
 
 
 STEP_RULES = [  # first match wins; checked against fieldname + label
-	("identity", r"iqama|national|border|passport|gosi|visa|insurance|saudi|identity|nationality|religion"),
-	("contract", r"contract|notice|probation|confirmation|salary|ctc|bank|iban|payroll|cost.?center"),
-	("job", r"company|department|designation|branch|employment|reports|grade|division|class|joining|shift|holiday|approver|location|project"),
-	("personal", r"name|gender|birth|marital|blood|salutation|mobile|cell|phone|email|address|emergency|relation"),
+	("personal", r"\bclass\b|marital|blood|e-?mail|mobile|cell|phone|address|emergency|relation|salutation|insurance"),
+	("employee", r"name|gender|birth|joining|contract|notice|probation|religion|iqama|national|border|passport|saudi|"
+				 r"identity|gosi|visa|expir|valid"),
+	("organization", r"company|department|designation|branch|employment|reports|grade|division|cost.?center|shift|"
+					 r"holiday|approver|location|project|payroll|salary|bank|iban"),
 ]
 
 
@@ -343,7 +353,7 @@ def _step_for(df):
 	for step, pattern in STEP_RULES:
 		if re.search(pattern, text, re.I):
 			return step
-	return "contract"  # anything else: with the remaining company details
+	return "personal"  # anything else: with the personal details
 
 
 @frappe.whitelist()
@@ -411,3 +421,61 @@ def org_summary():
 	leavers = frappe.get_list("Employee", filters={"relieving_date": [">=", frappe.utils.add_days(nowdate(), -30)]},
 							  fields=["count(name) as n"])[0].n
 	return {"active": total, "by_department": rows, "joiners_30d": joiners, "leavers_30d": leavers}
+
+
+@frappe.whitelist()
+def set_photo(name, file_url):
+	"""Use an uploaded File (attached to this employee) as the profile picture."""
+	require_hr()
+	doc = frappe.get_doc("Employee", name)
+	doc.check_permission("write")
+	if not frappe.db.exists("File", {"file_url": file_url, "attached_to_doctype": "Employee", "attached_to_name": name}):
+		frappe.throw(_("Upload the picture to this employee first."))
+	if not re.search(r"\.(png|jpe?g|webp|gif)$", file_url or "", re.I):
+		frappe.throw(_("Use a PNG, JPG or WebP image."))
+	doc.db_set("image", file_url)
+	return employee(name)
+
+
+@frappe.whitelist()
+def export_org_chart(department=None, company=None, file_format="xlsx"):
+	"""Reporting lines as a table: level, manager, team size; people without a manager are flagged."""
+	require_hr()
+	rows = org_chart(company, department)["rows"]
+	by_id = {r.name: r for r in rows}
+	children = {}
+	for r in rows:
+		children.setdefault(r.reports_to, []).append(r.name)
+
+	def team(n, seen):
+		if n in seen:
+			return 0
+		seen.add(n)
+		return sum(1 + team(c, seen) for c in children.get(n, []))
+
+	def level(r):
+		lvl, cur, seen = 1, r, set()
+		while cur.reports_to and cur.reports_to in by_id and cur.name not in seen:
+			seen.add(cur.name); cur = by_id[cur.reports_to]; lvl += 1
+		return lvl
+
+	table = [[_("Employee ID"), _("Employee"), _("Designation"), _("Department"), _("Reports to (ID)"), _("Reports to"),
+			  _("Level"), _("Team size"), _("Note")]]
+	for r in sorted(rows, key=lambda r: (level(r), r.employee_name)):
+		mgr = by_id.get(r.reports_to)
+		note = "" if r.reports_to else _("No reporting manager")
+		if r.reports_to and not mgr:
+			note = _("Manager not in this list (inactive or other department)")
+		table.append([r.name, r.employee_name, r.designation or "", r.department or "", r.reports_to or "",
+					  mgr.employee_name if mgr else "", level(r), team(r.name, set()), note])
+	if file_format == "csv":
+		from frappe.utils.csvutils import to_csv
+
+		frappe.response["filecontent"] = to_csv(table).encode("utf-8-sig")
+		frappe.response["filename"] = f"org-chart-{nowdate()}.csv"
+	else:
+		from frappe.utils.xlsxutils import make_xlsx
+
+		frappe.response["filecontent"] = make_xlsx(table, "Org chart").getvalue()
+		frappe.response["filename"] = f"org-chart-{nowdate()}.xlsx"
+	frappe.response["type"] = "binary"
