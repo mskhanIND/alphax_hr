@@ -18,7 +18,8 @@ def after_migrate():
 
 def _fill_new_setting_defaults():
 	"""Settings added in a later version get their default once; values HR saved are never touched."""
-	saved = set(frappe.get_all("Singles", filters={"doctype": "AlphaX HR Settings"}, pluck="field"))
+	# tabSingles is a plain table, not a DocType, so it is read with SQL.
+	saved = set(frappe.db.sql_list("select field from `tabSingles` where doctype=%s", "AlphaX HR Settings"))
 	for df in frappe.get_meta("AlphaX HR Settings").fields:
 		if df.default not in (None, "") and df.fieldname not in saved and not df.is_virtual:
 			frappe.db.set_single_value("AlphaX HR Settings", df.fieldname, df.default)
