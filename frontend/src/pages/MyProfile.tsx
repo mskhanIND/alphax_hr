@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { FileCheck2 } from 'lucide-react'
 import { Modal, Textarea } from '../components/ui'
 import { FieldInput } from '../components/FieldInput'
+import { NotificationSettings } from '../components/NotificationSettings'
 import { uploadFile } from '../lib/api'
 import { Avatar, Badge, Button, Card, ErrorBox, Field, Input, PageHeader, Spinner } from '../components/ui'
 import { api } from '../lib/api'
@@ -116,6 +117,7 @@ export default function MyProfile() {
           </form>
         </Card>
         <ChangeRequest />
+        <div className="lg:col-span-3"><NotificationSettings /></div>
       </div>
     </div>
   )

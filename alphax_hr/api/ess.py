@@ -378,7 +378,7 @@ def today_status():
 	logs = frappe.get_list(
 		"Employee Checkin",
 		filters={"employee": employee, "time": ["between", [today + " 00:00:00", today + " 23:59:59"]]},
-		fields=["name", "time", "log_type"],
+		fields=["name", "time", "log_type"] + (["alphax_location", "alphax_outside"] if has_field("Employee Checkin", "alphax_location") else []),
 		order_by="time asc",
 		page_length=50,
 	)
@@ -386,28 +386,83 @@ def today_status():
 	return {
 		"date": today,
 		"logs": logs,
+		**checkin_rules(employee),
 		"next_action": "OUT" if last and last.log_type == "IN" else "IN",
 		"shift": frappe.db.get_value("Employee", employee, "default_shift"),
 	}
 
 
+def checkin_rules(employee):
+	"""Location rule and minimum gap for this employee: their attendance policy, else the company setting."""
+	from alphax_hr.api._common import settings
+	from alphax_hr.api.attendance_policy import for_employee
+
+	conf = settings()
+	pol = for_employee(employee)
+	rule = (pol and pol.get("checkin_location_rule")) or conf.get("checkin_location_rule") or "Anywhere"
+	gap = cint(conf.get("checkin_min_gap")) if conf.get("checkin_min_gap") is not None else 5
+	if pol and str(pol.get("min_punch_gap") or "").strip() != "":
+		gap = cint(pol.min_punch_gap)
+	return {"location_rule": rule, "min_gap": gap}
+
+
+def _distance_m(lat1, lon1, lat2, lon2):
+	from math import asin, cos, radians, sin, sqrt
+
+	dlat, dlon = radians(lat2 - lat1), radians(lon2 - lon1)
+	a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
+	return 2 * 6371000 * asin(sqrt(a))
+
+
+def nearest_location(company, lat, lon):
+	if not frappe.db.exists("DocType", "AlphaX Work Location"):
+		return None
+	best = None
+	for loc in frappe.get_all("AlphaX Work Location", filters={"enabled": 1}, fields=["name", "company", "latitude", "longitude", "radius_m"]):
+		if loc.company and loc.company != company:
+			continue
+		d = _distance_m(flt(lat), flt(lon), flt(loc.latitude), flt(loc.longitude))
+		if not best or d < best["distance"]:
+			best = {"name": loc.name, "distance": int(d), "inside": d <= (cint(loc.radius_m) or 150)}
+	return best
+
+
 @frappe.whitelist()
-def check_in(log_type, latitude=None, longitude=None):
+def check_in(log_type, latitude=None, longitude=None, accuracy=None):
 	if log_type not in ("IN", "OUT"):
 		frappe.throw(_("Invalid check-in type."))
 	employee = current_employee()
+	rules = checkin_rules(employee)
 	last = frappe.get_list("Employee Checkin", filters={"employee": employee}, fields=["time", "log_type"],
 						   order_by="time desc", page_length=1)
-	if last and last[0].log_type == log_type and (now_datetime() - last[0].time).total_seconds() < 60:
-		frappe.throw(_("You already checked {0} a moment ago.").format(log_type.lower()))
+	gap = max(rules["min_gap"], 1)
+	if last and (now_datetime() - last[0].time).total_seconds() < gap * 60:
+		frappe.throw(_("Your last punch ({0} at {1}) was less than {2} minute(s) ago.").format(
+			last[0].log_type, last[0].time.strftime("%H:%M"), gap), title=_("Already recorded"))
+	has_pos = latitude not in (None, "") and longitude not in (None, "")
+	if rules["location_rule"] != "Anywhere" and not has_pos:
+		frappe.throw(_("Turn on location for this app to check {0}.").format(log_type.lower()), title=_("Location needed"))
+	company = frappe.db.get_value("Employee", employee, "company")
+	near = nearest_location(company, latitude, longitude) if has_pos else None
+	if rules["location_rule"] == "Inside a work location":
+		if not near:
+			frappe.throw(_("No work location is set up for your company yet. Ask HR."))
+		if not near["inside"]:
+			frappe.throw(_("You are {0} m from {1}. Check {2} from your work location.").format(near["distance"], near["name"], log_type.lower()),
+						 title=_("Outside the work location"))
 	doc = frappe.new_doc("Employee Checkin")
 	doc.employee = employee
 	doc.log_type = log_type
 	doc.time = now_datetime()
-	if latitude and longitude and doc.meta.has_field("latitude"):
+	if has_pos and doc.meta.has_field("latitude"):
 		doc.latitude = flt(latitude)
 		doc.longitude = flt(longitude)
-	doc.insert()  # HRMS geofence/shift validation applies
+	if doc.meta.has_field("alphax_source"):
+		doc.alphax_source = "AlphaX app"
+		if near:
+			doc.alphax_location, doc.alphax_distance_m, doc.alphax_outside = near["name"], near["distance"], 0 if near["inside"] else 1
+	doc.flags.ignore_permissions = True  # the employee checks in for themselves only
+	doc.insert()  # HRMS shift validation applies
 	return today_status()
 
 
@@ -521,8 +576,7 @@ def payslip(name):
 		"payment_days": doc.payment_days, "total_working_days": doc.total_working_days,
 		"earnings": [line(r) for r in doc.earnings], "deductions": [line(r) for r in doc.deductions],
 		"gross_pay": flt(doc.gross_pay), "total_deduction": flt(doc.total_deduction), "net_pay": flt(doc.net_pay),
-		"pdf_url": "/api/method/frappe.utils.print_format.download_pdf?doctype=Salary%20Slip&name="
-		+ frappe.utils.quote(doc.name),
+		"pdf_url": "/api/method/alphax_hr.api.payslip.download?name=" + frappe.utils.quote(doc.name),
 	}
 
 

@@ -231,3 +231,94 @@ def export_register(month=None, department=None, company=None, file_format="xlsx
 		frappe.response["filecontent"] = make_xlsx(table, "Attendance").getvalue()
 		frappe.response["filename"] = name + ".xlsx"
 	frappe.response["type"] = "binary"
+
+
+# ------------------------------------------------------------------ live movements
+def _monitor_scope(user, department=None):
+	from alphax_hr.api._common import is_hr
+
+	filters = {"status": "Active"}
+	if department:
+		filters["department"] = department
+	if is_hr(user):
+		return frappe.get_all("Employee", filters=filters, fields=["name", "employee_name", "department", "designation", "image", "company"])
+	me = frappe.db.get_value("Employee", {"user_id": user}, "name")
+	or_filters = {"leave_approver": user}
+	if me:
+		or_filters["reports_to"] = me
+	rows = frappe.get_all("Employee", filters=filters, or_filters=or_filters, fields=["name", "employee_name", "department", "designation", "image", "company"])
+	if not rows:
+		frappe.throw(_("Only HR and managers can see check-ins."), frappe.PermissionError)
+	return rows
+
+
+@frappe.whitelist()
+def live(date=None, department=None):
+	"""Today's (or a day's) check-ins with locations: who is in, out, not in yet or on leave, and punches outside work locations."""
+	user = frappe.session.user
+	day = getdate(date or nowdate())
+	emps = _monitor_scope(user, department)
+	ids = [e.name for e in emps]
+	fields = ["employee", "time", "log_type", "latitude", "longitude"]
+	if frappe.get_meta("Employee Checkin").has_field("alphax_location"):
+		fields += ["alphax_location", "alphax_distance_m", "alphax_outside", "alphax_source"]
+	logs = defaultdict(list)
+	for r in frappe.get_all("Employee Checkin", filters={"employee": ["in", ids or [""]], "time": ["between", [f"{day} 00:00:00", f"{day} 23:59:59"]]},
+							fields=fields, order_by="time asc"):
+		logs[r.employee].append({**r, "time": str(r.time)})
+	on_leave = {r.employee: r.leave_type for r in frappe.get_all("Leave Application", filters={
+		"employee": ["in", ids or [""]], "docstatus": 1, "status": "Approved", "from_date": ["<=", day], "to_date": [">=", day]},
+		fields=["employee", "leave_type"])}
+	rows = []
+	for e in emps:
+		p = logs.get(e.name, [])
+		state = "on_leave" if e.name in on_leave else ("in" if p and p[-1]["log_type"] == "IN" else "out" if p else "not_in")
+		rows.append({**e, "state": state, "leave_type": on_leave.get(e.name), "punches": p,
+					 "first_in": next((x["time"] for x in p if x["log_type"] == "IN"), None),
+					 "last_out": next((x["time"] for x in reversed(p) if x["log_type"] == "OUT"), None),
+					 "outside": sum(1 for x in p if x.get("alphax_outside")), "no_location": sum(1 for x in p if not x.get("latitude"))})
+	rows.sort(key=lambda r: ({"in": 0, "out": 1, "not_in": 2, "on_leave": 3}[r["state"]], r["employee_name"] or ""))
+	summary = {k: sum(1 for r in rows if r["state"] == k) for k in ("in", "out", "not_in", "on_leave")}
+	summary["outside"] = sum(1 for r in rows if r["outside"])
+	return {"date": str(day), "rows": rows, "summary": summary,
+			"departments": sorted({e.department for e in emps if e.department}),
+			"locations": frappe.get_all("AlphaX Work Location", filters={"enabled": 1}, fields=["name", "latitude", "longitude", "radius_m"])
+			if frappe.db.exists("DocType", "AlphaX Work Location") else []}
+
+
+@frappe.whitelist()
+def work_locations():
+	require_hr()
+	return frappe.get_all("AlphaX Work Location", fields=["name", "location_name", "enabled", "company", "address", "latitude", "longitude", "radius_m"],
+						  order_by="location_name asc")
+
+
+@frappe.whitelist(methods=["POST"])
+def save_work_location(data, name=None):
+	from alphax_hr.api._common import parse_json, require_hr_manager
+
+	require_hr_manager()
+	d = parse_json(data, {}) or {}
+	doc = frappe.get_doc("AlphaX Work Location", name) if name else frappe.new_doc("AlphaX Work Location")
+	if not name:
+		doc.location_name = (d.get("location_name") or "").strip()
+	for k in ("enabled", "company", "address", "latitude", "longitude", "radius_m"):
+		if k in d:
+			doc.set(k, d[k] if d[k] != "" else None)
+	from frappe.utils import flt as _flt
+
+	if not (-90 <= _flt(doc.latitude) <= 90 and -180 <= _flt(doc.longitude) <= 180) or (not _flt(doc.latitude) and not _flt(doc.longitude)):
+		frappe.throw(_("Enter a valid latitude and longitude (e.g. 24.7136, 46.6753)."))
+	if (doc.radius_m or 0) < 20:
+		frappe.throw(_("The radius must be at least 20 metres (phone GPS is not more precise)."))
+	doc.save()
+	return {"name": doc.name}
+
+
+@frappe.whitelist(methods=["POST"])
+def delete_work_location(name):
+	from alphax_hr.api._common import require_hr_manager
+
+	require_hr_manager()
+	frappe.delete_doc("AlphaX Work Location", name)
+	return {"ok": True}

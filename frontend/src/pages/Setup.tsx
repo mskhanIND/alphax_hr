@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { FieldInput } from '../components/FieldInput'
 import { LinkInput } from '../components/LinkInput'
-import { Button, Card, ErrorBox, Field, PageHeader, Select, Spinner, Stat } from '../components/ui'
+import { Button, Card, ErrorBox, Field, PageHeader, Select, Spinner, Stat, Modal } from '../components/ui'
 import { api } from '../lib/api'
 import { useSession } from '../lib/session'
 import { useI18n } from '../lib/i18n'
@@ -76,6 +76,24 @@ function FixPanel({ check, onClose, onDone }: { check: any; onClose: () => void;
           </>
         )}
       </aside>
+    </div>
+  )
+}
+
+function PayslipActions({ can }: { can: boolean }) {
+  const { t } = useI18n()
+  const [html, setHtml] = useState<string | null>(null)
+  const slip = useQuery({ queryKey: ['latest-slip'], queryFn: api.latestSlip })
+  const pv = useMutation({ mutationFn: () => api.payslipPreview(slip.data!), onSuccess: (d: any) => setHtml(d.html) })
+  const pf = useMutation({ mutationFn: () => api.installPayslipFormat() })
+  return (
+    <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-line pt-4">
+      <Button variant="secondary" size="sm" disabled={!slip.data} loading={pv.isPending} onClick={() => pv.mutate()}>{t('Preview payslip')}</Button>
+      {can && <Button variant="secondary" size="sm" loading={pf.isPending} onClick={() => pf.mutate()}>{t('Use this payslip in ERPNext printing')}</Button>}
+      <span className="text-xs text-muted">{t('Save settings first; the preview uses the latest salary slip.')}</span>
+      {pf.isSuccess && <span className="text-sm text-emerald-700">{t('Print format "AlphaX Salary Slip" is now the default.')}</span>}
+      {(pv.error || pf.error) && <ErrorBox error={pv.error || pf.error} />}
+      {html && <Modal open wide onClose={() => setHtml(null)} title={t('Payslip preview')}><div className="overflow-x-auto" dangerouslySetInnerHTML={{ __html: html }} /></Modal>}
     </div>
   )
 }
@@ -165,6 +183,8 @@ function SettingsForm() {
               )
             ))}
           </div>
+          {sec.key === 'payslip_section' && <PayslipActions can={can} />}
+          {sec.key === 'checkin_section' && <p className="mt-4 text-sm"><Link className="text-brand underline" to="/work-locations">{t('Work locations (check-in areas)')}</Link></p>}
           {sec.key === 'gosi_section' && (
             <div className="mt-5 border-t border-line pt-4">
               <div className="mb-1 text-sm font-medium">{t('Salary component mapping')}</div>

@@ -37,13 +37,17 @@ doc_events = {
 	"Leave Application": {
 		"validate": "alphax_hr.leave_engine.validate_leave_application",
 		"before_submit": "alphax_hr.leave_engine.before_submit_leave_application",
+		"after_insert": "alphax_hr.api.notify.on_leave_insert",
+		"on_submit": "alphax_hr.api.notify.on_leave_decided",
 	},
+	"Notification Log": {"after_insert": "alphax_hr.api.notify.on_notification_log"},
 }
 
 scheduler_events = {
 	"daily": [
 		"alphax_hr.tasks.notify_expiring_documents",
 		"alphax_hr.leave_engine.daily_annual_allocation",
+		"alphax_hr.api.notify.daily_announcements",
 	],
 	"hourly": ["alphax_hr.leave_engine.escalate_pending_leaves"],
 }
@@ -56,3 +60,5 @@ has_permission = {"AlphaX Request": "alphax_hr.api.requests.has_permission",
 				  "AlphaX Leave Plan": "alphax_hr.api.leave_plan.has_permission"}
 
 after_request = ["alphax_hr.api.pwa.after_request"]
+
+jinja = {"methods": ["alphax_hr.api.payslip.alphax_payslip"]}

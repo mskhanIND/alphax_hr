@@ -42,6 +42,21 @@
   "min_employee_age",
   "validate_iban",
   "passport_non_saudi_only",
+  "payslip_section",
+  "payslip_show_stamp",
+  "payslip_stamp",
+  "payslip_signature",
+  "payslip_signatory",
+  "payslip_signatory_title",
+  "payslip_note",
+  "payslip_note_ar",
+  "checkin_section",
+  "checkin_location_rule",
+  "checkin_min_gap",
+  "push_section",
+  "push_public_key",
+  "push_private_key",
+  "push_contact",
   "field_links",
   "salary_section",
   "salary_basic_component",
@@ -258,6 +273,90 @@
    "label": "Passport Mandatory Only for Non-Saudis",
    "default": "1",
    "description": "Saudis (ID starting with 1) do not need a passport number. AlphaX relaxes the site's blanket 'passport mandatory' setting and checks non-Saudis itself."
+  },
+  {
+   "fieldname": "payslip_section",
+   "fieldtype": "Section Break",
+   "label": "Payslip & official documents"
+  },
+  {
+   "fieldname": "payslip_show_stamp",
+   "fieldtype": "Check",
+   "label": "Print company stamp and signature",
+   "default": "1"
+  },
+  {
+   "fieldname": "payslip_stamp",
+   "fieldtype": "Attach Image",
+   "label": "Company stamp"
+  },
+  {
+   "fieldname": "payslip_signature",
+   "fieldtype": "Attach Image",
+   "label": "Authorised signature"
+  },
+  {
+   "fieldname": "payslip_signatory",
+   "fieldtype": "Data",
+   "label": "Signatory name"
+  },
+  {
+   "fieldname": "payslip_signatory_title",
+   "fieldtype": "Data",
+   "label": "Signatory title"
+  },
+  {
+   "fieldname": "payslip_note",
+   "fieldtype": "Small Text",
+   "label": "Payslip footer note"
+  },
+  {
+   "fieldname": "payslip_note_ar",
+   "fieldtype": "Small Text",
+   "label": "Payslip footer note (Arabic)"
+  },
+  {
+   "fieldname": "checkin_section",
+   "fieldtype": "Section Break",
+   "label": "Check-in rules"
+  },
+  {
+   "fieldname": "checkin_location_rule",
+   "fieldtype": "Select",
+   "label": "Location",
+   "options": "Anywhere\nMust share location\nInside a work location",
+   "default": "Anywhere",
+   "description": "Attendance policies can override this for some employees."
+  },
+  {
+   "fieldname": "checkin_min_gap",
+   "fieldtype": "Int",
+   "label": "Minutes between two punches",
+   "default": "5",
+   "description": "Stops repeated taps (IN, OUT, IN within a minute). 0 = no limit."
+  },
+  {
+   "fieldname": "push_section",
+   "fieldtype": "Section Break",
+   "label": "Phone notifications"
+  },
+  {
+   "fieldname": "push_public_key",
+   "fieldtype": "Data",
+   "label": "Push public key",
+   "read_only": 1
+  },
+  {
+   "fieldname": "push_private_key",
+   "fieldtype": "Password",
+   "label": "Push private key",
+   "hidden": 1
+  },
+  {
+   "fieldname": "push_contact",
+   "fieldtype": "Data",
+   "label": "Push contact e-mail",
+   "description": "Sent to the browser push services (mailto:)."
   },
   {
    "fieldname": "field_links",

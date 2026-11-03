@@ -81,7 +81,7 @@ export function RequestForm({ open, onClose, employee, initialType, category }: 
               <Input1 f={f} value={values[f.fieldname]} onChange={(v) => setValues((s) => ({ ...s, [f.fieldname]: v }))} />
             </Field>
           ))}
-          {rt && <Field label={t('Reason / notes')}><Textarea value={reason} onChange={(e) => setReason(e.target.value)} /></Field>}
+          {rt && <Field label={rt.category === 'Help' ? t('Your question') : t('Reason / notes')}><Textarea value={reason} onChange={(e) => setReason(e.target.value)} /></Field>}
           {rt && (
             <Field label={t('Supporting document') + (rt.requires_attachment ? ' *' : '')}>
               <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="text-sm" />

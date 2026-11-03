@@ -12,7 +12,7 @@ from alphax_hr.api._common import parse_json, require_hr, require_hr_manager
 
 ORDER = ("Employee", "Designation", "Department", "Company", "Everyone")
 RULES = ("exempt", "late_grace_minutes", "early_grace_minutes", "monthly_late_allowance", "single_punch_ok",
-		 "permissions_per_month", "no_penalties")
+		 "permissions_per_month", "no_penalties", "checkin_location_rule", "min_punch_gap")
 FIELDS = ["name", "policy_name", "enabled", "applies_to", "company", "department", "designation", "employee", "description", *RULES]
 
 
@@ -101,7 +101,7 @@ def save(data, name=None):
 	for k in ("company", "department", "designation", "employee"):  # only the target that matters is kept
 		if k != doc.applies_to.lower():
 			doc.set(k, None)
-	for k in ("late_grace_minutes", "early_grace_minutes", "permissions_per_month"):
+	for k in ("late_grace_minutes", "early_grace_minutes", "permissions_per_month", "min_punch_gap"):
 		v = str(doc.get(k) if doc.get(k) is not None else "").strip()
 		if v and not v.isdigit():
 			frappe.throw(_("{0} must be a whole number (or blank to use the default).").format(doc.meta.get_label(k)))

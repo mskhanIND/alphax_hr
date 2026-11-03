@@ -1,0 +1,136 @@
+{
+ "doctype": "DocType",
+ "name": "AlphaX Knowledge Article",
+ "module": "AlphaX HR",
+ "custom": 0,
+ "engine": "InnoDB",
+ "creation": "2026-11-02 00:00:00.000000",
+ "modified": "2026-11-02 00:00:00.000000",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "field_order": [
+  "title",
+  "title_ar",
+  "category",
+  "published",
+  "pinned",
+  "cb1",
+  "views",
+  "helpful",
+  "not_helpful",
+  "body_section",
+  "body",
+  "body_ar",
+  "attachment"
+ ],
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "title_ar",
+   "fieldtype": "Data",
+   "label": "Title (Arabic)"
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Select",
+   "label": "Category",
+   "options": "Leave\nAttendance\nPayroll\nBenefits\nPolicies\nDocuments\nTravel\nOther",
+   "default": "Policies",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "published",
+   "fieldtype": "Check",
+   "label": "Published",
+   "default": "1",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "pinned",
+   "fieldtype": "Check",
+   "label": "Pinned"
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "views",
+   "fieldtype": "Int",
+   "label": "Views",
+   "read_only": 1
+  },
+  {
+   "fieldname": "helpful",
+   "fieldtype": "Int",
+   "label": "Helpful",
+   "read_only": 1
+  },
+  {
+   "fieldname": "not_helpful",
+   "fieldtype": "Int",
+   "label": "Not helpful",
+   "read_only": 1
+  },
+  {
+   "fieldname": "body_section",
+   "fieldtype": "Section Break",
+   "label": "Content"
+  },
+  {
+   "fieldname": "body",
+   "fieldtype": "Text",
+   "label": "Content",
+   "reqd": 1
+  },
+  {
+   "fieldname": "body_ar",
+   "fieldtype": "Text",
+   "label": "Content (Arabic)"
+  },
+  {
+   "fieldname": "attachment",
+   "fieldtype": "Attach",
+   "label": "Attachment"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "HR Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "HR User",
+   "read": 1,
+   "write": 1,
+   "create": 1
+  },
+  {
+   "role": "Employee",
+   "read": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1,
+ "states": [],
+ "autoname": "hash",
+ "title_field": "title"
+}

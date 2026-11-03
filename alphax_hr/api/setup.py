@@ -9,7 +9,7 @@ from alphax_hr.api._common import parse_json, require_hr, require_hr_manager, se
 
 SETTINGS = "AlphaX HR Settings"
 # Settings edited on their own pages (or tables) are not repeated in the generic form.
-SKIP = {"leave_rules", "annual_leave_type", "annual_auto_allocate", "annual_policy", "annual_fixed_days",
+SKIP = {"push_public_key", "push_private_key", "leave_rules", "annual_leave_type", "annual_auto_allocate", "annual_policy", "annual_fixed_days",
 		"annual_base_days", "annual_senior_days", "annual_senior_after_years", "annual_senior_count_from",
 		"leave_escalation_hours"}
 OK, WARN, ERROR = "ok", "warn", "error"

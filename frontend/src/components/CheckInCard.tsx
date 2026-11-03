@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { LogIn, LogOut } from 'lucide-react'
+import { LogIn, LogOut, MapPin } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '../lib/api'
 import { fmtTime } from '../lib/format'
@@ -21,6 +21,7 @@ export function CheckInCard() {
   const m = useMutation({
     mutationFn: async (type: 'IN' | 'OUT') => {
       const pos = await position()
+      if (!pos && d?.location_rule && d.location_rule !== 'Anywhere') throw new Error(t('Allow location access for this app, then try again.'))
       return api.checkIn(type, pos?.coords.latitude, pos?.coords.longitude)
     },
     onSuccess: (data) => { setErr(null); qc.setQueryData(['today'], data) },
@@ -38,7 +39,8 @@ export function CheckInCard() {
           {!!d?.logs?.length && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {d.logs.map((l: any) => (
-                <span key={l.name} className="rounded-md bg-surface px-2 py-0.5 text-xs tabular-nums text-muted">{l.log_type} {fmtTime(l.time)}</span>
+                <span key={l.name} className={`rounded-md px-2 py-0.5 text-xs tabular-nums ${l.alphax_outside ? 'bg-amber-50 text-amber-800' : 'bg-surface text-muted'}`}
+                  title={l.alphax_location ?? undefined}>{l.log_type} {fmtTime(l.time)}{l.alphax_location ? ` · ${l.alphax_location}` : ''}</span>
               ))}
             </div>
           )}
@@ -48,6 +50,7 @@ export function CheckInCard() {
           {next === 'IN' ? t('Check in') : t('Check out')}
         </Button>
       </div>
+      {d?.location_rule === 'Inside a work location' && <p className="mt-3 flex items-center gap-1.5 text-xs text-muted"><MapPin className="size-3.5" />{t('Check in from your work location.')}</p>}
       {!!err && <div className="mt-3"><ErrorBox error={err} /></div>}
     </Card>
   )

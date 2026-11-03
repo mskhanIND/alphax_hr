@@ -1535,6 +1535,7 @@ def run(site):
             expect_error(lambda: rq.create("Late Arrival Permission", {"date": add_days(nowdate(), 3), "time": "09:00"}), frappe.ValidationError)
             frappe.set_user(f["hr"])
             ap.delete("AXT Exempt Omar"); ap.delete("AXT Ops")
+            frappe.db.delete("AlphaX Request", {"employee": f["e_emp2"], "request_type": ["in", ["Late Arrival Permission", "Early Exit Permission"]]})
         check("attendance exceptions policy: most specific wins, exempt, grace, free late minutes, permission limit", attendance_policy_flow)
 
         def vacation_plan_flow():
@@ -1691,6 +1692,130 @@ def run(site):
                 frappe.set_user("Administrator")
                 frappe.delete_doc("Letter Head", name, ignore_permissions=True, force=1)
         check("HR status finds letter-head / payslip images that point to missing files", print_images_check)
+
+        print("\n== Payslip, check-in rules, notifications, help centre")
+        def payslip_format():
+            import base64
+            from alphax_hr.api import payslip, salary
+            frappe.set_user("Administrator")
+            if not frappe.db.exists("Salary Structure Assignment", {"employee": f["e_emp"], "docstatus": 1}):
+                salary.assign(f["e_emp"], {"mode": "total", "total": 12000}, "2021-01-10")
+            png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
+            stamp = frappe.get_doc({"doctype": "File", "file_name": "axt-stamp.png", "content": png, "is_private": 1}).insert(ignore_permissions=True)
+            frappe.db.set_single_value("AlphaX HR Settings", {"payslip_stamp": stamp.file_url, "payslip_show_stamp": 1,
+                                                              "payslip_signatory": "Hana Test", "payslip_signatory_title": "HR Manager"})
+            frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
+            start = frappe.utils.get_first_day(add_days(nowdate(), -40))
+            slip = frappe.db.get_value("Salary Slip", {"employee": f["e_emp"], "start_date": start, "docstatus": ["<", 2]})
+            if not slip:
+                try:
+                    d = frappe.get_doc({"doctype": "Salary Slip", "employee": f["e_emp"], "start_date": start, "end_date": frappe.utils.get_last_day(start),
+                                        "posting_date": frappe.utils.get_last_day(start), "payroll_frequency": "Monthly"})
+                    d.insert(ignore_permissions=True)
+                    slip = d.name
+                except Exception as exc:  # noqa: BLE001 - some fresh sites cannot make slips (e.g. no fiscal year)
+                    print("    salary slip could not be created here:", str(exc)[:120])
+            frappe.set_user(f["hr"])
+            assert payslip.latest_slip()
+            if slip:
+                html = payslip.preview(slip)["html"]
+                assert "Payslip" in html and "data:image/png;base64" in html and "Hana Test" in html, html[:200]
+                payslip.download(slip)
+                assert frappe.response["type"] == "pdf" and frappe.response["filecontent"][:4] == b"%PDF"
+                frappe.response.pop("filecontent", None); frappe.response.pop("type", None)
+                frappe.set_user(f["emp"])
+                if frappe.db.get_value("Salary Slip", slip, "docstatus") == 0:
+                    expect_error(lambda: payslip.preview(slip), frappe.PermissionError)  # not final yet
+                frappe.set_user(f["emp2"])
+                expect_error(lambda: payslip.preview(slip), frappe.PermissionError)
+            frappe.set_user(f["emp"])
+            expect_error(payslip.install_print_format, frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            assert payslip.install_print_format()["name"] == "AlphaX Salary Slip"
+            assert frappe.db.get_value("Print Format", "AlphaX Salary Slip", "html").strip() == "{{ alphax_payslip(doc) }}"
+        check("payslip: bilingual layout with embedded stamp, PDF, own-slip privacy, ERPNext print format", payslip_format)
+
+        def checkin_rules_and_monitor():
+            from alphax_hr.api import ess, attendance
+            frappe.set_user("Administrator")
+            frappe.db.delete("AlphaX Work Location")
+            frappe.db.delete("Employee Checkin", {"employee": f["e_emp2"]})
+            frappe.db.set_single_value("AlphaX HR Settings", {"checkin_location_rule": "Inside a work location", "checkin_min_gap": 5})
+            frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
+            frappe.set_user(f["emp"])
+            expect_error(lambda: attendance.save_work_location({"location_name": "x", "latitude": 1, "longitude": 1}), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            expect_error(lambda: attendance.save_work_location({"location_name": "Bad", "latitude": 200, "longitude": 1}), frappe.ValidationError)
+            attendance.save_work_location({"location_name": "AXT HQ", "latitude": 24.7136, "longitude": 46.6753, "radius_m": 150})
+            try:
+                frappe.set_user(f["emp2"])
+                assert ess.today_status()["location_rule"] == "Inside a work location"
+                expect_error(lambda: ess.check_in("IN"), frappe.ValidationError)  # no location
+                expect_error(lambda: ess.check_in("IN", 24.7300, 46.6753), frappe.ValidationError)  # ~1.8 km away
+                s = ess.check_in("IN", 24.7140, 46.6755)
+                assert s["logs"][-1]["alphax_location"] == "AXT HQ"
+                expect_error(lambda: ess.check_in("OUT", 24.7140, 46.6755), frappe.ValidationError)  # within 5 minutes
+                frappe.set_user(f["hr"])
+                live = attendance.live()
+                omar = next(r for r in live["rows"] if r["name"] == f["e_emp2"])
+                assert omar["state"] == "in" and omar["punches"][0]["alphax_location"] == "AXT HQ" and live["summary"]["in"] >= 1
+                frappe.set_user(f["mgr"])
+                assert {r["name"] for r in attendance.live()["rows"]} >= {f["e_emp"], f["e_emp2"]}
+                frappe.set_user(f["emp"])
+                expect_error(lambda: attendance.live(), frappe.PermissionError)
+            finally:
+                frappe.set_user("Administrator")
+                frappe.db.set_single_value("AlphaX HR Settings", {"checkin_location_rule": "Anywhere", "checkin_min_gap": 0})
+                frappe.db.delete("Employee Checkin", {"employee": f["e_emp2"]})
+        check("check-in rules: work location radius, location required, minimum gap; live movements for HR and managers", checkin_rules_and_monitor)
+
+        def push_notifications():
+            from alphax_hr.api import notify
+            from alphax_hr import push as wp
+            from cryptography.hazmat.primitives import serialization
+            from cryptography.hazmat.primitives.asymmetric import ec
+            frappe.set_user(f["emp"])
+            key = notify.public_key()["key"]
+            assert len(wp.b64u_decode(key)) == 65 and notify.public_key()["key"] == key  # created once
+            expect_error(lambda: notify.subscribe({"endpoint": "http://x", "keys": {}}), frappe.ValidationError)
+            ua = ec.generate_private_key(ec.SECP256R1())
+            p256 = wp.b64u(ua.public_key().public_bytes(serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint))
+            sub = {"endpoint": "https://push.invalid/axt-test", "keys": {"p256dh": p256, "auth": wp.b64u(b"0123456789abcdef")}}
+            assert notify.subscribe(sub, "test")["devices"] >= 1
+            assert notify.subscribe(sub, "test")["devices"] == notify.status()["devices"]  # same device is not duplicated
+            assert notify.send([f["emp"]], "Hi", "Test", now=True) == 0  # unreachable host: recorded, not raised
+            assert frappe.db.get_value("AlphaX Push Subscription", {"endpoint_hash": wp.endpoint_hash(sub["endpoint"])}, "last_error")
+            notify.unsubscribe(sub["endpoint"])
+            assert notify.status()["devices"] == 0
+        check("phone notifications: VAPID keys, device subscription, encrypted delivery errors recorded, unsubscribe", push_notifications)
+
+        def help_centre():
+            from alphax_hr.api import knowledge, requests as rq, approvals
+            frappe.set_user("Administrator")
+            frappe.db.delete("AlphaX Knowledge Article")
+            frappe.set_user(f["emp"])
+            expect_error(lambda: knowledge.save({"title": "x", "body": "y"}), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            knowledge.save({"title": "How to request a salary certificate", "body": "Open Services and choose Salary Certificate.", "category": "Documents"})
+            knowledge.save({"title": "Draft policy", "body": "Not yet", "published": 0})
+            frappe.set_user(f["emp"])
+            res = knowledge.articles("salary certificate")
+            assert [a["title"] for a in res["articles"]] == ["How to request a salary certificate"], res
+            assert knowledge.articles()["categories"] == [{"category": "Documents", "count": 1}]
+            a = knowledge.article(res["articles"][0]["name"])
+            assert "Services" in a["body"]
+            knowledge.feedback(a["name"], 1)
+            assert frappe.db.get_value("AlphaX Knowledge Article", a["name"], ["views", "helpful"]) == (1, 1)
+            q = rq.create("Ask HR", {"topic": "Payroll", "subject": "Overtime not paid"}, reason="My October overtime is missing")
+            assert q["status"] == "Pending HR"
+            expect_error(lambda: rq.decide(q["name"], "Resolve"), frappe.PermissionError)
+            rq.post_message(q["name"], "It was 6 hours")
+            frappe.set_user(f["hr"])
+            item = next(i for i in approvals.inbox("AlphaX Request")["items"] if i["name"] == q["name"])
+            assert item["actions"] == ["Resolve"], item["actions"]
+            rq.post_message(q["name"], "Added to November payroll")
+            assert approvals.act("AlphaX Request", q["name"], "Resolve")["status"] == "Completed"
+        check("help centre: HR articles, search, feedback; Ask HR conversation resolved by HR", help_centre)
 
         print("\n== /alphax page")
         def www_page():

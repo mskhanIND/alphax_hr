@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { UserPen, Briefcase, CalendarDays, CalendarRange, Clock, FileText, Folder, LogOut, Plane, Receipt, Star, Timer, Wallet } from 'lucide-react'
+import { LifeBuoy, UserPen, Briefcase, CalendarDays, CalendarRange, Clock, FileText, Folder, LogOut, Plane, Receipt, Star, Timer, Wallet } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { RequestForm, typeTitle } from '../components/RequestForm'
@@ -14,8 +14,9 @@ function Tile({ icon, label, hint, to, onClick }: { icon: ReactNode; label: stri
   return to ? <Link to={to} className={cls}>{body}</Link> : <button type="button" onClick={onClick} className={cls}>{body}</button>
 }
 
-const CATEGORY_ORDER = ['Attendance', 'Letter', 'Finance', 'Government', 'Document', 'Travel', 'Asset', 'Separation', 'Other']
+const CATEGORY_ORDER = ['Help', 'Attendance', 'Letter', 'Finance', 'Government', 'Document', 'Travel', 'Asset', 'Separation', 'Other']
 const CATEGORY_ICON: Record<string, ReactNode> = {
+  Help: <LifeBuoy className="size-5" />,
   Attendance: <Timer className="size-5" />, Letter: <FileText className="size-5" />, Finance: <Wallet className="size-5" />,
   Government: <Plane className="size-5" />, Document: <Folder className="size-5" />, Travel: <Briefcase className="size-5" />,
   Asset: <Briefcase className="size-5" />, Separation: <LogOut className="size-5" />, Other: <FileText className="size-5" />,
@@ -40,6 +41,7 @@ export default function Services() {
           <Tile icon={<Wallet className="size-5" />} label={t('My Payslips')} to="/me/payslips" />
           <Tile icon={<Folder className="size-5" />} label={t('My documents')} to="/me/documents" />
           <Tile icon={<UserPen className="size-5" />} label={t('Update my details')} to="/me/profile" />
+          <Tile icon={<LifeBuoy className="size-5" />} label={t('Help centre')} to="/me/help" />
           <Tile icon={<Star className="size-5" />} label={t('My performance')} to="/me/performance" />
         </div>
       </Card>

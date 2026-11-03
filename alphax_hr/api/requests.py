@@ -85,6 +85,12 @@ DEFAULT_TYPES = [
 	 "sla_days": 3, "effect": "Update employee record",
 	 "description": "Update your passport, Iqama, marital status or bank details. HR checks the document and updates your file.",
 	 "fields": []},
+	{"request_type_name": "Ask HR", "title_ar": "اسأل الموارد البشرية", "category": "Help", "needs_manager": 0, "needs_hr": 1,
+	 "sla_days": 2, "effect": "Conversation",
+	 "description": "A private conversation with HR about one topic. HR answers in the thread and closes it when done.",
+	 "fields": [{"fieldname": "topic", "label": "Topic", "label_ar": "الموضوع", "type": "Select", "reqd": 1,
+				 "options": ["Leave", "Attendance", "Payroll", "Benefits", "Documents", "Policies", "Other"]},
+				{"fieldname": "subject", "label": "Subject", "label_ar": "العنوان", "type": "Data", "reqd": 1}]},
 	{"request_type_name": "General Request", "title_ar": "طلب عام", "category": "Other", "sla_days": 3, "fields": []},
 ]
 
@@ -177,7 +183,7 @@ def create(request_type, details=None, reason=None, employee=None):
 	data = _clean_details(parse_json(t.fields_json, []) or [], parse_json(details, {}) or {})
 	if t.request_type_name == "Resignation":
 		_check_resignation(employee, data)
-	if t.get("effect"):
+	if t.get("effect") in EFFECTS:
 		_check_permission(employee, t, data)
 	approver = _manager(employee) if cint(t.needs_manager) else None
 	if approver == user:
@@ -190,6 +196,9 @@ def create(request_type, details=None, reason=None, employee=None):
 	doc.insert()
 	if status == "Approved":
 		_on_approved(doc, t)
+	from alphax_hr.api import notify
+
+	notify.request_created(doc)
 	return {"name": doc.name, "status": doc.status}
 
 
@@ -255,6 +264,13 @@ def actions_for(doc, user):
 	"""Approve / Reject / Complete / Cancel available to this user for one request."""
 	hr = is_hr(user)
 	acts = []
+	if frappe.get_cached_value("AlphaX Request Type", doc.request_type, "effect") == "Conversation":
+		if doc.status in OPEN and hr:
+			acts = ["Resolve"]
+		own = frappe.db.get_value("Employee", {"user_id": user}, "name")
+		if doc.status in OPEN and doc.employee == own:
+			acts.append("Cancel")
+		return acts
 	if doc.status == "Pending Manager" and (doc.approver == user or hr):
 		acts = ["Approve", "Reject"]
 	elif doc.status == "Pending HR" and hr:
@@ -279,7 +295,7 @@ def decide(name, action, comment=None):
 		doc.status = "Rejected"
 	elif action == "Cancel":
 		doc.status = "Cancelled"
-	elif action == "Complete":
+	elif action in ("Complete", "Resolve"):
 		doc.status = "Completed"
 		if comment:
 			doc.hr_note = str(comment)[:2000]
@@ -296,6 +312,10 @@ def decide(name, action, comment=None):
 	doc.save(ignore_permissions=True)  # permission checked above via actions_for
 	if doc.status == "Approved":
 		_on_approved(doc, t)
+	if action != "Cancel":
+		from alphax_hr.api import notify
+
+		notify.request_decided(doc)
 	return {"name": doc.name, "status": doc.status}
 
 
@@ -304,7 +324,7 @@ def _on_approved(doc, t):
 	if t.get("effect") == "Update employee record":
 		_apply_profile_changes(doc, details)
 		return
-	if t.get("effect"):
+	if t.get("effect") in EFFECTS:
 		doc.status = "Completed"  # nothing for HR to do: the attendance register reads it
 		doc.flags.alphax_engine = True
 		doc.save(ignore_permissions=True)

@@ -1,0 +1,75 @@
+{#- AlphaX payslip: tables only (renders the same in browser and wkhtmltopdf). -#}
+<style>
+ .axp{font-family:"Noto Naskh Arabic","Noto Sans",Tahoma,Arial,sans-serif;color:#1b1b1b;font-size:11.5px;max-width:780px;margin:0 auto}
+ .axp table{width:100%;border-collapse:collapse}
+ .axp .head td{vertical-align:middle;padding-bottom:8px}
+ .axp .brand{border-bottom:3px solid #0f5132}
+ .axp .ar{direction:rtl;text-align:right}
+ .axp .muted{color:#666}
+ .axp h1{font-size:16px;margin:0;color:#0f5132}
+ .axp .box td{border:1px solid #d9dfdb;padding:5px 7px}
+ .axp .box .k{background:#f3f6f4;color:#444;width:22%}
+ .axp .lines th{background:#0f5132;color:#fff;padding:6px 7px;font-weight:600;text-align:left}
+ .axp .lines th.r,.axp .num{text-align:right;white-space:nowrap}
+ .axp .lines td{padding:5px 7px;border-bottom:1px solid #e4e8e5}
+ .axp .lines tr.total td{font-weight:700;background:#f3f6f4;border-top:2px solid #0f5132}
+ .axp .pen th{background:#a3271e}
+ .axp .net{background:#0f5132;color:#fff;padding:10px 12px;font-size:15px;font-weight:700}
+ .axp .stats td{text-align:center;border:1px solid #d9dfdb;padding:6px}
+ .axp .stats b{display:block;font-size:14px}
+ .axp .sig td{vertical-align:bottom;padding-top:18px}
+ .axp .draft{color:#a3271e;font-weight:700;border:2px solid #a3271e;padding:2px 8px;display:inline-block}
+</style>
+<div class="axp">
+ <table class="head brand"><tr>
+  <td style="width:30%">{% if logo %}<img src="{{ logo }}" style="max-height:56px;max-width:180px">{% endif %}</td>
+  <td style="text-align:center"><h1>Payslip · قسيمة الراتب</h1><div class="muted">{{ month }} · {{ period }}</div>
+   {% if draft %}<div class="draft">DRAFT · مسودة</div>{% endif %}</td>
+  <td class="ar" style="width:30%"><b>{{ company_ar or company }}</b><br><span class="muted">{{ company }}{% if tax_id %} · VAT {{ tax_id }}{% endif %}</span></td>
+ </tr></table>
+ <table class="box" style="margin-top:10px">
+  <tr><td class="k">Employee · الموظف</td><td><b>{{ employee.name }}</b>{% if employee.name_ar %} · <span class="ar">{{ employee.name_ar }}</span>{% endif %}</td>
+      <td class="k">Employee ID · الرقم</td><td>{{ employee.id }}</td></tr>
+  <tr><td class="k">Designation · المسمى</td><td>{{ employee.designation }}</td><td class="k">Department · القسم</td><td>{{ employee.department }}</td></tr>
+  <tr><td class="k">ID / Iqama · الهوية</td><td>{{ employee.id_number }}</td><td class="k">Joined · المباشرة</td><td>{{ employee.joined }}</td></tr>
+  <tr><td class="k">Bank · البنك</td><td>{{ employee.bank }}</td><td class="k">Account · الحساب</td><td>{{ employee.account }}</td></tr>
+ </table>
+ <table class="stats" style="margin-top:10px"><tr>
+  <td><b>{{ days.working }}</b>Working days · أيام العمل</td>
+  <td><b>{{ days.paid }}</b>Paid days · الأيام المدفوعة</td>
+  <td><b>{{ days.absent }}</b>Absent · غياب</td>
+  <td><b>{{ days.lwp }}</b>Unpaid leave · بدون راتب</td>
+  {% if annual_balance is not none %}<td><b>{{ annual_balance }}</b>Annual leave left · رصيد الإجازة</td>{% endif %}
+ </tr></table>
+ <table style="margin-top:10px"><tr>
+  <td style="width:50%;vertical-align:top;padding-right:6px">
+   <table class="lines"><tr><th>Earnings · الاستحقاقات</th><th class="r">Amount</th></tr>
+    {% for r in earnings %}<tr><td>{{ r.name }}</td><td class="num">{{ r.amount }}</td></tr>{% endfor %}
+    <tr class="total"><td>Gross · الإجمالي</td><td class="num">{{ gross }}</td></tr></table>
+  </td>
+  <td style="width:50%;vertical-align:top;padding-left:6px">
+   <table class="lines"><tr><th>Deductions · الاستقطاعات</th><th class="r">Amount</th></tr>
+    {% for r in deductions %}<tr><td>{{ r.name }}</td><td class="num">{{ r.amount }}</td></tr>{% endfor %}
+    {% if loans %}<tr><td>Loan repayment · سداد قرض</td><td class="num">{{ loans }}</td></tr>{% endif %}
+    {% if not deductions and not loans and not penalties %}<tr><td class="muted">—</td><td></td></tr>{% endif %}
+    {% if penalties %}</table><table class="lines pen" style="margin-top:6px"><tr><th>Penalties · الجزاءات</th><th class="r">Amount</th></tr>
+     {% for r in penalties %}<tr><td>{{ r.name }}</td><td class="num">{{ r.amount }}</td></tr>{% endfor %}{% endif %}
+    <tr class="total"><td>Total deductions · إجمالي الاستقطاعات</td><td class="num">{{ total_deduction }}</td></tr></table>
+  </td>
+ </tr></table>
+ <table style="margin-top:10px"><tr><td class="net">Net pay · صافي الراتب</td><td class="net num">{{ net }}</td></tr></table>
+ {% if in_words %}<p class="muted" style="margin:6px 0 0">{{ in_words }}</p>{% endif %}
+ {% if warnings %}<p style="margin:8px 0 0"><b>Warnings this period · إنذارات الفترة:</b>
+  {% for w in warnings %}{{ w.violation_date }} – {{ w.violation_type }} ({{ w.action }}){% if not loop.last %}; {% endif %}{% endfor %}</p>{% endif %}
+ <table class="sig"><tr>
+  <td style="width:50%">{% if note %}<p class="muted">{{ note }}</p>{% endif %}{% if note_ar %}<p class="muted ar">{{ note_ar }}</p>{% endif %}
+   <p class="muted">Generated from AlphaX HR · {{ doc.name }}</p></td>
+  <td style="width:50%;text-align:center">
+   <div style="height:90px;position:relative">
+    {% if stamp %}<img src="{{ stamp }}" style="height:88px;opacity:.85">{% endif %}
+    {% if signature %}<img src="{{ signature }}" style="height:60px;margin-left:-40px">{% endif %}
+   </div>
+   <div style="border-top:1px solid #999;padding-top:4px">{{ signatory or "Authorised signature" }}{% if signatory_title %}<br><span class="muted">{{ signatory_title }}</span>{% endif %}
+    <br><span class="muted">التوقيع المعتمد</span></div>
+  </td></tr></table>
+</div>

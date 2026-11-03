@@ -1,0 +1,82 @@
+{
+ "doctype": "DocType",
+ "name": "AlphaX Push Subscription",
+ "module": "AlphaX HR",
+ "custom": 0,
+ "engine": "InnoDB",
+ "creation": "2026-11-02 00:00:00.000000",
+ "modified": "2026-11-02 00:00:00.000000",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "field_order": [
+  "user",
+  "endpoint",
+  "endpoint_hash",
+  "p256dh",
+  "auth",
+  "device",
+  "last_error"
+ ],
+ "fields": [
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User",
+   "options": "User",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "endpoint",
+   "fieldtype": "Small Text",
+   "label": "Endpoint",
+   "reqd": 1
+  },
+  {
+   "fieldname": "endpoint_hash",
+   "fieldtype": "Data",
+   "label": "Endpoint Hash",
+   "unique": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "p256dh",
+   "fieldtype": "Data",
+   "label": "Key",
+   "reqd": 1
+  },
+  {
+   "fieldname": "auth",
+   "fieldtype": "Data",
+   "label": "Auth",
+   "reqd": 1
+  },
+  {
+   "fieldname": "device",
+   "fieldtype": "Data",
+   "label": "Device",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Small Text",
+   "label": "Last Error",
+   "read_only": 1
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1,
+ "states": [],
+ "autoname": "hash",
+ "title_field": "user"
+}

@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import {
-  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History, Network, CalendarCheck, Activity, ChevronDown, Inbox, Gavel, ShieldAlert, Receipt, Star, ArrowRightLeft, LayoutGrid, Folder, Download, Megaphone } from 'lucide-react'
+  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History, Network, CalendarCheck, Activity, ChevronDown, Inbox, Gavel, ShieldAlert, Receipt, Star, ArrowRightLeft, LayoutGrid, Folder, Download, Megaphone, MapPin, LocateFixed, LifeBuoy, BookOpen } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { NavLink, Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -23,6 +23,7 @@ export function useNav(): { group: string; items: NavItem[] }[] {
       items: [
         { to: '/me/services', label: t('Services'), icon: <LayoutGrid className="size-5" /> },
         { to: '/me/requests', label: t('My Requests'), icon: <Inbox className="size-5" /> },
+        { to: '/me/help', label: t('Help centre'), icon: <LifeBuoy className="size-5" /> },
         { to: '/me/leave', label: t('My Leave'), icon: <CalendarDays className="size-5" /> },
         { to: '/me/vacation-plan', label: t('Vacation plan'), icon: <CalendarRange className="size-5" /> },
         { to: '/me/attendance', label: t('My Attendance'), icon: <Clock className="size-5" /> },
@@ -51,6 +52,7 @@ export function useNav(): { group: string; items: NavItem[] }[] {
       items: [
         { to: '/approvals', label: t('Approvals'), icon: <BadgeCheck className="size-5" />, badge: (inbox.data as any)?.total },
         { to: '/my-team', label: t('My team'), icon: <Users className="size-5" /> },
+        ...(!s.persona.hr ? [{ to: '/checkins', label: t('Check-ins & movements'), icon: <MapPin className="size-5" /> }] : []),
         { to: '/vacation-planner', label: t('Vacation planner'), icon: <CalendarRange className="size-5" /> },
         { to: '/team', label: t('Team Calendar'), icon: <CalendarRange className="size-5" /> },
       ],
@@ -62,6 +64,7 @@ export function useNav(): { group: string; items: NavItem[] }[] {
         { to: '/people', label: t('Employees'), icon: <Users className="size-5" /> },
         { to: '/people?view=org', label: t('Org chart'), icon: <Network className="size-5" /> },
         { to: '/announcements', label: t('Announcements'), icon: <Megaphone className="size-5" /> },
+        { to: '/knowledge', label: t('Help centre articles'), icon: <BookOpen className="size-5" /> },
         { to: '/requests', label: t('Requests'), icon: <Inbox className="size-5" /> },
         { to: '/penalties', label: t('Warnings & penalties'), icon: <Gavel className="size-5" /> },
         { to: '/appraisals', label: t('Appraisals'), icon: <Star className="size-5" /> },
@@ -73,6 +76,8 @@ export function useNav(): { group: string; items: NavItem[] }[] {
       items: [
         { to: '/roster', label: t('Roster'), icon: <CalendarClock className="size-5" /> },
         { to: '/attendance', label: t('Attendance'), icon: <Clock className="size-5" /> },
+        { to: '/checkins', label: t('Check-ins & movements'), icon: <MapPin className="size-5" /> },
+        { to: '/work-locations', label: t('Work locations'), icon: <LocateFixed className="size-5" /> },
         { to: '/attendance-policies', label: t('Attendance exceptions'), icon: <ShieldCheck className="size-5" /> },
       ],
     })

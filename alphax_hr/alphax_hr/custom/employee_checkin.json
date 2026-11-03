@@ -1,0 +1,73 @@
+{
+ "custom_fields": [
+  {
+   "doctype": "Custom Field",
+   "dt": "Employee Checkin",
+   "module": "AlphaX HR",
+   "name": "Employee Checkin-alphax_location",
+   "fieldname": "alphax_location",
+   "fieldtype": "Data",
+   "label": "Work location (AlphaX)",
+   "insert_after": "longitude",
+   "read_only": 1,
+   "creation": "2026-11-03 00:00:00.000000",
+   "modified": "2026-11-03 00:00:00.000000",
+   "owner": "Administrator",
+   "modified_by": "Administrator",
+   "is_system_generated": 0
+  },
+  {
+   "doctype": "Custom Field",
+   "dt": "Employee Checkin",
+   "module": "AlphaX HR",
+   "name": "Employee Checkin-alphax_distance_m",
+   "fieldname": "alphax_distance_m",
+   "fieldtype": "Int",
+   "label": "Distance from location (m)",
+   "insert_after": "alphax_location",
+   "read_only": 1,
+   "creation": "2026-11-03 00:00:00.000000",
+   "modified": "2026-11-03 00:00:00.000000",
+   "owner": "Administrator",
+   "modified_by": "Administrator",
+   "is_system_generated": 0
+  },
+  {
+   "doctype": "Custom Field",
+   "dt": "Employee Checkin",
+   "module": "AlphaX HR",
+   "name": "Employee Checkin-alphax_outside",
+   "fieldname": "alphax_outside",
+   "fieldtype": "Check",
+   "label": "Outside work location",
+   "insert_after": "alphax_distance_m",
+   "read_only": 1,
+   "creation": "2026-11-03 00:00:00.000000",
+   "modified": "2026-11-03 00:00:00.000000",
+   "owner": "Administrator",
+   "modified_by": "Administrator",
+   "is_system_generated": 0
+  },
+  {
+   "doctype": "Custom Field",
+   "dt": "Employee Checkin",
+   "module": "AlphaX HR",
+   "name": "Employee Checkin-alphax_source",
+   "fieldname": "alphax_source",
+   "fieldtype": "Data",
+   "label": "Source (AlphaX)",
+   "insert_after": "alphax_outside",
+   "read_only": 1,
+   "creation": "2026-11-03 00:00:00.000000",
+   "modified": "2026-11-03 00:00:00.000000",
+   "owner": "Administrator",
+   "modified_by": "Administrator",
+   "is_system_generated": 0
+  }
+ ],
+ "custom_perms": [],
+ "doctype": "Employee Checkin",
+ "links": [],
+ "property_setters": [],
+ "sync_on_migrate": 1
+}

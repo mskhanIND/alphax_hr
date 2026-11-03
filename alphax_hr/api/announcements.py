@@ -61,7 +61,12 @@ def save(data, name=None):
 	if doc.expires_on and getdate(doc.expires_on) < getdate(doc.publish_on):
 		frappe.throw(_("'Show until' is before the publish date."))
 	doc.pinned = cint(doc.pinned)
+	is_new = doc.is_new()
 	doc.save()
+	if is_new:
+		from alphax_hr.api import notify
+
+		notify.announcement(doc)
 	return {"name": doc.name}
 
 

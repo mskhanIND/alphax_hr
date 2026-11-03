@@ -25,7 +25,10 @@
   "cb1",
   "single_punch_ok",
   "permissions_per_month",
-  "no_penalties"
+  "no_penalties",
+  "checkin_section",
+  "checkin_location_rule",
+  "min_punch_gap"
  ],
  "fields": [
   {
@@ -135,6 +138,24 @@
    "fieldname": "no_penalties",
    "fieldtype": "Check",
    "label": "Never suggest penalties"
+  },
+  {
+   "fieldname": "checkin_section",
+   "fieldtype": "Section Break",
+   "label": "Check-in"
+  },
+  {
+   "fieldname": "checkin_location_rule",
+   "fieldtype": "Select",
+   "label": "Location rule",
+   "options": "\nAnywhere\nMust share location\nInside a work location",
+   "description": "Blank = company setting."
+  },
+  {
+   "fieldname": "min_punch_gap",
+   "fieldtype": "Data",
+   "label": "Minutes between punches",
+   "description": "Blank = company setting."
   }
  ],
  "permissions": [

@@ -1,7 +1,7 @@
 """Installable app (PWA): the service worker is served through the API with the headers it needs."""
 import frappe
 
-SW = """// AlphaX HR service worker {version}
+SW = r"""// AlphaX HR service worker {version}
 const CACHE = 'alphax-{version}';
 const SHELL = '/alphax/';
 self.addEventListener('install', (e) => {{ self.skipWaiting(); }});
@@ -18,6 +18,23 @@ async function precache() {{
 self.addEventListener('activate', (e) => {{
   e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith('alphax-') && k !== CACHE).map((k) => caches.delete(k))))
     .then(() => precache().catch(() => null)).then(() => self.clients.claim()));
+}});
+// Phone notifications (approvals, decisions, messages, announcements).
+self.addEventListener('push', (e) => {{
+  let d = {{}};
+  try {{ d = e.data ? e.data.json() : {{}}; }} catch (_) {{ d = {{ title: 'AlphaX HR', body: e.data ? e.data.text() : '' }}; }}
+  e.waitUntil(self.registration.showNotification(d.title || 'AlphaX HR', {{
+    body: d.body || '', tag: d.tag || undefined, data: {{ url: d.url || '/alphax/' }},
+    icon: '/assets/alphax_hr/frontend/icons/icon-192.png', badge: '/assets/alphax_hr/frontend/icons/icon-192.png'
+  }}));
+}});
+self.addEventListener('notificationclick', (e) => {{
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || '/alphax/';
+  e.waitUntil(self.clients.matchAll({{ type: 'window', includeUncontrolled: true }}).then((list) => {{
+    for (const c of list) {{ if (c.url.includes('/alphax') && 'focus' in c) {{ c.navigate(url); return c.focus(); }} }}
+    return self.clients.openWindow(url);
+  }}));
 }});
 self.addEventListener('fetch', (e) => {{
   const req = e.request;
