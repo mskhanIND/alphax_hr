@@ -99,6 +99,8 @@ def create(data):
 	category = data["category"]
 	kind = "Earning" if category in EARNINGS else "Deduction"
 	comp = data.get("salary_component") or loans.component("bonus_component" if kind == "Earning" else "hr_deduction_component")
+	if frappe.db.get_value("Salary Component", comp, "statistical_component"):
+		frappe.throw(_("{0} is an accrual component and is never paid.").format(comp))
 	if frappe.db.get_value("Salary Component", comp, "type") != kind:
 		frappe.throw(_("{0} is not an {1} component.").format(comp, _(kind).lower()))
 	batch = frappe.generate_hash(length=8) if len(plans) > 1 else None
@@ -143,7 +145,7 @@ def adjustments(month=None, kind=None):
 	for r in rows:
 		r.payroll_month = str(r.payroll_month)
 		r.lines = parse_json(r.pop("additional_salaries"), []) or []
-	comps = frappe.get_all("Salary Component", fields=["name", "type"], order_by="name")
+	comps = frappe.get_all("Salary Component", filters={"statistical_component": 0}, fields=["name", "type"], order_by="name")
 	return {"rows": rows, "components": comps, "categories": {"Earning": EARNINGS, "Deduction": DEDUCTIONS},
 			"guide": {k: _(v) for k, v in GUIDE.items()}, "needs_consent": NEEDS_CONSENT}
 

@@ -129,6 +129,12 @@ def _validate_iban(doc, conf):
 	if error:
 		frappe.throw(MESSAGES[error], title=_("Invalid IBAN"))
 	doc.iban = identity.normalise_iban(doc.iban)
+	if doc.meta.has_field("bank_name") and doc.iban.startswith("SA"):
+		from alphax_hr.api.banks import name_for_iban
+
+		bank = name_for_iban(doc.iban)
+		if bank and (not doc.get("bank_name") or _changed(doc, "iban")):
+			doc.bank_name = bank  # the bank follows the IBAN's SAMA bank code
 
 
 def _validate_age(doc, conf):

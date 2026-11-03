@@ -1,3 +1,4 @@
+import { BankSelect } from './BankSelect'
 import { LinkInput } from './LinkInput'
 import { useState } from 'react'
 import { uploadFile } from '../lib/api'
@@ -37,6 +38,7 @@ export interface FieldSpec {
 /** Renders an input for any Frappe field type the site defines on Employee. */
 export function FieldInput({ spec, value, onChange, invalid, lookupSource, attachTo }: { spec: FieldSpec; value: any; onChange: (v: any) => void; invalid?: boolean; lookupSource?: 'hr' | 'ess'; attachTo?: [string, string] }) {
   const cls = invalid ? 'border-red-400 ring-2 ring-red-100' : undefined
+  if (spec.fieldname === 'bank_name') return <BankSelect value={value ?? ''} onChange={onChange} className={cls} />
   switch (spec.fieldtype) {
     case 'Check':
       return <input type="checkbox" className="size-5 accent-[var(--color-brand)]" checked={!!value} onChange={(e) => onChange(e.target.checked ? 1 : 0)} />

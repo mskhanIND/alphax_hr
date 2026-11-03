@@ -1,3 +1,5 @@
+import { AttendanceException } from '../components/AttendanceException'
+import { BankSelect } from '../components/BankSelect'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, ArrowLeft, Camera, ChevronDown, ChevronsDownUp, ChevronsUpDown, History, Pencil, Printer, FileText } from 'lucide-react'
 import { ActivityDrawer } from '../components/ActivityDrawer'
@@ -38,6 +40,7 @@ function Value({ field, value, lang, t }: { field: string; value: any; lang: str
 }
 
 function Editor({ field, value, onChange, spec }: { field: string; value: any; onChange: (v: any) => void; spec?: any }) {
+  if (field === 'bank_name') return <BankSelect value={value ?? ''} onChange={onChange} />
   if (spec && spec.fieldtype !== 'Data' && !LINKS[field] && !SELECTS[field]) return <FieldInput spec={spec} value={value} onChange={onChange} />
   if (field === 'alphax_is_saudi') return <input type="checkbox" className="size-5 accent-[var(--color-brand)]" checked={!!value} onChange={(e) => onChange(e.target.checked ? 1 : 0)} />
   if (LINKS[field]) return <LinkInput doctype={LINKS[field]} value={value ?? ''} onChange={onChange} />
@@ -171,6 +174,7 @@ export default function EmployeeDetail() {
           </Card>
           <SalaryCard employee={id} isSaudi={!!e.sections.saudi?.alphax_is_saudi} gosiDate={e.sections.saudi?.alphax_gosi_registration_date ?? undefined}
             company={e.sections.job?.company} canWrite={e.can_write} />
+          <AttendanceException employee={id} canWrite={e.can_write} />
           {e.issues.length > 0 && (
             <Card title={t('Data issues')}>
               <ul className="flex flex-col gap-2 text-sm">

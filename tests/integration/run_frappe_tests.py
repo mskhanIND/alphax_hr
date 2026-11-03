@@ -1488,7 +1488,7 @@ def run(site):
             assert draft and {"gosi", "net_pay", "can_redo"} <= set(draft[0]), data["rows"][:1]
             assert {"gosi", "loans", "deductions", "draft", "submitted_count"} <= set(per["slips"])
             r0 = draft[0]
-            comp = frappe.db.get_value("Salary Component", {"type": "Earning"}, "name")
+            comp = frappe.db.get_value("Salary Component", {"type": "Earning", "statistical_component": 0, "depends_on_payment_days": 0}, "name")
             pc.adjust(COMPANY, month, r0["employee"], comp, 500, "this", "Missed allowance")
             after = next(x for x in pc.slips(COMPANY, month)["rows"] if x["name"] == r0["name"])
             assert round(after["net_pay"] - r0["net_pay"], 2) == 500, (r0["net_pay"], after["net_pay"])
@@ -2370,6 +2370,74 @@ def run(site):
                 frappe.local.conf.server_script_enabled = False
                 frappe.clear_cache(doctype="Employee")
         check("removed HR apps: broken server scripts, orphan mandatory fields, employee save test", removed_app_leftovers)
+
+        def components_banks_bulk():
+            from alphax_hr.api import components, banks, bulk, salary as sal
+            frappe.set_user("Administrator")
+            components.seed()
+            frappe.set_user(f["hr"])
+            cat = components.catalogue()
+            assert all(r["exists"] for r in cat["rows"]), [r["name"] for r in cat["rows"] if not r["exists"]]
+            assert frappe.db.get_value("Salary Component", components.get("eos_provision"), "statistical_component") == 1
+            assert components.get("overtime") and components.get("penalty")
+            frappe.set_user("Administrator")
+            banks.seed()
+            frappe.set_user(f["emp"])
+            listed = banks.banks()
+            rajhi = next(b for b in listed if b["code"] == "80")
+            assert rajhi["abbr"] == "RJHI" and rajhi["name"] == "Al Rajhi Bank", rajhi
+            # IBAN decides the bank
+            frappe.set_user("Administrator")
+            emp = frappe.get_doc("Employee", f["e_emp2"])
+            emp.iban = "SA0380000000608010167519"
+            emp.bank_name = None
+            emp.flags.ignore_mandatory = True
+            emp.save(ignore_permissions=True)
+            assert frappe.db.get_value("Employee", f["e_emp2"], "bank_name") == "Al Rajhi Bank"
+            # salary history: total stored, older structure inactive (own test employee, cleaned each run)
+            sal_emp = frappe.db.get_value("Employee", {"first_name": "AXT Salary", "company": COMPANY})
+            if not sal_emp:
+                d = frappe.get_doc({"doctype": "Employee", "first_name": "AXT Salary", "last_name": "History", "gender": "Male",
+                                    "date_of_birth": "1990-01-01", "date_of_joining": "2024-01-01", "company": COMPANY, "status": "Active",
+                                    "alphax_is_saudi": 1})
+                d.flags.ignore_mandatory = True
+                d.insert(ignore_permissions=True)
+                sal_emp = d.name
+            for a in frappe.get_all("Salary Structure Assignment", filters={"employee": sal_emp}, fields=["name", "docstatus"]):
+                if a.docstatus == 1:
+                    frappe.get_doc("Salary Structure Assignment", a.name).cancel()
+                frappe.delete_doc("Salary Structure Assignment", a.name, force=1)
+            frappe.set_user(f["hr"])
+            sal.set_salary(sal_emp, {"mode": "total", "total": 12000}, "2025-01-01")
+            res = sal.set_salary(sal_emp, {"mode": "total", "total": 15000}, nowdate())
+            hist = sal.current(sal_emp)["history"]
+            top = hist[0]
+            assert top["alphax_package_mode"] == "Total package" and round(top["alphax_total_package"]) == 15000 and top["active"], top
+            assert top["components"] and top["created_by"], top
+            assert len(hist) == 2 and not hist[1]["active"], hist
+            assert res["assignment"] == top["name"]
+            # bulk update + per-employee check-in exception
+            frappe.set_user(f["emp"])
+            expect_error(lambda: bulk.apply("salary_mode", "Bank", employees=[f["e_emp"]]), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            pv = bulk.preview("salary_mode", employees=[f["e_emp"], f["e_emp2"]])
+            assert pv["count"] == 2
+            out = bulk.apply("salary_mode", "Bank", employees=[f["e_emp"], f["e_emp2"]])
+            assert len(out["done"]) == 2, out
+            expect_error(lambda: bulk.apply("company", "x", employees=[f["e_emp"]]), frappe.ValidationError)
+            frappe.set_user("Administrator")
+            for n in frappe.get_all("AlphaX Attendance Policy", filters={"applies_to": "Employee", "employee": ["in", [f["e_emp"], f["e_emp2"]]]}, pluck="name"):
+                frappe.delete_doc("AlphaX Attendance Policy", n, force=1)
+            frappe.set_user(f["hr"])
+            out = bulk.apply("checkin_location_rule", "Inside a work location", employees=[f["e_emp"], f["e_emp2"]])
+            assert len(out["done"]) == 2, out
+            ex = bulk.exception(f["e_emp"])
+            assert ex["own"] and ex["rules"]["checkin_location_rule"] == "Inside a work location", ex
+            ex = bulk.save_exception(f["e_emp"], {"checkin_location_rule": "Anywhere", "late_grace_minutes": 20})
+            assert ex["rules"]["checkin_location_rule"] == "Anywhere" and str(ex["rules"]["late_grace_minutes"]) == "20"
+            assert not bulk.remove_exception(f["e_emp"])["own"]
+            bulk.remove_exception(f["e_emp2"])
+        check("payroll components catalogue, Saudi banks from IBAN, salary history, bulk update and check-in exception", components_banks_bulk)
 
         print("\n== /alphax page")
         def www_page():

@@ -281,7 +281,8 @@ def checklist(company, month, scope=None):
 
 
 def _overtime_added(ids, start, end):
-	comps = [c for c in OVERTIME_COMPONENTS if frappe.db.exists("Salary Component", c)]
+	chosen = frappe.get_cached_doc("AlphaX HR Settings").get("overtime_component")
+	comps = [c for c in (chosen, *OVERTIME_COMPONENTS) if c and frappe.db.exists("Salary Component", c)]
 	if not comps:
 		return set()
 	return set(frappe.get_all("Additional Salary", filters={"employee": ["in", ids], "salary_component": ["in", comps],
@@ -628,10 +629,9 @@ def add_overtime(company, month, run=None):
 	from alphax_hr.api.attendance import overtime
 
 	start, end = _bounds(month)
-	comp = next((c for c in OVERTIME_COMPONENTS if frappe.db.exists("Salary Component", c)), None)
-	if not comp:
-		comp = frappe.get_doc({"doctype": "Salary Component", "salary_component": OVERTIME_COMPONENTS[0], "salary_component_abbr": "OT",
-							   "type": "Earning", "depends_on_payment_days": 0}).insert(ignore_permissions=True).name
+	from alphax_hr.api import components
+
+	comp = components.get("overtime")
 	data = overtime(str(start), None, company)
 	done = _overtime_added([r["employee"] for r in data["rows"]], start, end)
 	created, skipped = [], []
@@ -761,6 +761,8 @@ def adjust(company, month, employee, salary_component, amount, when="this", note
 		frappe.throw(_("The amount must be more than zero."))
 	if not frappe.db.exists("Salary Component", salary_component):
 		frappe.throw(_("Unknown salary component."))
+	if frappe.db.get_value("Salary Component", salary_component, "statistical_component"):
+		frappe.throw(_("{0} is an accrual (statistical) component and is never paid. Choose another component.").format(salary_component))
 	start, end = _bounds(month)
 	payroll_date = end if when == "this" else getdate(frappe.utils.get_last_day(add_days(end, 1)))
 	slip = frappe.db.get_value("Salary Slip", {"employee": employee, "start_date": start, "end_date": end, "docstatus": ["<", 2]},
@@ -807,5 +809,7 @@ def redo_slip(name, reason):
 @frappe.whitelist()
 def components():
 	require_hr()
-	return frappe.get_all("Salary Component", filters={"disabled": 0} if frappe.get_meta("Salary Component").has_field("disabled") else {},
-						  fields=["name", "type"], order_by="type asc, name asc")
+	filters = {"statistical_component": 0}
+	if frappe.get_meta("Salary Component").has_field("disabled"):
+		filters["disabled"] = 0
+	return frappe.get_all("Salary Component", filters=filters, fields=["name", "type"], order_by="type asc, name asc")

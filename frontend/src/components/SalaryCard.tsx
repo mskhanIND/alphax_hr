@@ -27,7 +27,19 @@ export function SalaryCard({ employee, isSaudi, gosiDate, company, canWrite }: {
             {cur.deductions.map((r: any) => <li key={r.salary_component} className="flex justify-between py-1.5 text-red-700"><span>{r.salary_component}</span><span className="tabular-nums">−{fmtMoney(r.amount, lang)}</span></li>)}
             <li className="flex justify-between py-1.5 font-semibold"><span>{t('Net monthly')}</span><span className="tabular-nums">{fmtMoney(cur.net, lang)}</span></li>
           </ul>
-          {q.data.history.length > 1 && <p className="mt-2 text-xs text-muted">{t('Earlier')}: {q.data.history.slice(1).map((h: any) => `${fmtDate(h.from_date, lang)}`).join(', ')}</p>}
+          <div className="mt-3 text-xs" data-testid="salary-history">
+            <div className="mb-1 font-medium text-muted">{t('Salary history')}</div>
+            <ul className="divide-y divide-line rounded-xl border border-line">
+              {q.data.history.map((h: any) => (
+                <li key={h.name} className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5">
+                  <span>{t('From')} {fmtDate(h.from_date, lang)}{h.alphax_total_package ? ` · ${fmtMoney(h.alphax_total_package, lang)}` : ''}
+                    {h.alphax_package_mode ? <span className="text-muted"> · {t(h.alphax_package_mode)}</span> : null}</span>
+                  <span className="flex items-center gap-2 text-muted">{t('Created')} {fmtDate(h.created_on, lang)} · {h.created_by}
+                    <span className={h.active ? 'rounded-full bg-emerald-50 px-2 text-emerald-700' : 'rounded-full bg-surface px-2'}>{h.active ? t('In use') : t('Inactive')}</span></span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
       <Modal open={open} onClose={() => setOpen(false)} wide title={cur ? t('Change salary') : t('Set salary')}>

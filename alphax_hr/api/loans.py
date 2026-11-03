@@ -22,15 +22,10 @@ COMPONENTS = {"loan_component": ("Loan Repayment", "LR", "Deduction"), "bonus_co
 
 # ------------------------------------------------------------------ helpers shared with pay adjustments
 def component(key):
-	"""Salary component chosen in settings, or AlphaX's default one (created once)."""
-	chosen = settings().get(key)
-	if chosen and frappe.db.exists("Salary Component", chosen):
-		return chosen
-	name, abbr, kind = COMPONENTS[key]
-	if not frappe.db.exists("Salary Component", name):
-		frappe.get_doc({"doctype": "Salary Component", "salary_component": name, "salary_component_abbr": abbr, "type": kind,
-						"depends_on_payment_days": 0}).insert(ignore_permissions=True)
-	return name
+	"""Salary component chosen in settings, or the standard one (see components.py)."""
+	from alphax_hr.api import components
+
+	return components.get({"loan_component": "loan", "bonus_component": "bonus", "hr_deduction_component": "hr_deduction"}[key])
 
 
 def monthly_wage(employee):

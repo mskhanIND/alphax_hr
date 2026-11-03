@@ -7,6 +7,7 @@ a new structure and assignment; history is kept.
 """
 from __future__ import annotations
 
+import json
 from decimal import Decimal
 
 import frappe
@@ -140,9 +141,26 @@ def assign(employee, package, from_date=None):
 	ss.submit()
 	ssa = frappe.get_doc({"doctype": "Salary Structure Assignment", "employee": employee, "salary_structure": ss.name,
 						  "company": emp.company, "currency": currency, "from_date": start, "base": data["basic"]})
+	meta = frappe.get_meta("Salary Structure Assignment")
+	if meta.has_field("alphax_package_mode"):
+		ssa.alphax_package_mode = "Total package" if (package.get("mode") or "total") == "total" else "Component amounts"
+		ssa.alphax_total_package = data["gross"]  # stored for both ways of entering the salary
+		ssa.alphax_components = json.dumps({e["key"]: e["amount"] for e in data["earnings"]})
 	ssa.insert()
 	ssa.submit()
+	_retire_old_structures(employee, ss.name, start)
 	return {"salary_structure": ss.name, "assignment": ssa.name, **data}
+
+
+def _retire_old_structures(employee, keep, start):
+	"""Only the newest salary is in use: the employee's earlier own structures are made inactive (history is kept)."""
+	for name in frappe.get_all("Salary Structure", filters={"name": ["like", f"{employee}-SS-%"], "is_active": "Yes"}, pluck="name"):
+		if name == keep:
+			continue
+		used_from = frappe.db.get_value("Salary Structure Assignment", {"salary_structure": name, "docstatus": 1}, "from_date")
+		if used_from and getdate(used_from) > getdate(start):
+			continue  # a later salary already planned stays active
+		frappe.db.set_value("Salary Structure", name, "is_active", "No")
 
 
 @frappe.whitelist()
@@ -157,8 +175,17 @@ def set_salary(employee, package, from_date):
 def current(employee):
 	require_hr()
 	frappe.get_doc("Employee", employee).check_permission("read")
+	meta = frappe.get_meta("Salary Structure Assignment")
+	extra = [f for f in ("alphax_package_mode", "alphax_total_package", "alphax_components") if meta.has_field(f)]
 	rows = frappe.get_all("Salary Structure Assignment", filters={"employee": employee, "docstatus": 1},
-						  fields=["name", "salary_structure", "from_date", "base"], order_by="from_date desc", limit_page_length=20)
+						  fields=["name", "salary_structure", "from_date", "base", "creation", "owner", *extra],
+						  order_by="from_date desc, creation desc", limit_page_length=20)
+	active = {n: v for n, v in frappe.get_all("Salary Structure", filters={"name": ["in", [r.salary_structure for r in rows] or [""]]},
+											   fields=["name", "is_active"], as_list=True)}
+	for r in rows:
+		r.created_on, r.created_by = str(r.pop("creation")), frappe.utils.get_fullname(r.pop("owner"))
+		r.active = active.get(r.salary_structure) == "Yes"
+		r.components = json.loads(r.alphax_components) if r.get("alphax_components") else None
 	if not rows:
 		return {"current": None, "history": []}
 	cur = rows[0]

@@ -24,6 +24,10 @@ FIELDS = ("name", "employee", "employee_name", "company", "reason", "exit_date",
 
 
 def _component(key):
+	if key in ("eosb", "leave"):
+		from alphax_hr.api import components
+
+		return components.get("eos" if key == "eosb" else "leave_encashment")
 	name, abbr, kind = COMPONENTS[key]
 	if not frappe.db.exists("Salary Component", name):
 		frappe.get_doc({"doctype": "Salary Component", "salary_component": name, "salary_component_abbr": abbr, "type": kind,

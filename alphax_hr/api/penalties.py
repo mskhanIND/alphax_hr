@@ -88,13 +88,15 @@ def _days_this_month(employee, on, exclude=None):
 
 
 def _component(company):
+	from alphax_hr.api import components
+
+	chosen = frappe.get_cached_doc("AlphaX HR Settings").get("penalty_component")
+	if chosen and frappe.db.exists("Salary Component", chosen):
+		return chosen
 	for n in COMPONENT_NAMES:
 		if frappe.db.exists("Salary Component", n):
 			return n
-	comp = frappe.get_doc({"doctype": "Salary Component", "salary_component": COMPONENT_NAMES[0], "salary_component_abbr": "PEN",
-						   "type": "Deduction", "depends_on_payment_days": 0, "description": "AlphaX disciplinary deductions"})
-	comp.insert(ignore_permissions=True)
-	return comp.name
+	return components.get("penalty")
 
 
 def preview_doc(doc):

@@ -75,6 +75,13 @@
   "salary_gosi_component",
   "business_line_field",
   "loans_section",
+  "overtime_component",
+  "penalty_component",
+  "absence_component",
+  "leave_encashment_component",
+  "eos_component",
+  "eos_provision_component",
+  "leave_provision_component",
   "loan_component",
   "bonus_component",
   "hr_deduction_component",
@@ -481,7 +488,49 @@
   {
    "fieldname": "loans_section",
    "fieldtype": "Section Break",
-   "label": "Loans, advances and deductions"
+   "label": "Payroll components, loans and deductions"
+  },
+  {
+   "fieldname": "overtime_component",
+   "fieldtype": "Link",
+   "label": "Overtime component",
+   "options": "Salary Component"
+  },
+  {
+   "fieldname": "penalty_component",
+   "fieldtype": "Link",
+   "label": "Penalty deduction component",
+   "options": "Salary Component"
+  },
+  {
+   "fieldname": "absence_component",
+   "fieldtype": "Link",
+   "label": "Absence deduction component",
+   "options": "Salary Component"
+  },
+  {
+   "fieldname": "leave_encashment_component",
+   "fieldtype": "Link",
+   "label": "Leave encashment component",
+   "options": "Salary Component"
+  },
+  {
+   "fieldname": "eos_component",
+   "fieldtype": "Link",
+   "label": "End-of-service component",
+   "options": "Salary Component"
+  },
+  {
+   "fieldname": "eos_provision_component",
+   "fieldtype": "Link",
+   "label": "End-of-service provision (accrual)",
+   "options": "Salary Component"
+  },
+  {
+   "fieldname": "leave_provision_component",
+   "fieldtype": "Link",
+   "label": "Annual leave provision (accrual)",
+   "options": "Salary Component"
   },
   {
    "fieldname": "loan_component",

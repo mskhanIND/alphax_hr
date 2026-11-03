@@ -1,0 +1,62 @@
+{
+ "custom_fields": [
+  {
+   "doctype": "Custom Field",
+   "dt": "Salary Structure Assignment",
+   "module": "AlphaX HR",
+   "name": "Salary Structure Assignment-alphax_package_mode",
+   "fieldname": "alphax_package_mode",
+   "fieldtype": "Select",
+   "label": "Entered as (AlphaX)",
+   "insert_after": "base",
+   "creation": "2026-11-04 00:00:00.000000",
+   "modified": "2026-11-04 00:00:00.000000",
+   "owner": "Administrator",
+   "modified_by": "Administrator",
+   "is_system_generated": 0,
+   "options": "\nTotal package\nComponent amounts",
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "doctype": "Custom Field",
+   "dt": "Salary Structure Assignment",
+   "module": "AlphaX HR",
+   "name": "Salary Structure Assignment-alphax_total_package",
+   "fieldname": "alphax_total_package",
+   "fieldtype": "Currency",
+   "label": "Total monthly package (AlphaX)",
+   "insert_after": "alphax_package_mode",
+   "creation": "2026-11-04 00:00:00.000000",
+   "modified": "2026-11-04 00:00:00.000000",
+   "owner": "Administrator",
+   "modified_by": "Administrator",
+   "is_system_generated": 0,
+   "read_only": 1,
+   "no_copy": 1
+  },
+  {
+   "doctype": "Custom Field",
+   "dt": "Salary Structure Assignment",
+   "module": "AlphaX HR",
+   "name": "Salary Structure Assignment-alphax_components",
+   "fieldname": "alphax_components",
+   "fieldtype": "Small Text",
+   "label": "Components (AlphaX)",
+   "insert_after": "alphax_total_package",
+   "creation": "2026-11-04 00:00:00.000000",
+   "modified": "2026-11-04 00:00:00.000000",
+   "owner": "Administrator",
+   "modified_by": "Administrator",
+   "is_system_generated": 0,
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "Basic, housing, transport and other as entered."
+  }
+ ],
+ "property_setters": [],
+ "custom_perms": [],
+ "doctype": "Salary Structure Assignment",
+ "links": [],
+ "sync_on_migrate": 1
+}

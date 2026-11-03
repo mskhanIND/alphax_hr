@@ -1,3 +1,4 @@
+import { PayrollComponents } from '../components/PayrollComponents'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from 'lucide-react'
@@ -170,6 +171,7 @@ function SettingsForm() {
   const can = q.data.can_edit
   return (
     <div className="flex flex-col gap-5">
+      <PayrollComponents />
       {q.data.sections.map((sec: any) => (
         <Card key={sec.key} title={sec.label}>
           <div className="grid gap-4 sm:grid-cols-2">

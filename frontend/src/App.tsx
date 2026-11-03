@@ -45,6 +45,7 @@ const TeamAppraisals = lazy(() => import('./pages/TeamAppraisals'))
 const Loans = lazy(() => import('./pages/Loans'))
 const MyLoans = lazy(() => import('./pages/MyLoans'))
 const PayAdjustments = lazy(() => import('./pages/PayAdjustments'))
+const BulkUpdate = lazy(() => import('./pages/BulkUpdate'))
 const VacationPlan = lazy(() => import('./pages/VacationPlan'))
 const VacationPlanner = lazy(() => import('./pages/VacationPlanner'))
 const AnnouncementsAdmin = lazy(() => import('./pages/AnnouncementsAdmin'))
@@ -95,6 +96,7 @@ export default function App() {
             <Route path="/approvals" element={<Guard when={mgr}><Approvals /></Guard>} />
             <Route path="/approval-delays" element={<Guard when={mgr}><ApprovalDelays /></Guard>} />
             <Route path="/team-appraisals" element={<Guard when={mgr}><TeamAppraisals /></Guard>} />
+            <Route path="/people/bulk-update" element={<Guard when={hr}><BulkUpdate /></Guard>} />
             <Route path="/payroll/loans" element={<Guard when={hr}><Loans /></Guard>} />
             <Route path="/payroll/adjustments" element={<Guard when={hr}><PayAdjustments /></Guard>} />
             <Route path="/me/loans" element={<Guard when={emp}><MyLoans /></Guard>} />
