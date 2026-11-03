@@ -8,6 +8,7 @@ import { api } from '../lib/api'
 import { fmtDate, fmtMoney, fmtMonth, fmtNumber, monthStart, shiftMonth, todayISO } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 import { recordPath } from '../lib/links'
+import { PayrollSlips } from '../components/PayrollSlips'
 
 const FLOW = [
   { step: 'prepare', status: 'Open', done: 'Prepared', by: 'prepared' },
@@ -123,12 +124,19 @@ export default function Payroll() {
               {next?.step === 'approve' && !p.can_approve && <span className="text-sm text-muted">{t('An HR Manager approves payroll.')}</span>}
             </div>
           </Card>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <Stat label={t('Employees on payroll')} value={fmtNumber(cl.employees, lang)} icon={<Users className="size-4" />} />
-            <Stat label={t('Salary slips')} value={fmtNumber(p.slips.slips, lang)} hint={p.slips.slips ? t(p.slips.submitted ? 'Submitted' : 'Draft') : undefined} icon={<Wallet className="size-4" />} tone="blue" />
+            <Stat label={t('Salary slips')} value={fmtNumber(p.slips.slips, lang)} icon={<Wallet className="size-4" />} tone="blue"
+              hint={p.slips.slips ? `${t('Draft')}: ${p.slips.draft} · ${t('Submitted')}: ${p.slips.submitted_count}` : undefined} />
             <Stat label={t('Gross pay')} value={fmtMoney(p.slips.gross, lang)} icon={<Landmark className="size-4" />} />
             <Stat label={t('Net pay')} value={fmtMoney(p.slips.net, lang)} icon={<Landmark className="size-4" />} tone="amber" />
+            <Stat label={t('Total deductions')} value={fmtMoney(p.slips.deductions, lang)} tone="red" />
+            <Stat label={t('GOSI (employee share)')} value={fmtMoney(p.slips.gosi, lang)} tone="blue" />
+            <Stat label={t('Loan repayments')} value={fmtMoney(p.slips.loans, lang)} />
+            <Stat label={t('Penalties')} value={fmtMoney(p.slips.penalties, lang)} tone="red" />
           </div>
+          {p.payroll_entry_status === 'Queued' && <p className="rounded-xl bg-blue-50 p-3 text-sm text-blue-900">{t('Salary slips are being created in the background. Refresh in a minute.')}</p>}
+          {p.payroll_entry && <PayrollSlips company={company} month={month} closed={p.status === 'Closed'} canManage={p.can_approve} />}
           <div className="grid gap-5 lg:grid-cols-3">
             <Card className="lg:col-span-2" title={t('Payroll checklist')}
               subtitle={`${cl.blockers} ${t('blocking')} · ${cl.warnings} ${t('to check')}`}

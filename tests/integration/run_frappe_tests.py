@@ -88,6 +88,10 @@ def setup_fixtures():
         hl.get_weekly_off_dates()
         hl.insert(ignore_permissions=True)
     frappe.db.set_value("Company", COMPANY, "default_holiday_list", hl_name)
+    for y in (year - 1, year):  # payroll needs an active fiscal year (fresh sites have none)
+        if not frappe.db.exists("Fiscal Year", {"year_start_date": f"{y}-01-01"}):
+            frappe.get_doc({"doctype": "Fiscal Year", "year": str(y), "year_start_date": f"{y}-01-01", "year_end_date": f"{y}-12-31",
+                            "companies": [{"company": COMPANY}]}).insert(ignore_permissions=True)
     dept = ensure("Department", {"department_name": "AXT Operations", "company": COMPANY}, {}).name
     hr = make_user("hr@axt.test", "Hana", ["HR Manager", "HR User", "Employee"])
     mgr = make_user("mgr@axt.test", "Majed", ["Employee", "Leave Approver"])
@@ -1312,6 +1316,43 @@ def run(site):
                 expect_error(lambda: pc.advance(COMPANY, month, "reopen"), frappe.ValidationError)
             assert isinstance(pc.add_overtime(COMPANY, month)["created"], list)
         check("payroll control: checklist with records, blockers + manager override, prepare/review/approve/process, reopen", payroll_control_flow)
+
+        def payroll_corrections():
+            from alphax_hr.api import payroll_control as pc
+            month = str(frappe.utils.get_first_day(nowdate()))
+            frappe.set_user(f["hr"])
+            per = pc.period(COMPANY, month)
+            if per["status"] != "Processed":
+                print("    payroll was not processed here; corrections not exercised")
+                return
+            data = pc.slips(COMPANY, month)
+            draft = [r for r in data["rows"] if r["docstatus"] == 0]
+            assert draft and {"gosi", "net_pay", "can_redo"} <= set(draft[0]), data["rows"][:1]
+            assert {"gosi", "loans", "deductions", "draft", "submitted_count"} <= set(per["slips"])
+            r0 = draft[0]
+            comp = frappe.db.get_value("Salary Component", {"type": "Earning"}, "name")
+            pc.adjust(COMPANY, month, r0["employee"], comp, 500, "this", "Missed allowance")
+            after = next(x for x in pc.slips(COMPANY, month)["rows"] if x["name"] == r0["name"])
+            assert round(after["net_pay"] - r0["net_pay"], 2) == 500, (r0["net_pay"], after["net_pay"])
+            pc.recalculate_slip(r0["name"])
+            nxt = pc.adjust(COMPANY, month, r0["employee"], comp, 100, "next")
+            assert nxt["payroll_date"] > month[:8] + "28"
+            frappe.set_user(f["emp"])
+            expect_error(lambda: pc.recalculate_slip(r0["name"]), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            expect_error(lambda: pc.remove_slip(r0["name"], ""), frappe.ValidationError)
+            pc.remove_slip(r0["name"], "Salary on hold")
+            assert r0["employee"] in {m["employee"] for m in pc.slips(COMPANY, month)["missing"]}
+            back = pc.add_employee(COMPANY, month, r0["employee"])
+            frappe.set_user("Administrator")
+            s1 = frappe.get_doc("Salary Slip", back["name"]); s1.submit()
+            frappe.set_user(f["hr"])
+            row = next(x for x in pc.slips(COMPANY, month)["rows"] if x["name"] == s1.name)
+            assert row["can_redo"]
+            redo = pc.redo_slip(s1.name, "Wrong overtime")
+            assert frappe.db.get_value("Salary Slip", s1.name, "docstatus") == 2
+            assert frappe.db.get_value("Salary Slip", redo["name"], ["docstatus", "amended_from"]) == (0, s1.name)
+        check("payroll corrections for one employee: adjust this/next month, recalculate, remove and add back, redo a submitted slip", payroll_corrections)
 
         def final_settlement_flow():
             from alphax_hr.api import settlements as fs

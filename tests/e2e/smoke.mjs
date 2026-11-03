@@ -415,6 +415,7 @@ try {
       await page.goto(`${BASE}/alphax/payroll`)
       await page.getByText('Payroll checklist').waitFor()
       await page.getByText('No salary structure').first().waitFor()
+      await page.getByText('GOSI (employee share)').waitFor()
       await page.screenshot({ path: `${OUT}/23-payroll-control.png`, fullPage: true })
     })
     await step('final settlements page', async () => {

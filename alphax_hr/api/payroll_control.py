@@ -233,12 +233,42 @@ def _get_period(company, month, create=True):
 	return doc
 
 
+def _gosi_components():
+	from alphax_hr.api._common import settings as _settings
+
+	comps = {c for c in [_settings().get("salary_gosi_component")] if c}
+	comps |= set(frappe.get_all("Salary Component", filters={"salary_component": ["like", "%GOSI%"], "type": "Deduction"}, pluck="name"))
+	return comps
+
+
+def _slip_fields(*names):
+	meta = frappe.get_meta("Salary Slip")
+	return [n for n in names if n in ("name", "docstatus", "modified") or meta.has_field(n)]
+
+
+def _slip_filters(company, month):
+	start, end = _bounds(month)
+	return {"company": company, "start_date": [">=", start], "end_date": ["<=", end], "docstatus": ["<", 2]}
+
+
 def _totals(doc):
-	start, end = _bounds(doc.month)
-	rows = frappe.get_all("Salary Slip", filters={"company": doc.company, "start_date": [">=", start], "end_date": ["<=", end], "docstatus": ["<", 2]},
-						  fields=["count(name) as n", "sum(gross_pay) as g", "sum(total_deduction) as d", "sum(net_pay) as net", "max(docstatus) as ds"])
-	r = rows[0] if rows else frappe._dict()
-	return {"slips": cint(r.n), "gross": flt(r.g, 2), "deductions": flt(r.d, 2), "net": flt(r.net, 2), "submitted": cint(r.ds) == 1}
+	rows = frappe.get_all("Salary Slip", filters=_slip_filters(doc.company, doc.month),
+						  fields=_slip_fields("name", "docstatus", "gross_pay", "total_deduction", "net_pay", "total_loan_repayment"))
+	names = [r.name for r in rows]
+	gosi = penalties = 0.0
+	if names:
+		comps = _gosi_components()
+		for d in frappe.get_all("Salary Detail", filters={"parent": ["in", names], "parenttype": "Salary Slip", "parentfield": "deductions"},
+								fields=["salary_component", "amount"]):
+			if d.salary_component in comps:
+				gosi += flt(d.amount)
+			elif any(w in d.salary_component.lower() for w in ("penalt", "disciplin", "violation")):
+				penalties += flt(d.amount)
+	draft = sum(1 for r in rows if r.docstatus == 0)
+	return {"slips": len(rows), "draft": draft, "submitted_count": len(rows) - draft,
+			"gross": flt(sum(flt(r.gross_pay) for r in rows), 2), "deductions": flt(sum(flt(r.total_deduction) for r in rows), 2),
+			"gosi": flt(gosi, 2), "loans": flt(sum(flt(r.get("total_loan_repayment")) for r in rows), 2), "penalties": flt(penalties, 2),
+			"net": flt(sum(flt(r.net_pay) for r in rows), 2), "submitted": bool(rows) and draft == 0}
 
 
 def _out(doc, with_checklist=True):
@@ -407,3 +437,155 @@ def add_overtime(company, month):
 		created.append({"employee": r["employee"], "employee_name": r["employee_name"], "hours": r["hours"], "amount": r["amount"],
 						"additional_salary": add.name})
 	return {"created": created, "skipped": skipped}
+
+
+
+# ------------------------------------------------------------------ per-employee corrections
+def _period_for_slip(slip):
+	start, _end = _bounds(slip.start_date)
+	return frappe.db.get_value("AlphaX Payroll Period", {"company": slip.company, "month": start}, ["name", "status"], as_dict=True)
+
+
+def _guard_open(slip):
+	per = _period_for_slip(slip)
+	if per and per.status == "Closed":
+		frappe.throw(_("This month is closed. Correct it in next month's payroll."))
+
+
+@frappe.whitelist()
+def slips(company, month):
+	"""Every salary slip of the month with the figures HR checks before submitting."""
+	require_hr()
+	rows = frappe.get_all("Salary Slip", filters=_slip_filters(company, month),
+						  fields=_slip_fields("name", "employee", "employee_name", "department", "docstatus", "status", "gross_pay",
+											  "total_deduction", "net_pay", "payment_days", "total_working_days", "absent_days", "leave_without_pay",
+											  "total_loan_repayment", "journal_entry", "payroll_entry", "modified"), order_by="employee_name asc")
+	comps = _gosi_components()
+	gosi = {}
+	if rows:
+		for d in frappe.get_all("Salary Detail", filters={"parent": ["in", [r.name for r in rows]], "parenttype": "Salary Slip",
+														   "parentfield": "deductions", "salary_component": ["in", list(comps) or [""]]},
+								fields=["parent", "amount"]):
+			gosi[d.parent] = gosi.get(d.parent, 0) + flt(d.amount)
+	start, end = _bounds(month)
+	with_slip = {r.employee for r in rows}
+	missing = [e for e in _active(company, start, end) if e.name not in with_slip and frappe.db.exists(
+		"Salary Structure Assignment", {"employee": e.name, "docstatus": 1, "from_date": ["<=", end]})]
+	return {"rows": [{**r, "gosi": flt(gosi.get(r.name), 2), "modified": str(r.modified),
+					  "total_loan_repayment": flt(r.get("total_loan_repayment")),
+					  "can_redo": r.docstatus == 1 and not r.get("journal_entry")} for r in rows],
+			"missing": [{"employee": e.name, "employee_name": e.employee_name} for e in missing]}
+
+
+@frappe.whitelist(methods=["POST"])
+def recalculate_slip(name):
+	"""Re-read attendance, leave, additional salary and the salary structure for one draft slip."""
+	require_hr()
+	slip = frappe.get_doc("Salary Slip", name)
+	if slip.docstatus != 0:
+		frappe.throw(_("Only draft slips can be recalculated. Use 'Redo' for a submitted slip."))
+	_guard_open(slip)
+	slip.set("earnings", [])
+	slip.set("deductions", [])
+	slip.flags.ignore_permissions = True
+	slip.save()
+	slip.add_comment("Comment", _("Recalculated by {0}").format(frappe.session.user))
+	return {"name": slip.name, "net_pay": slip.net_pay}
+
+
+@frappe.whitelist(methods=["POST"])
+def remove_slip(name, reason):
+	"""Take one employee out of this run (e.g. on hold); they can be added back later."""
+	require_hr_manager()
+	if not (reason or "").strip():
+		frappe.throw(_("Please give a reason."))
+	slip = frappe.get_doc("Salary Slip", name)
+	if slip.docstatus != 0:
+		frappe.throw(_("Only draft slips can be removed."))
+	_guard_open(slip)
+	per = _period_for_slip(slip)
+	if per:
+		frappe.get_doc("AlphaX Payroll Period", per.name).add_comment(
+			"Comment", frappe.utils.escape_html(_("Removed {0} ({1}): {2}").format(slip.employee_name, slip.name, reason[:500])))
+	frappe.delete_doc("Salary Slip", name, ignore_permissions=True)
+	return {"ok": True}
+
+
+@frappe.whitelist(methods=["POST"])
+def add_employee(company, month, employee):
+	"""Create the slip for an employee missing from the run (e.g. salary assigned after processing)."""
+	require_hr()
+	doc = _get_period(company, month, create=False)
+	if not doc or not doc.payroll_entry:
+		frappe.throw(_("Process the payroll first."))
+	if doc.status == "Closed":
+		frappe.throw(_("This month is closed."))
+	start, end = _bounds(month)
+	if frappe.db.exists("Salary Slip", {"employee": employee, "start_date": start, "end_date": end, "docstatus": ["<", 2]}):
+		frappe.throw(_("This employee already has a slip for the month."))
+	pe = frappe.get_doc("Payroll Entry", doc.payroll_entry)
+	slip = frappe.get_doc({"doctype": "Salary Slip", "employee": employee, "company": company, "start_date": start, "end_date": end,
+						   "posting_date": pe.posting_date, "payroll_frequency": "Monthly", "payroll_entry": pe.name,
+						   "currency": pe.currency, "exchange_rate": pe.exchange_rate})
+	slip.flags.ignore_permissions = True
+	slip.insert()
+	return {"name": slip.name}
+
+
+@frappe.whitelist(methods=["POST"])
+def adjust(company, month, employee, salary_component, amount, when="this", note=None):
+	"""One-off earning or deduction for one employee: in this month's draft slip (recalculated), or in next month's payroll."""
+	require_hr()
+	amount = flt(amount, 2)
+	if amount <= 0:
+		frappe.throw(_("The amount must be more than zero."))
+	if not frappe.db.exists("Salary Component", salary_component):
+		frappe.throw(_("Unknown salary component."))
+	start, end = _bounds(month)
+	payroll_date = end if when == "this" else getdate(frappe.utils.get_last_day(add_days(end, 1)))
+	slip = frappe.db.get_value("Salary Slip", {"employee": employee, "start_date": start, "end_date": end, "docstatus": ["<", 2]},
+							   ["name", "docstatus"], as_dict=True)
+	if when == "this" and slip and slip.docstatus == 1:
+		frappe.throw(_("This month's slip is already submitted. Choose 'next month' or redo the slip."))
+	add = frappe.get_doc({"doctype": "Additional Salary", "employee": employee, "company": company, "salary_component": salary_component,
+						  "amount": amount, "payroll_date": payroll_date, "overwrite_salary_structure_amount": 0})
+	add.flags.ignore_permissions = True
+	add.insert()
+	add.submit()
+	if note:
+		add.add_comment("Comment", frappe.utils.escape_html(str(note)[:1000]))
+	if when == "this" and slip:
+		recalculate_slip(slip.name)
+	return {"additional_salary": add.name, "payroll_date": str(payroll_date)}
+
+
+@frappe.whitelist(methods=["POST"])
+def redo_slip(name, reason):
+	"""Cancel one submitted slip and make a corrected draft, as long as its accounting entry is not posted yet."""
+	require_hr_manager()
+	if not (reason or "").strip():
+		frappe.throw(_("Please give a reason."))
+	slip = frappe.get_doc("Salary Slip", name)
+	if slip.docstatus != 1:
+		frappe.throw(_("Only submitted slips can be redone."))
+	_guard_open(slip)
+	if slip.get("journal_entry") and frappe.db.get_value("Journal Entry", slip.journal_entry, "docstatus") == 1:
+		frappe.throw(_("The payroll accounting entry {0} is already posted. Correct this employee in next month's payroll instead.").format(
+			slip.journal_entry))
+	slip.flags.ignore_permissions = True
+	slip.cancel()
+	new = frappe.copy_doc(slip)
+	new.amended_from = slip.name
+	new.set("earnings", [])
+	new.set("deductions", [])
+	new.flags.ignore_permissions = True
+	new.insert()
+	new.add_comment("Comment", frappe.utils.escape_html(_("Redone from {0}: {1}").format(slip.name, reason[:500])))
+	return {"name": new.name}
+
+
+@frappe.whitelist()
+def components():
+	require_hr()
+	return frappe.get_all("Salary Component", filters={"disabled": 0} if frappe.get_meta("Salary Component").has_field("disabled") else {},
+						  fields=["name", "type"], order_by="type asc, name asc")
