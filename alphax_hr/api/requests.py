@@ -76,10 +76,15 @@ DEFAULT_TYPES = [
 	 "fields": [{"fieldname": "asset_type", "label": "Asset", "label_ar": "العهدة", "type": "Select",
 				 "options": ["Laptop", "Mobile phone", "SIM card", "Vehicle", "Access card", "Other"], "reqd": 1}]},
 	{"request_type_name": "Passport Release", "title_ar": "تسليم الجواز", "category": "Document", "non_saudi_only": 1, "sla_days": 2,
+	 "needs_manager": 0,
 	 "fields": [{"fieldname": "from_date", "label": "Needed from", "label_ar": "مطلوب من", "type": "Date", "reqd": 1},
 				{"fieldname": "to_date", "label": "Return by", "label_ar": "الإرجاع بتاريخ", "type": "Date"}]},
 	{"request_type_name": "Resignation", "title_ar": "استقالة", "category": "Separation", "sla_days": 5,
 	 "fields": [{"fieldname": "last_working_day", "label": "Last working day", "label_ar": "آخر يوم عمل", "type": "Date", "reqd": 1}]},
+	{"request_type_name": "Profile Update", "title_ar": "تحديث البيانات الشخصية", "category": "Document", "needs_manager": 0, "needs_hr": 1,
+	 "sla_days": 3, "effect": "Update employee record",
+	 "description": "Update your passport, Iqama, marital status or bank details. HR checks the document and updates your file.",
+	 "fields": []},
 	{"request_type_name": "General Request", "title_ar": "طلب عام", "category": "Other", "sla_days": 3, "fields": []},
 ]
 
@@ -100,7 +105,8 @@ def _type_dict(t):
 			"description": t.description, "needs_manager": cint(t.needs_manager), "needs_hr": cint(t.needs_hr),
 			"requires_attachment": cint(t.requires_attachment), "non_saudi_only": cint(t.non_saudi_only),
 			"sla_days": cint(t.sla_days), "output": t.output, "enabled": cint(t.enabled), "effect": t.get("effect"),
-			"fields": parse_json(t.fields_json, []) or []}
+			"fields": parse_json(t.fields_json, []) or [],
+			"special": t.get("effect") == "Update employee record"}
 
 
 @frappe.whitelist()
@@ -164,6 +170,8 @@ def create(request_type, details=None, reason=None, employee=None):
 	t = frappe.get_doc("AlphaX Request Type", request_type)
 	if not cint(t.enabled):
 		frappe.throw(_("This request type is not available."))
+	if t.get("effect") == "Update employee record":
+		frappe.throw(_("Use My Profile → Request a change to update your details."))
 	if cint(t.non_saudi_only) and cint(frappe.db.get_value("Employee", employee, "alphax_is_saudi")):
 		frappe.throw(_("{0} is only for non-Saudi employees.").format(t.request_type_name))
 	data = _clean_details(parse_json(t.fields_json, []) or [], parse_json(details, {}) or {})
@@ -276,6 +284,9 @@ def decide(name, action, comment=None):
 		if comment:
 			doc.hr_note = str(comment)[:2000]
 	elif action == "Approve":
+		if t.get("effect") == "Update employee record" and _needs_document(parse_json(doc.details, {}) or {}) \
+				and not frappe.db.exists("File", {"attached_to_doctype": "AlphaX Request", "attached_to_name": name}):
+			frappe.throw(_("Ask the employee to attach a copy of the new document first."))
 		if cint(t.requires_attachment) and not frappe.db.exists("File", {"attached_to_doctype": "AlphaX Request", "attached_to_name": name}):
 			frappe.throw(_("{0} needs a supporting document before approval.").format(t.request_type_name))
 		doc.status = "Pending HR" if doc.status == "Pending Manager" and cint(t.needs_hr) else "Approved"
@@ -290,6 +301,9 @@ def decide(name, action, comment=None):
 
 def _on_approved(doc, t):
 	details = parse_json(doc.details, {}) or {}
+	if t.get("effect") == "Update employee record":
+		_apply_profile_changes(doc, details)
+		return
 	if t.get("effect"):
 		doc.status = "Completed"  # nothing for HR to do: the attendance register reads it
 		doc.flags.alphax_engine = True
@@ -335,7 +349,7 @@ def _make_letter(doc, t, details):
 
 
 def _row(r):
-	return {**r, "details": parse_json(r.get("details"), {}) or {}, "overdue": bool(r.get("due_on") and r.status in OPEN
+	return {**r, "messages": 0, "details": parse_json(r.get("details"), {}) or {}, "overdue": bool(r.get("due_on") and r.status in OPEN
 																					  and getdate(r.due_on) < getdate(nowdate()))}
 
 
@@ -343,11 +357,21 @@ FIELDS = ["name", "employee", "employee_name", "request_type", "status", "approv
 		  "letter", "decided_by", "decided_on", "department"]
 
 
+def _attach_counts(rows):
+	users = {r["name"]: frappe.db.get_value("Employee", r["employee"], "user_id") for r in rows}
+	counts = message_counts([r["name"] for r in rows], users)
+	for r in rows:
+		c = counts.get(r["name"], {})
+		r["messages"] = c.get("count", 0)
+		r["last_from_employee"] = c.get("last_from_employee", False)
+	return rows
+
+
 @frappe.whitelist()
 def mine(limit=50):
 	employee = current_employee()
-	return [_row(r) for r in frappe.get_list("AlphaX Request", filters={"employee": employee}, fields=FIELDS,
-											  order_by="creation desc", page_length=min(cint(limit) or 50, 200))]
+	return _attach_counts([_row(r) for r in frappe.get_list("AlphaX Request", filters={"employee": employee}, fields=FIELDS,
+															 order_by="creation desc", page_length=min(cint(limit) or 50, 200))])
 
 
 @frappe.whitelist()
@@ -366,6 +390,7 @@ def all_requests(status=None, request_type=None, department=None, overdue=0, lim
 											 page_length=min(cint(limit) or 200, 1000))]
 	if cint(overdue):
 		rows = [r for r in rows if r["overdue"]]
+	_attach_counts(rows)
 	counts = {}
 	for r in frappe.get_list("AlphaX Request", fields=["status", "count(name) as n"], group_by="status"):
 		counts[r.status] = r.n
@@ -413,3 +438,140 @@ def has_permission(doc, ptype=None, user=None):
 def cancel(name):
 	"""The employee withdraws an open request."""
 	return decide(name, "Cancel")
+
+
+# ------------------------------------------------------------------ profile updates (HR approves)
+PROFILE_CHANGE_FIELDS = (
+	("passport_number", "Passport number", True), ("valid_upto", "Passport expiry", True), ("date_of_issue", "Passport issue date", True),
+	("place_of_issue", "Passport place of issue", True), ("alphax_iqama_number", "Iqama / ID number", True),
+	("alphax_iqama_expiry", "Iqama / ID expiry", True), ("alphax_work_permit_expiry", "Work permit expiry", True),
+	("marital_status", "Marital status", False), ("blood_group", "Blood group", False),
+	("alphax_employee_name_ar", "Full name (Arabic)", False), ("bank_name", "Bank", False), ("iban", "IBAN", False),
+	("bank_ac_no", "Bank account number", False),
+)
+
+
+def profile_fields():
+	meta = frappe.get_meta("Employee")
+	out = []
+	for fn, label, document in PROFILE_CHANGE_FIELDS:
+		df = meta.get_field(fn)
+		if not df:
+			continue
+		spec = {"fieldname": fn, "label": _(label), "fieldtype": df.fieldtype, "document": document}
+		if df.fieldtype == "Select":
+			spec["options"] = (df.options or "").split("\n")
+		elif df.fieldtype == "Link":
+			spec["options"] = df.options
+		out.append(spec)
+	return out
+
+
+def _needs_document(details):
+	docs = {fn for fn, _l, d in PROFILE_CHANGE_FIELDS if d}
+	return bool(set((details.get("changes") or {})) & docs)
+
+
+def create_profile_update(employee, changes, reason=None):
+	t_name = frappe.db.get_value("AlphaX Request Type", {"effect": "Update employee record", "enabled": 1})
+	if not t_name:
+		frappe.throw(_("Profile updates are not enabled. Ask HR."))
+	specs = {f["fieldname"]: f for f in profile_fields()}
+	emp = frappe.get_doc("Employee", employee)
+	clean = {}
+	for fn, value in (parse_json(changes, {}) or {}).items():
+		if fn not in specs:
+			frappe.throw(_("{0} cannot be changed here.").format(fn))
+		spec = specs[fn]
+		value = (str(value).strip() if value is not None else "")[:140]
+		if not value:
+			continue
+		if spec["fieldtype"] == "Date":
+			value = str(getdate(value))
+		if spec["fieldtype"] == "Select" and spec.get("options") and value not in spec["options"]:
+			frappe.throw(_("Invalid value for {0}.").format(spec["label"]))
+		if spec["fieldtype"] == "Link" and not frappe.db.exists(spec["options"], value):
+			frappe.throw(_("{0} '{1}' does not exist.").format(spec["label"], value))
+		if str(emp.get(fn) or "") == value:
+			continue
+		clean[fn] = {"label": spec["label"], "from": str(emp.get(fn) or ""), "to": value}
+	if not clean:
+		frappe.throw(_("Nothing has changed."))
+	if frappe.db.exists("AlphaX Request", {"employee": employee, "request_type": t_name, "status": ["in", list(OPEN)]}):
+		frappe.throw(_("You already have a profile update waiting for HR."))
+	t = frappe.get_doc("AlphaX Request Type", t_name)
+	doc = frappe.get_doc({"doctype": "AlphaX Request", "employee": employee, "request_type": t_name, "status": "Pending HR",
+						  "details": json.dumps({"changes": clean}, ensure_ascii=False), "reason": (reason or "")[:2000],
+						  "due_on": add_days(nowdate(), cint(t.sla_days) or 3)})
+	doc.flags.alphax_engine = True
+	doc.insert(ignore_permissions=True)
+	return {"name": doc.name, "status": doc.status, "needs_document": _needs_document({"changes": clean})}
+
+
+def _apply_profile_changes(doc, details):
+	emp = frappe.get_doc("Employee", doc.employee)
+	for fn, c in (details.get("changes") or {}).items():
+		if emp.meta.has_field(fn):
+			emp.set(fn, c["to"])
+	emp.flags.ignore_mandatory = True
+	emp.flags.ignore_links = True  # Link values were checked when the employee asked
+	emp.save(ignore_permissions=True)
+	for f in frappe.get_all("File", filters={"attached_to_doctype": "AlphaX Request", "attached_to_name": doc.name},
+							fields=["file_url", "file_name", "is_private"]):
+		frappe.get_doc({"doctype": "File", "file_url": f.file_url, "file_name": f.file_name, "is_private": f.is_private,
+						"attached_to_doctype": "Employee", "attached_to_name": doc.employee}).insert(ignore_permissions=True)
+	doc.status = "Completed"
+	doc.flags.alphax_engine = True
+	doc.save(ignore_permissions=True)
+
+
+# ------------------------------------------------------------------ conversation with HR
+def _can_talk(doc, user):
+	if is_hr(user) or doc.approver == user:
+		return True
+	return doc.employee == frappe.db.get_value("Employee", {"user_id": user}, "name")
+
+
+@frappe.whitelist()
+def messages(name):
+	user = login_required()
+	doc = frappe.get_doc("AlphaX Request", name)
+	if not _can_talk(doc, user):
+		frappe.throw(_("Not permitted."), frappe.PermissionError)
+	rows = frappe.get_all("Comment", filters={"reference_doctype": "AlphaX Request", "reference_name": name, "comment_type": "Comment"},
+						  fields=["name", "content", "owner", "creation"], order_by="creation asc")
+	emp_user = frappe.db.get_value("Employee", doc.employee, "user_id")
+	return [{"text": frappe.utils.strip_html(r.content or ""), "by": frappe.utils.get_fullname(r.owner), "at": str(r.creation),
+			 "mine": r.owner == user, "from_employee": r.owner == emp_user} for r in rows]
+
+
+@frappe.whitelist(methods=["POST"])
+def post_message(name, text):
+	user = login_required()
+	doc = frappe.get_doc("AlphaX Request", name)
+	if not _can_talk(doc, user):
+		frappe.throw(_("Not permitted."), frappe.PermissionError)
+	text = (text or "").strip()[:2000]
+	if not text:
+		frappe.throw(_("Write a message first."))
+	doc.add_comment("Comment", frappe.utils.escape_html(text))
+	emp_user = frappe.db.get_value("Employee", doc.employee, "user_id")
+	to = emp_user if user != emp_user else (doc.approver if doc.status == "Pending Manager" else doc.decided_by)
+	if to and to != user:
+		frappe.get_doc({"doctype": "Notification Log", "for_user": to, "type": "Alert", "document_type": "AlphaX Request",
+						"document_name": doc.name, "from_user": user,
+						"subject": _("New message on {0}: {1}").format(doc.request_type, text[:80])}).insert(ignore_permissions=True)
+	return messages(name)
+
+
+def message_counts(names, employee_users):
+	"""{request: {"count": n, "last_from_employee": bool}} for list views."""
+	out = {}
+	if not names:
+		return out
+	for c in frappe.get_all("Comment", filters={"reference_doctype": "AlphaX Request", "reference_name": ["in", names],
+												 "comment_type": "Comment"}, fields=["reference_name", "owner"], order_by="creation asc"):
+		o = out.setdefault(c.reference_name, {"count": 0, "last_from_employee": False})
+		o["count"] += 1
+		o["last_from_employee"] = c.owner == employee_users.get(c.reference_name)
+	return out

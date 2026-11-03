@@ -1614,6 +1614,66 @@ def run(site):
                 frappe.db.set_value("Employee", f["e_emp2"], {"custom_axt_nationality": None, "reports_to": None})
         check("employee values missing from their lists: flagged, bulk fix not blocked, missing values created", broken_links_fix)
 
+        print("\n== Employee profile, HR conversation, home")
+        def profile_update_flow():
+            from alphax_hr.api import ess, requests as rq, approvals, appraisals
+            frappe.set_user("Administrator")
+            frappe.db.delete("AlphaX Request", {"employee": f["e_emp"], "request_type": "Profile Update"})
+            frappe.db.set_value("Employee", f["e_emp"], {"passport_number": "P0000001", "valid_upto": add_days(nowdate(), 400)})
+            frappe.set_user(f["emp"])
+            assert isinstance(appraisals.mine(), list)  # no role access to Appraisal needed for own scores
+            ess.update_my_contact({"cell_number": "+966500000001"})
+            form = ess.profile_change_form()
+            fields = {x["fieldname"]: x for x in form["fields"]}
+            assert form["enabled"] and "passport_number" in fields and fields["passport_number"]["document"]
+            expect_error(lambda: ess.request_profile_change({"date_of_joining": "2020-01-01"}), frappe.ValidationError)
+            expect_error(lambda: ess.request_profile_change({"passport_number": fields["passport_number"]["value"]}), frappe.ValidationError)
+            expect_error(lambda: rq.create("Profile Update", {}), frappe.ValidationError)  # only through the profile
+            r = ess.request_profile_change({"passport_number": "PNEW1234", "valid_upto": add_days(nowdate(), 3650)}, "Renewed")
+            assert r["status"] == "Pending HR" and r["needs_document"]
+            expect_error(lambda: ess.request_profile_change({"marital_status": "Married"}), frappe.ValidationError)  # one at a time
+            assert ess.profile_change_form()["pending"]["name"] == r["name"]
+            msgs = rq.post_message(r["name"], "Scan attached shortly")
+            assert msgs[-1]["mine"] and msgs[-1]["from_employee"]
+            frappe.set_user(f["emp2"])
+            expect_error(lambda: rq.messages(r["name"]), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            row = next(x for x in rq.all_requests(status="open")["rows"] if x["name"] == r["name"])
+            assert row["messages"] == 1 and row["last_from_employee"]
+            expect_error(lambda: approvals.act("AlphaX Request", r["name"], "Approve"), frappe.ValidationError)  # needs the document
+            rq.post_message(r["name"], "Please attach the new passport page")
+            assert frappe.db.exists("Notification Log", {"for_user": f["emp"], "document_name": r["name"]})
+            frappe.get_doc({"doctype": "File", "file_name": "passport.txt", "content": b"scan", "is_private": 1,
+                            "attached_to_doctype": "AlphaX Request", "attached_to_name": r["name"]}).insert(ignore_permissions=True)
+            assert approvals.act("AlphaX Request", r["name"], "Approve")["status"] == "Completed"
+            emp = frappe.get_doc("Employee", f["e_emp"])
+            assert emp.passport_number == "PNEW1234" and str(emp.valid_upto) == str(add_days(nowdate(), 3650))
+            assert frappe.db.exists("File", {"attached_to_doctype": "Employee", "attached_to_name": f["e_emp"], "file_name": "passport.txt"})
+        check("profile update: employee asks, HR talks and approves with the document, record and files updated", profile_update_flow)
+
+        def home_announcements_activity():
+            from alphax_hr.api import announcements as an, ess
+            frappe.set_user("Administrator")
+            frappe.db.delete("AlphaX Announcement")
+            frappe.set_user(f["emp"])
+            expect_error(lambda: an.save({"title": "x", "body": "y"}), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            dept = frappe.db.get_value("Employee", f["e_emp"], "department")
+            an.save({"title": "Eid holiday", "body": "Office closed", "audience": "Everyone", "pinned": 1})
+            an.save({"title": "Ops only", "body": "Shift change", "audience": "Department", "department": dept})
+            an.save({"title": "Future", "body": "Later", "publish_on": add_days(nowdate(), 5)})
+            expect_error(lambda: an.save({"title": "Bad", "body": "x", "audience": "Department"}), frappe.ValidationError)
+            frappe.set_user(f["emp"])
+            titles = [a["title"] for a in an.active()]
+            assert titles[0] == "Eid holiday" and "Ops only" in titles and "Future" not in titles, titles
+            frappe.db.set_value("Employee", f["e_emp2"], "department", None)
+            frappe.set_user(f["emp2"])
+            assert "Ops only" not in [a["title"] for a in an.active()]
+            frappe.set_user(f["emp"])
+            acts = ess.my_activity()
+            assert acts and {"kind", "title", "at", "link"} <= set(acts[0]), acts[:1]
+        check("home: HR announcements by audience and date, recent activity", home_announcements_activity)
+
         print("\n== /alphax page")
         def www_page():
             from alphax_hr.www import alphax as page

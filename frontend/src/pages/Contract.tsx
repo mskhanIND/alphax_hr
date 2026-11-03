@@ -3,7 +3,7 @@ import { ArrowLeft, Download, FileCheck2, Printer } from 'lucide-react'
 import { useRef } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Button, ErrorBox, PageHeader, Spinner } from '../components/ui'
-import { api, downloadUrl } from '../lib/api'
+import { api, downloadFile, downloadUrl } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 
 /** Bilingual employment contract (Qiwa layout): preview, print, download or save to the employee's file. */
@@ -21,7 +21,7 @@ export default function Contract() {
       <PageHeader title={t('Employment contract')} subtitle={t('English and Arabic, in the layout of the Qiwa unified contract.')}
         actions={<div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={() => frame.current?.contentWindow?.print()}><Printer className="size-4" />{t('Print')}</Button>
-          <a href={downloadUrl('contract.download', { employee: id })}><Button variant="secondary"><Download className="size-4" />{t('Download PDF')}</Button></a>
+          <Button variant="secondary" onClick={() => downloadFile(downloadUrl('contract.download', { employee: id }), `Employment-Contract-${id}.pdf`)}><Download className="size-4" />{t('Download PDF')}</Button>
           <Button loading={save.isPending} onClick={() => save.mutate()}><FileCheck2 className="size-4" />{t("Save to employee's file")}</Button>
         </div>} />
       {save.isSuccess && <p className="text-sm text-emerald-700">{t('Saved as an attachment on the employee.')}</p>}

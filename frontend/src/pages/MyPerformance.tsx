@@ -24,7 +24,7 @@ export default function MyPerformance() {
                 <div><dt className="text-muted">{t('Self')}</dt><dd className="text-lg font-semibold">{fmtNumber(a.self_score, lang, 1)}</dd></div>
                 <div><dt className="text-muted">{t('Final score')}</dt><dd className="text-lg font-semibold text-brand">{fmtNumber(a.final_score, lang, 2)}</dd></div>
               </dl>
-              <Link className="mt-3 inline-block text-sm text-brand underline" to={recordPath('Appraisal', a.name)}>{t('Open')}</Link>
+              {a.can_open && <Link className="mt-3 inline-block text-sm text-brand underline" to={recordPath('Appraisal', a.name)}>{t('Open')}</Link>}
             </Card>
           ))}
         </div>

@@ -16,11 +16,12 @@ React SPA (/alphax)  ──►  alphax_hr API (permission-checked)  ──►  F
 |---|---|---|
 | ![HR home](docs/screenshots/09-hr-home.png) | ![Compliance](docs/screenshots/ar-compliance.png) | ![Phone](docs/screenshots/05-arabic-phone-home.png) |
 
-## Modules (v0.11)
+## Modules (v0.12)
 
 | Area | Who | What |
 |---|---|---|
 | Self-service | Every employee | Leave requests adapt to the site's own mandatory Leave Application fields (asked in the form; the return-to-work date is filled automatically); Services hub (every request in one place); check in/out (with location); leave balance and requests; attendance month view with corrections, shift changes and late-arrival / early-exit permissions (manager approves, monthly limit in settings, excused minutes drop out of lateness and penalties); expense claims with receipt photo to the expense approver; my documents (ID/passport/contract expiry, files, letters); payslips with PDF; my warnings; my performance; profile and contact updates; upcoming holidays |
+| Employee file & home | Every employee, HR | Sidebar in three groups (self service, my pay, my file; profile also from the avatar); home shows HR announcements (by company/department, scheduled, pinned, Arabic text) and recent activity; employees ask HR to update passport, Iqama, work permit, marital status, Arabic name or bank details with a copy of the document — HR approves and the employee file and document are updated; every request has a message thread with HR; letters, documents and passport release go straight to HR without the manager |
 | Mobile app | Every user | Installable on Android and iPhone from the browser (Install app button / Add to Home Screen): app icon, full-screen, bottom tab bar, home shortcuts (check in, leave, services), opens offline to the last loaded screen. Needs the site on HTTPS |
 | Attendance exceptions | HR (rules shown to the employee) | Policies per company, department, designation or employee (most specific wins): exempt from attendance tracking, own late / early-exit grace, free late minutes per month, single punch counts as present, own permission limit, no penalty suggestions; applied in the attendance register, payroll checklist and penalties |
 | Annual vacation planning | Employees, approvers, HR | Employees plan the year's vacation (working days counted on their holiday list, entitlement shown, optional minimum continuous block and deadline); they see colleagues already away; managers approve, request changes or reject from the inbox or the planner with a weekly per-department heatmap (red above the allowed share); approved periods become leave requests in one tap; annual leave outside the approved plan is flagged |

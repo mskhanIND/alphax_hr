@@ -1,9 +1,72 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
+import { FileCheck2 } from 'lucide-react'
+import { Modal, Textarea } from '../components/ui'
+import { FieldInput } from '../components/FieldInput'
+import { uploadFile } from '../lib/api'
 import { Avatar, Badge, Button, Card, ErrorBox, Field, Input, PageHeader, Spinner } from '../components/ui'
 import { api } from '../lib/api'
 import { fmtDate } from '../lib/format'
 import { useI18n } from '../lib/i18n'
+
+/** Details only HR may change (documents, marital status, bank): the employee asks, HR checks and applies. */
+function ChangeRequest() {
+  const { t, lang } = useI18n()
+  const qc = useQueryClient()
+  const q = useQuery<any>({ queryKey: ['profile-change'], queryFn: api.profileChangeForm })
+  const [open, setOpen] = useState(false)
+  const [vals, setVals] = useState<Record<string, any>>({})
+  const [reason, setReason] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const changed = Object.fromEntries(Object.entries(vals).filter(([k, v]) => v !== '' && v !== null && v !== undefined &&
+    String(v) !== (q.data?.fields.find((f: any) => f.fieldname === k)?.value ?? '')))
+  const needsDoc = (q.data?.fields ?? []).some((f: any) => f.document && f.fieldname in changed)
+  const m = useMutation({
+    mutationFn: async () => { const r = await api.requestProfileChange(changed, reason || undefined); if (file) await uploadFile('AlphaX Request', r.name, file); return r },
+    onSuccess: () => { setOpen(false); setVals({}); setReason(''); setFile(null); qc.invalidateQueries({ queryKey: ['profile-change'] }); qc.invalidateQueries({ queryKey: ['my-requests'] }) },
+  })
+  if (q.isLoading) return <Spinner />
+  if (q.error) return <ErrorBox error={q.error} />
+  const d = q.data
+  if (!d.enabled) return null
+  const show = (f: any) => f.fieldtype === 'Date' && f.value ? fmtDate(f.value, lang) : f.value
+  return (
+    <Card title={t('Documents & personal details')} subtitle={t('Changed by HR after checking your document')} className="lg:col-span-3"
+      action={!d.pending && <Button size="sm" onClick={() => setOpen(true)}><FileCheck2 className="size-4" />{t('Request a change')}</Button>}>
+      {d.pending && (
+        <div className="mb-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+          {t('Waiting for HR')} ({d.pending.name}): {Object.values(d.pending.changes).map((c: any) => `${c.label} → ${c.to}`).join(' · ')}
+        </div>
+      )}
+      <div className="grid gap-x-8 sm:grid-cols-2">
+        {d.fields.map((f: any) => (
+          <div key={f.fieldname} className="flex justify-between gap-4 border-b border-line py-2 text-sm">
+            <span className="text-muted">{t(f.label)}</span><span className="text-end font-medium">{show(f) || '—'}</span>
+          </div>
+        ))}
+      </div>
+      <Modal open={open} onClose={() => setOpen(false)} wide title={t('Request a change')}
+        footer={<><Button variant="secondary" onClick={() => setOpen(false)}>{t('Cancel')}</Button>
+          <Button disabled={!Object.keys(changed).length || (needsDoc && !file)} loading={m.isPending} onClick={() => m.mutate()}>{t('Send to HR')}</Button></>}>
+        <p className="mb-3 text-sm text-muted">{t('Fill in only what changed. HR reviews the request and updates your file.')}</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {d.fields.map((f: any) => (
+            <Field key={f.fieldname} label={t(f.label)} hint={f.value ? `${t('Now')}: ${show(f)}` : undefined}>
+              <FieldInput spec={{ ...f, reqd: 0 }} value={vals[f.fieldname] ?? ''} onChange={(v) => setVals((s) => ({ ...s, [f.fieldname]: v ?? '' }))} />
+            </Field>
+          ))}
+        </div>
+        <div className="mt-3 grid gap-3">
+          <Field label={t('Copy of the new document') + (needsDoc ? ' *' : '')} hint={t('Photo or PDF of the new passport / Iqama page.')}>
+            <input type="file" accept="image/*,application/pdf" capture="environment" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="text-sm" />
+          </Field>
+          <Field label={t('Note to HR')}><Textarea value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
+        </div>
+        {m.error && <div className="mt-3"><ErrorBox error={m.error} /></div>}
+      </Modal>
+    </Card>
+  )
+}
 
 export default function MyProfile() {
   const { t, lang } = useI18n()
@@ -52,6 +115,7 @@ export default function MyProfile() {
             {m.error && <div className="sm:col-span-2"><ErrorBox error={m.error} /></div>}
           </form>
         </Card>
+        <ChangeRequest />
       </div>
     </div>
   )

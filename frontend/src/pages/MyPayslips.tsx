@@ -1,8 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { Download, Wallet } from 'lucide-react'
 import { useState } from 'react'
-import { Card, Empty, ErrorBox, Modal, PageHeader, Spinner } from '../components/ui'
-import { api } from '../lib/api'
+import { Button, Card, Empty, ErrorBox, Modal, PageHeader, Spinner } from '../components/ui'
+import { api, downloadFile } from '../lib/api'
 import { fmtMoney, fmtMonth } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 
@@ -31,9 +31,18 @@ function SlipDetail({ name }: { name: string }) {
         <Lines title={t('Earnings')} rows={s.earnings} />
         <Lines title={t('Deductions')} rows={s.deductions} />
       </div>
-      <a href={s.pdf_url} className="inline-flex items-center gap-2 self-start rounded-xl border border-line px-4 py-2 text-sm font-medium hover:bg-surface">
-        <Download className="size-4" /> {t('Download PDF')}
-      </a>
+      <DownloadButton url={s.pdf_url} filename={`${s.name}.pdf`} />
+    </div>
+  )
+}
+
+function DownloadButton({ url, filename }: { url: string; filename: string }) {
+  const { t } = useI18n()
+  const m = useMutation({ mutationFn: () => downloadFile(url, filename) })
+  return (
+    <div className="flex flex-col gap-2">
+      <Button variant="secondary" className="self-start" loading={m.isPending} onClick={() => m.mutate()}><Download className="size-4" /> {t('Download PDF')}</Button>
+      {m.error && <ErrorBox error={m.error} />}
     </div>
   )
 }

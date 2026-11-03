@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { ActivityDrawer } from '../components/ActivityDrawer'
 import { LinkInput } from '../components/LinkInput'
 import { Button, Card, Empty, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, StatusBadge, Table, Textarea } from '../components/ui'
-import { api, downloadUrl } from '../lib/api'
+import { api, downloadFile, downloadUrl } from '../lib/api'
 import { fmtDate, fmtMoney, fmtNumber, todayISO } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 import { useSession } from '../lib/session'
@@ -97,7 +97,7 @@ export default function Settlements() {
                 <td>{fmtDate(r.exit_date, lang)}</td><td className="text-sm">{t(r.reason)}</td><td className="text-sm">{t(r.mode)}</td>
                 <td className="tabular-nums">{fmtMoney(r.net_amount, lang)}</td><td><StatusBadge status={r.status} /></td>
                 <td className="whitespace-nowrap">
-                  <a className="me-2 text-sm text-brand underline" href={downloadUrl('settlements.statement', { name: r.name })} target="_blank" rel="noreferrer">PDF</a>
+                  <button className="me-2 text-sm text-brand underline" onClick={() => downloadFile(downloadUrl('settlements.statement', { name: r.name }), `${r.name}.pdf`)}>PDF</button>
                   {r.status === 'Draft' && <Button size="sm" variant="secondary" onClick={() => setEdit(r)}>{t('Edit')}</Button>}
                   {r.status === 'Draft' && manager && <Button size="sm" loading={approve.isPending && approve.variables === r.name} onClick={() => approve.mutate(r.name)}>{t('Approve')}</Button>}
                   {r.status === 'Approved' && manager && <Button size="sm" loading={pay.isPending} onClick={() => pay.mutate(r.name)}>{t('Mark paid')}</Button>}

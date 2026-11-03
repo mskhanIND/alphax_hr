@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, BadgeCheck, CalendarDays, ChevronRight, LayoutGrid, Receipt, ShieldCheck, Smartphone, Users, Wallet, X } from 'lucide-react'
-import { useState } from 'react'
+import { AlertTriangle, BadgeCheck, CalendarDays, Inbox, Megaphone, ShieldAlert, ChevronRight, LayoutGrid, Receipt, ShieldCheck, Smartphone, Users, Wallet, X } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 import { useInstall } from '../lib/pwa'
 import { Link } from 'react-router-dom'
 import { CheckInCard } from '../components/CheckInCard'
-import { Badge, Card, Empty, ErrorBox, Spinner, Stat } from '../components/ui'
+import { Badge, Card, Empty, ErrorBox, Modal, Spinner, Stat, StatusBadge } from '../components/ui'
 import { api } from '../lib/api'
 import { fmtDate, fmtNumber } from '../lib/format'
 import { useI18n } from '../lib/i18n'
@@ -140,6 +140,68 @@ function QuickServices() {
   )
 }
 
+function Announcements() {
+  const { t, lang } = useI18n()
+  const q = useQuery({ queryKey: ['announcements'], queryFn: api.announcements, staleTime: 120_000 })
+  const [open, setOpen] = useState<any>(null)
+  if (!q.data?.length) return null
+  const title = (a: any) => (lang === 'ar' && a.title_ar) || a.title
+  const body = (a: any) => (lang === 'ar' && a.body_ar) || a.body
+  return (
+    <Card title={t('Announcements')}>
+      <ul className="divide-y divide-line">
+        {q.data.slice(0, 4).map((a: any) => (
+          <li key={a.name}>
+            <button type="button" className="flex w-full items-start gap-3 py-2.5 text-start" onClick={() => setOpen(a)}>
+              <Megaphone className={`mt-0.5 size-4 shrink-0 ${a.priority === 'Important' ? 'text-red-600' : 'text-brand'}`} />
+              <span className="min-w-0 flex-1">
+                <span className="block font-medium">{title(a)}{a.pinned ? ' 📌' : ''}</span>
+                <span className="line-clamp-2 text-sm text-muted">{body(a)}</span>
+              </span>
+              <span className="shrink-0 text-xs text-muted">{fmtDate(a.publish_on, lang)}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {open && (
+        <Modal open onClose={() => setOpen(null)} title={title(open)}>
+          <p className="mb-2 text-xs text-muted">{open.by} · {fmtDate(open.publish_on, lang)}</p>
+          <p className="whitespace-pre-wrap text-sm">{body(open)}</p>
+          {open.attachment && <a className="mt-3 inline-block text-sm font-medium text-brand underline" href={open.attachment} target="_blank" rel="noreferrer">{t('Attachment')}</a>}
+        </Modal>
+      )}
+    </Card>
+  )
+}
+
+const ACTIVITY_ICON: Record<string, ReactNode> = {
+  leave: <CalendarDays className="size-4" />, request: <Inbox className="size-4" />, payslip: <Wallet className="size-4" />,
+  expense: <Receipt className="size-4" />, warning: <ShieldAlert className="size-4" />,
+}
+
+function RecentActivity() {
+  const { t, lang } = useI18n()
+  const q = useQuery({ queryKey: ['my-activity'], queryFn: api.myActivity, staleTime: 60_000 })
+  return (
+    <Card title={t('Recent activity')}>
+      {q.isLoading ? <Spinner /> : !q.data?.length ? <p className="text-sm text-muted">{t('Nothing in the last 60 days.')}</p> : (
+        <ul className="divide-y divide-line">
+          {q.data.slice(0, 8).map((a: any, i: number) => (
+            <li key={i}>
+              <Link to={a.link} className="flex items-center gap-3 py-2 text-sm hover:text-brand">
+                <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-brand/10 text-brand">{ACTIVITY_ICON[a.kind]}</span>
+                <span className="min-w-0 flex-1 truncate">{a.title}</span>
+                {a.status && <StatusBadge status={a.status} />}
+                <span className="shrink-0 text-xs text-muted">{fmtDate(a.at, lang, { day: '2-digit', month: 'short' })}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  )
+}
+
 export default function Home() {
   const { t, lang } = useI18n()
   const s = useSession()
@@ -153,11 +215,13 @@ export default function Home() {
         <Card><Empty title={t('Your user is not linked to an employee record.')} /></Card>
       )}
       <InstallHint />
+      <Announcements />
       {s.persona.employee && <QuickServices />}
       {s.persona.employee && (
         <div className="grid gap-4 lg:grid-cols-2">
           <CheckInCard />
           <LeaveSummary />
+          <div className="lg:col-span-2"><RecentActivity /></div>
         </div>
       )}
       {(s.persona.approver || s.persona.hr) && <ApprovalsSummary />}

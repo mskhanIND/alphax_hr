@@ -49,8 +49,72 @@ def update_my_contact(data):
 	if not changes:
 		frappe.throw(_("Nothing to update."))
 	doc.update(changes)
-	doc.save()  # Employee write permission + HRMS validations still apply
+	# Only the contact fields above can change. Employees often lack write access to Employee, and stale values
+	# elsewhere on the record (e.g. a nationality missing from its list) must not block a phone number update.
+	doc.flags.ignore_permissions = True
+	doc.flags.ignore_links = True
+	doc.flags.ignore_mandatory = True
+	doc.save()
 	return my_profile()
+
+
+@frappe.whitelist()
+def profile_change_form():
+	"""Fields an employee can ask HR to change, with their current values and any pending request."""
+	from alphax_hr.api import requests as rq
+
+	doc = _employee_doc()
+	fields = [{**f, "value": str(doc.get(f["fieldname"]) or "")} for f in rq.profile_fields()]
+	t_name = frappe.db.get_value("AlphaX Request Type", {"effect": "Update employee record"})
+	pending = frappe.get_all("AlphaX Request", filters={"employee": doc.name, "request_type": t_name or "", "status": ["in", list(rq.OPEN)]},
+							 fields=["name", "status", "details", "creation"], limit=1)
+	p = None
+	if pending:
+		p = {"name": pending[0].name, "status": pending[0].status, "creation": str(pending[0].creation),
+			 "changes": (frappe.parse_json(pending[0].details or "{}") or {}).get("changes", {})}
+	return {"fields": fields, "pending": p, "enabled": bool(t_name)}
+
+
+@frappe.whitelist(methods=["POST"])
+def request_profile_change(changes, reason=None):
+	from alphax_hr.api.requests import create_profile_update
+
+	return create_profile_update(current_employee(), changes, reason)
+
+
+@frappe.whitelist()
+def my_activity(limit=15):
+	"""What happened recently on my requests, leave, pay and warnings."""
+	employee = current_employee()
+	limit = min(cint(limit) or 15, 50)
+	since = add_days(nowdate(), -60)
+	items = []
+
+	def add(rows, kind, title_fn, link_fn):
+		for r in rows:
+			items.append({"kind": kind, "title": title_fn(r), "status": r.get("status") or r.get("approval_status"),
+						  "at": str(r.modified), "link": link_fn(r)})
+
+	add(frappe.get_all("Leave Application", filters={"employee": employee, "modified": [">=", since]},
+					   fields=["name", "leave_type", "from_date", "to_date", "status", "modified"], order_by="modified desc", limit=limit),
+		"leave", lambda r: f"{r.leave_type}: {frappe.utils.formatdate(r.from_date)} → {frappe.utils.formatdate(r.to_date)}", lambda r: "/me/leave")
+	if frappe.db.exists("DocType", "AlphaX Request"):
+		add(frappe.get_all("AlphaX Request", filters={"employee": employee, "modified": [">=", since]},
+						   fields=["name", "request_type", "status", "modified"], order_by="modified desc", limit=limit),
+			"request", lambda r: _(r.request_type), lambda r: "/me/requests")
+	add(frappe.get_all("Salary Slip", filters={"employee": employee, "docstatus": 1, "modified": [">=", since]},
+					   fields=["name", "start_date", "modified"], order_by="modified desc", limit=6),
+		"payslip", lambda r: _("Payslip for {0}").format(getdate(r.start_date).strftime("%B %Y")), lambda r: "/me/payslips")
+	if frappe.db.exists("DocType", "Expense Claim"):
+		add(frappe.get_all("Expense Claim", filters={"employee": employee, "modified": [">=", since]},
+						   fields=["name", "total_claimed_amount", "approval_status", "modified"], order_by="modified desc", limit=limit),
+			"expense", lambda r: _("Expense claim {0}").format(frappe.utils.fmt_money(r.total_claimed_amount)), lambda r: "/me/expenses")
+	if frappe.db.exists("DocType", "AlphaX Penalty"):
+		add(frappe.get_all("AlphaX Penalty", filters={"employee": employee, "status": ["!=", "Draft"], "modified": [">=", since]},
+						   fields=["name", "violation_type", "status", "modified"], order_by="modified desc", limit=limit),
+			"warning", lambda r: r.violation_type, lambda r: "/me/warnings")
+	items.sort(key=lambda x: x["at"], reverse=True)
+	return items[:limit]
 
 
 # ------------------------------------------------------------------ leave

@@ -50,7 +50,7 @@ export function RequestForm({ open, onClose, employee, initialType, category }: 
   })
   const missing = rt ? rt.fields.filter((f) => f.reqd && (values[f.fieldname] === undefined || values[f.fieldname] === '')) : []
   const groups: Record<string, RequestType[]> = {}
-  for (const x of types.data ?? []) if (!category || x.category === category) (groups[x.category] ??= []).push(x)
+  for (const x of types.data ?? []) if (!x.special && (!category || x.category === category)) (groups[x.category] ??= []).push(x)
   return (
     <Modal open={open} onClose={onClose} title={t('New request')}
       footer={<>

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { FileText, Folder } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { Badge, Card, Empty, ErrorBox, PageHeader, Spinner } from '../components/ui'
 import { api } from '../lib/api'
 import { fmtDate } from '../lib/format'
@@ -22,7 +23,8 @@ export default function MyDocuments() {
                 <span className="font-medium">{t(x.document)}</span>
                 <span className="flex items-center gap-2">{fmtDate(x.expiry, lang)}
                   <Badge tone={x.state === 'expired' ? 'red' : x.state === 'soon' ? 'amber' : 'green'}>
-                    {x.state === 'expired' ? t('Expired') : `${x.days_left} ${t('days')}`}</Badge></span>
+                    {x.state === 'expired' ? t('Expired') : `${x.days_left} ${t('days')}`}</Badge>
+                  {x.state !== 'valid' && x.document !== 'Contract' && <Link to="/me/profile" className="text-xs font-medium text-brand underline">{t('Update')}</Link>}</span>
               </li>
             ))}
           </ul>

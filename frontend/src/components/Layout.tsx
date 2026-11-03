@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import {
-  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History, Network, CalendarCheck, Activity, ChevronDown, Inbox, Gavel, ShieldAlert, Receipt, Star, ArrowRightLeft, LayoutGrid, Folder, Download } from 'lucide-react'
+  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History, Network, CalendarCheck, Activity, ChevronDown, Inbox, Gavel, ShieldAlert, Receipt, Star, ArrowRightLeft, LayoutGrid, Folder, Download, Megaphone } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { NavLink, Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -17,23 +17,34 @@ export function useNav(): { group: string; items: NavItem[] }[] {
   const s = useSession()
   const inbox = useQuery({ queryKey: ['inbox'], queryFn: api.inbox, enabled: s.persona.approver || s.persona.hr, refetchInterval: 120_000 })
   const groups: { group: string; items: NavItem[] }[] = [{ group: '', items: [{ to: '/', label: t('Home'), icon: <Home className="size-5" /> }] }]
-  if (s.persona.employee)
+  if (s.persona.employee) {
     groups.push({
-      group: t('My Space'),
+      group: t('Self service'),
       items: [
         { to: '/me/services', label: t('Services'), icon: <LayoutGrid className="size-5" /> },
+        { to: '/me/requests', label: t('My Requests'), icon: <Inbox className="size-5" /> },
         { to: '/me/leave', label: t('My Leave'), icon: <CalendarDays className="size-5" /> },
         { to: '/me/vacation-plan', label: t('Vacation plan'), icon: <CalendarRange className="size-5" /> },
         { to: '/me/attendance', label: t('My Attendance'), icon: <Clock className="size-5" /> },
-        { to: '/me/requests', label: t('My Requests'), icon: <Inbox className="size-5" /> },
-        { to: '/me/expenses', label: t('My expenses'), icon: <Receipt className="size-5" /> },
-        { to: '/me/documents', label: t('My documents'), icon: <Folder className="size-5" /> },
-        { to: '/me/warnings', label: t('My warnings'), icon: <ShieldAlert className="size-5" /> },
-        { to: '/me/payslips', label: t('My Payslips'), icon: <Wallet className="size-5" /> },
-        { to: '/me/profile', label: t('My Profile'), icon: <User className="size-5" /> },
-        { to: '/me/performance', label: t('My performance'), icon: <Star className="size-5" /> },
       ],
     })
+    groups.push({
+      group: t('My pay'),
+      items: [
+        { to: '/me/payslips', label: t('My Payslips'), icon: <Wallet className="size-5" /> },
+        { to: '/me/expenses', label: t('My expenses'), icon: <Receipt className="size-5" /> },
+      ],
+    })
+    groups.push({
+      group: t('My file'),
+      items: [
+        { to: '/me/profile', label: t('My Profile'), icon: <User className="size-5" /> },
+        { to: '/me/documents', label: t('My documents'), icon: <Folder className="size-5" /> },
+        { to: '/me/performance', label: t('My performance'), icon: <Star className="size-5" /> },
+        { to: '/me/warnings', label: t('My warnings'), icon: <ShieldAlert className="size-5" /> },
+      ],
+    })
+  }
   if (s.persona.approver || s.persona.hr)
     groups.push({
       group: t('Manager'),
@@ -50,6 +61,7 @@ export function useNav(): { group: string; items: NavItem[] }[] {
       items: [
         { to: '/people', label: t('Employees'), icon: <Users className="size-5" /> },
         { to: '/people?view=org', label: t('Org chart'), icon: <Network className="size-5" /> },
+        { to: '/announcements', label: t('Announcements'), icon: <Megaphone className="size-5" /> },
         { to: '/requests', label: t('Requests'), icon: <Inbox className="size-5" /> },
         { to: '/penalties', label: t('Warnings & penalties'), icon: <Gavel className="size-5" /> },
         { to: '/appraisals', label: t('Appraisals'), icon: <Star className="size-5" /> },
@@ -233,13 +245,13 @@ export function Layout({ children }: { children: ReactNode }) {
           >
             {lang === 'ar' ? 'English' : 'العربية'}
           </button>
-          <div className="flex items-center gap-2">
+          <Link to={s.persona.employee ? '/me/profile' : '/'} className="flex items-center gap-2 rounded-xl p-1 pe-2 hover:bg-surface" title={t('My Profile')}>
             <Avatar name={s.full_name} image={s.user_image} size={34} />
             <div className="hidden text-sm leading-tight sm:block">
               <div className="font-medium">{s.full_name}</div>
               <div className="text-xs text-muted">{s.employee?.designation ?? s.user}</div>
             </div>
-          </div>
+          </Link>
           <a href="/api/method/logout?redirect-to=/login" className="rounded-lg p-2 text-muted hover:bg-surface" title={t('Sign out')} aria-label={t('Sign out')}>
             <LogOut className="size-5 flip-rtl" />
           </a>

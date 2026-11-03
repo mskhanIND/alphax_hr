@@ -52,5 +52,20 @@ def appraisals(cycle=None, department=None):
 
 @frappe.whitelist()
 def mine():
+	"""The employee's own appraisals. Many sites give employees no role access to Appraisal, so the list is
+	read for their own employee only (scores, not the form); the record opens only where they may read it."""
 	employee = current_employee()
-	return _rows({"employee": employee, "docstatus": ["<", 2]}, 50)
+	if not frappe.db.exists("DocType", "Appraisal"):
+		return []
+	meta = frappe.get_meta("Appraisal")
+	rows = frappe.get_all("Appraisal", filters={"employee": employee, "docstatus": ["<", 2]},
+						  fields=[f for f in FIELDS if f in ("name", "docstatus", "modified") or meta.has_field(f)],
+						  order_by="modified desc", limit_page_length=50)
+	can_open = frappe.has_permission("Appraisal", "read")
+	for r in rows:
+		r["status"] = {0: "Draft", 1: "Submitted", 2: "Cancelled"}[r.docstatus]
+		r["can_open"] = can_open
+		for k in ("start_date", "end_date", "modified"):
+			if r.get(k):
+				r[k] = str(r[k])
+	return rows

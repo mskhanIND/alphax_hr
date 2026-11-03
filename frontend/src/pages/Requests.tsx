@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileText, Plus } from 'lucide-react'
+import { FileText, MessageCircle, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { ActivityDrawer } from '../components/ActivityDrawer'
 import { RequestForm, typeTitle } from '../components/RequestForm'
+import { RequestThread } from '../components/RequestThread'
 import { Avatar, Badge, Button, Card, Empty, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, StatusBadge, Table, Textarea } from '../components/ui'
 import { LinkInput } from '../components/LinkInput'
 import { api, type RequestType } from '../lib/api'
@@ -59,6 +60,7 @@ export default function Requests() {
   const [rtype, setRtype] = useState('')
   const [overdue, setOverdue] = useState(false)
   const [trail, setTrail] = useState<string | null>(null)
+  const [thread, setThread] = useState<any>(null)
   const [raise, setRaise] = useState(false)
   const [forEmp, setForEmp] = useState('')
   const [act, setAct] = useState<{ row: any; action: string } | null>(null)
@@ -120,6 +122,8 @@ export default function Requests() {
                         {r.details?.short_notice && <div className="text-xs text-amber-800">{r.details.short_notice}</div>}
                       </div>
                     </button>
+                    <Button size="sm" variant={r.last_from_employee ? 'primary' : 'secondary'} onClick={() => setThread(r)} title={r.last_from_employee ? t('The employee is waiting for a reply') : undefined}>
+                      <MessageCircle className="size-4" />{r.messages || ''}</Button>
                     {r.letter && <a className="text-sm font-medium text-brand underline" href={r.letter} target="_blank" rel="noreferrer">{t('Letter')}</a>}
                     {actions(r.name).map((a: string) => (
                       <Button key={a} size="sm" variant={a === 'Reject' ? 'secondary' : 'primary'} onClick={() => setAct({ row: r, action: a })}>{t(a)}</Button>
@@ -132,6 +136,7 @@ export default function Requests() {
         </>
       )}
       {trail && <ActivityDrawer doctype="AlphaX Request" name={trail} onClose={() => setTrail(null)} />}
+      {thread && <RequestThread name={thread.name} title={`${thread.employee_name} · ${typeTitle(typeOf(thread.request_type), lang, thread.request_type)}`} onClose={() => setThread(null)} />}
       <Modal open={!!act} onClose={() => setAct(null)} title={act ? `${t(act.action)} · ${act.row.employee_name}` : ''}
         footer={<><Button variant="secondary" onClick={() => setAct(null)}>{t('Cancel')}</Button>
           <Button variant={act?.action === 'Reject' ? 'danger' : 'primary'} loading={m.isPending} onClick={() => m.mutate()}>{act ? t(act.action) : ''}</Button></>}>

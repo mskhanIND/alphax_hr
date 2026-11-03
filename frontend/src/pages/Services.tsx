@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Briefcase, CalendarDays, CalendarRange, Clock, FileText, Folder, LogOut, Plane, Receipt, Star, Timer, Wallet } from 'lucide-react'
+import { UserPen, Briefcase, CalendarDays, CalendarRange, Clock, FileText, Folder, LogOut, Plane, Receipt, Star, Timer, Wallet } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { RequestForm, typeTitle } from '../components/RequestForm'
@@ -27,18 +27,19 @@ export default function Services() {
   const types = useQuery({ queryKey: ['request-types'], queryFn: () => api.requestTypes() })
   const [open, setOpen] = useState<string | null>(null)
   const groups: Record<string, RequestType[]> = {}
-  for (const x of types.data ?? []) (groups[x.category] ??= []).push(x)
+  for (const x of types.data ?? []) if (!x.special) (groups[x.category] ??= []).push(x)
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title={t('Services')} subtitle={t('Everything you can ask HR for, in one place')} />
       <Card title={t('Everyday')}>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           <Tile icon={<CalendarDays className="size-5" />} label={t('Apply for leave')} to="/me/leave" />
           <Tile icon={<CalendarRange className="size-5" />} label={t('Vacation plan')} to="/me/vacation-plan" />
           <Tile icon={<Clock className="size-5" />} label={t('Attendance & corrections')} to="/me/attendance" />
           <Tile icon={<Receipt className="size-5" />} label={t('Expense claim')} to="/me/expenses" />
           <Tile icon={<Wallet className="size-5" />} label={t('My Payslips')} to="/me/payslips" />
           <Tile icon={<Folder className="size-5" />} label={t('My documents')} to="/me/documents" />
+          <Tile icon={<UserPen className="size-5" />} label={t('Update my details')} to="/me/profile" />
           <Tile icon={<Star className="size-5" />} label={t('My performance')} to="/me/performance" />
         </div>
       </Card>

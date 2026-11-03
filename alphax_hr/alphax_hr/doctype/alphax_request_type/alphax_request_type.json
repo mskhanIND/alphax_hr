@@ -106,7 +106,7 @@
    "fieldname": "effect",
    "fieldtype": "Select",
    "label": "Effect on Attendance",
-   "options": "\nExcuse late arrival\nExcuse early exit",
+   "options": "\nExcuse late arrival\nExcuse early exit\nUpdate employee record",
    "description": "Approved requests excuse the late arrival / early exit on that date in the attendance register and penalties."
   },
   {

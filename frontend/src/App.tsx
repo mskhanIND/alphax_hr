@@ -41,6 +41,7 @@ const MyPerformance = lazy(() => import('./pages/MyPerformance'))
 const AttendancePolicies = lazy(() => import('./pages/AttendancePolicies'))
 const VacationPlan = lazy(() => import('./pages/VacationPlan'))
 const VacationPlanner = lazy(() => import('./pages/VacationPlanner'))
+const AnnouncementsAdmin = lazy(() => import('./pages/AnnouncementsAdmin'))
 
 function Guard({ when, children }: { when: (s: ReturnType<typeof useSession>) => boolean; children: ReactNode }) {
   const s = useSession()
@@ -70,6 +71,7 @@ export default function App() {
             <Route path="/me/vacation-plan" element={<Guard when={emp}><VacationPlan /></Guard>} />
             <Route path="/vacation-planner" element={<Guard when={mgr}><VacationPlanner /></Guard>} />
             <Route path="/attendance-policies" element={<Guard when={hr}><AttendancePolicies /></Guard>} />
+            <Route path="/announcements" element={<Guard when={hr}><AnnouncementsAdmin /></Guard>} />
             <Route path="/my-team" element={<Guard when={mgr}><MyTeam /></Guard>} />
             <Route path="/me/requests" element={<Guard when={emp}><MyRequests /></Guard>} />
             <Route path="/penalties" element={<Guard when={hr}><Penalties /></Guard>} />

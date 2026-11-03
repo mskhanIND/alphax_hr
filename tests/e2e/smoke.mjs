@@ -135,6 +135,20 @@ try {
       }
       await page.screenshot({ path: `${OUT}/27-vacation-plan.png`, fullPage: true })
     })
+    await step('profile: documents card and change request form', async () => {
+      await page.goto(`${BASE}/alphax/me/profile`)
+      await page.getByText('Documents & personal details').waitFor()
+      const btn = page.getByRole('button', { name: 'Request a change' })
+      if (await btn.isVisible()) {
+        await btn.click()
+        await page.getByRole('dialog').getByText('Copy of the new document').waitFor()
+        await page.screenshot({ path: `${OUT}/31-profile-change.png` })
+        await page.keyboard.press('Escape')
+      }
+      await page.goto(`${BASE}/alphax`)
+      await page.getByText('Recent activity').waitFor()
+      await page.screenshot({ path: `${OUT}/32-home-employee.png`, fullPage: true })
+    })
     await step('HR pages are not reachable by URL', async () => {
       await page.goto(`${BASE}/alphax/people`)
       await page.waitForURL(/\/alphax\/?$/)
@@ -423,6 +437,11 @@ try {
       const res = await page.request.get(`${BASE}/api/method/alphax_hr.api.contract.download?employee=${encodeURIComponent(empId)}`)
       const body = await res.body()
       if (!res.ok() || body.subarray(0, 4).toString() !== '%PDF') throw new Error('contract PDF ' + res.status())
+    })
+    await step('profile change request and announcements', async () => {
+      await page.goto(`${BASE}/alphax/announcements`)
+      await page.getByRole('heading', { name: 'Announcements' }).waitFor()
+      await page.screenshot({ path: `${OUT}/30-announcements.png`, fullPage: true })
     })
     await step('GOSI register', async () => {
       await page.goto(`${BASE}/alphax/payroll/gosi`)

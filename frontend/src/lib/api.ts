@@ -230,6 +230,15 @@ export const api = {
   applyPlannedPeriod: (year: number, idx: number) => call<any>(A + 'leave_plan.apply_period', { year, idx }),
   vacationPlanner: (year?: number, department?: string) => call<any>(A + 'leave_plan.planner', { year, department }),
   createMissingLinks: () => call<{ created: string[]; skipped: string[] }>(A + 'setup.create_missing_links'),
+  profileChangeForm: () => call<any>(A + 'ess.profile_change_form'),
+  requestProfileChange: (changes: Record<string, string>, reason?: string) => call<any>(A + 'ess.request_profile_change', { changes, reason }),
+  myActivity: () => call<any[]>(A + 'ess.my_activity'),
+  requestMessages: (name: string) => call<any[]>(A + 'requests.messages', { name }),
+  postRequestMessage: (name: string, text: string) => call<any[]>(A + 'requests.post_message', { name, text }),
+  announcements: () => call<any[]>(A + 'announcements.active'),
+  allAnnouncements: () => call<any[]>(A + 'announcements.all_announcements'),
+  saveAnnouncement: (data: Record<string, unknown>, name?: string) => call<any>(A + 'announcements.save', { data, name }),
+  deleteAnnouncement: (name: string) => call(A + 'announcements.delete', { name }),
   expenseTypes: () => call<any[]>(A + 'ess.expense_types'),
   submitExpense: (args: Record<string, unknown>) => call<{ name: string; approver?: string }>(A + 'ess.submit_expense', args),
   withdrawExpense: (name: string) => call(A + 'ess.withdraw_expense', { name }),
@@ -242,7 +251,7 @@ export const api = {
 export interface RequestField { fieldname: string; label: string; label_ar?: string; type: string; reqd?: number; options?: string[] }
 export interface RequestType {
   name: string; title: string; title_ar?: string; category: string; description?: string; needs_manager: number; needs_hr: number
-  requires_attachment: number; non_saudi_only: number; sla_days: number; output?: string; enabled: number; fields: RequestField[]
+  requires_attachment: number; non_saudi_only: number; sla_days: number; output?: string; enabled: number; fields: RequestField[]; special?: boolean
 }
 
 /** Attach a file to a document through Frappe's standard (permission-checked) upload. */
@@ -264,6 +273,25 @@ export async function uploadFile(doctype: string, docname: string, file: File, i
 }
 
 /** Browser download of a whitelisted method that returns a file (GET keeps it a normal download). */
+/** Download a file without leaving the app (a plain link replaces the page, and the installed app has no back button). */
+export async function downloadFile(url: string, filename: string) {
+  const res = await fetch(url, { credentials: 'same-origin' })
+  if (!res.ok) {
+    let body: any = null
+    try { body = await res.json() } catch { /* not JSON */ }
+    throw extractError(body, res.status)
+  }
+  const blob = await res.blob()
+  const href = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = href
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(href), 10_000)
+}
+
 export function downloadUrl(method: string, args: Record<string, unknown>) {
   const qs = new URLSearchParams()
   for (const [k, v] of Object.entries(args)) if (v !== undefined && v !== null && v !== '') qs.set(k, String(v))
