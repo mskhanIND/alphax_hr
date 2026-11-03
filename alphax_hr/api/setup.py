@@ -397,11 +397,132 @@ def _print_checks(rows):
 		   broken[0]["link"] if broken and "System Manager" in frappe.get_roles() else None)
 
 
+# ----------------------------------------------------------------- leftovers from removed HR apps
+import re as _re
+import traceback as _tb
+
+STANDARD_ATTRS = {"name", "doctype", "docstatus", "owner", "creation", "modified", "modified_by", "idx", "parent", "parenttype",
+				  "parentfield", "flags", "meta", "get", "set", "append", "save", "insert", "db_set", "reload", "submit", "cancel",
+				  "is_new", "as_dict", "get_doc_before_save", "has_value_changed", "add_comment", "run_method", "update", "delete",
+				  "check_permission", "precision", "get_formatted", "db_update", "notify_update", "extend", "remove"}
+SAVE_TEST_DOCTYPES = ("Employee",)
+
+
+def _installed_modules():
+	return set(frappe.get_all("Module Def", filters={"app_name": ["in", frappe.get_installed_apps()]}, pluck="name"))
+
+
+def broken_server_scripts():
+	"""Enabled Server Scripts that use fields which no longer exist (left by an uninstalled app)."""
+	out = []
+	if not frappe.db.exists("DocType", "Server Script"):
+		return out
+	for s in frappe.get_all("Server Script", filters={"disabled": 0, "script_type": "DocType Event"},
+							fields=["name", "reference_doctype", "script"]):
+		if not s.reference_doctype or not frappe.db.exists("DocType", s.reference_doctype):
+			continue
+		meta = frappe.get_meta(s.reference_doctype)
+		used = set(_re.findall(r"\bdoc\.(\w+)", s.script or "")) | set(_re.findall(r"\bdoc\.get\(\s*[\"'](\w+)", s.script or ""))
+		gone = sorted(f for f in used if f not in STANDARD_ATTRS and not meta.has_field(f) and f.startswith(("custom_", "central", "irsaa")))
+		if gone:
+			out.append({"name": s.name, "doctype": s.reference_doctype, "fields": gone})
+	return out
+
+
+def orphan_mandatory_fields():
+	"""Mandatory fields (custom fields or property setters) whose app is no longer installed."""
+	modules = _installed_modules()
+	out = []
+	for cf in frappe.get_all("Custom Field", filters={"reqd": 1, "dt": ["in", ["Employee", "Leave Application", "Salary Slip",
+																			  "Attendance", "Employee Checkin"]]},
+							 fields=["name", "dt", "fieldname", "label", "module"]):
+		if cf.module and cf.module not in modules:
+			out.append({"kind": "Custom Field", "name": cf.name, "doctype": cf.dt, "fieldname": cf.fieldname, "label": cf.label})
+	for ps in frappe.get_all("Property Setter", filters={"property": "reqd", "value": "1", "doc_type": "Employee"},
+							 fields=["name", "doc_type", "field_name", "module"]):
+		if ps.module and ps.module not in modules:
+			out.append({"kind": "Property Setter", "name": ps.name, "doctype": ps.doc_type, "fieldname": ps.field_name,
+						"label": frappe.get_meta(ps.doc_type).get_label(ps.field_name)})
+	return out
+
+
+def save_test(doctype="Employee"):
+	"""Save one active record inside a savepoint and undo it, to catch code from removed apps that breaks saving."""
+	name = frappe.db.get_value(doctype, {"status": "Active"} if doctype == "Employee" else {}, "name", order_by="modified desc")
+	if not name:
+		return None
+	frappe.db.savepoint("alphax_save_test")
+	try:
+		doc = frappe.get_doc(doctype, name)
+		doc.flags.ignore_permissions = True
+		doc.flags.ignore_mandatory = True  # missing data is reported separately; this looks for broken code
+		doc.save()
+		return None
+	except Exception as exc:  # noqa: BLE001
+		frames = _tb.extract_tb(exc.__traceback__)
+		where = None
+		for fr in reversed(frames):
+			path = fr.filename.replace("\\", "/")
+			if "/apps/" in path and "/apps/frappe/" not in path:
+				where = f"{path.split('/apps/')[-1]}:{fr.lineno}"
+				break
+			if "<serverscript>" in path or "server_script" in path:
+				where = "Server Script"
+		return {"doctype": doctype, "name": name, "error": f"{type(exc).__name__}: {frappe.utils.strip_html(str(exc))[:300]}",
+				"where": where}
+	finally:
+		frappe.db.rollback(save_point="alphax_save_test")
+		frappe.clear_messages()
+
+
+def _leftover_checks(rows):
+	g = _("Removed HR apps")
+	scripts = broken_server_scripts()
+	_check(rows, g, "broken_scripts", ERROR if scripts else OK, len(scripts),
+		   "; ".join(f"{x['name']} ({x['doctype']}: {', '.join(x['fields'])})" for x in scripts[:6]) or None,
+		   None, fix="disable_scripts" if "System Manager" in frappe.get_roles() else None)
+	orphans = orphan_mandatory_fields()
+	_check(rows, g, "orphan_mandatory", WARN if orphans else OK, len(orphans),
+		   "; ".join(f"{x['doctype']}: {x['label'] or x['fieldname']}" for x in orphans[:8]) or None, None,
+		   fix="relax_orphans" if "System Manager" in frappe.get_roles() else None)
+	for dt in SAVE_TEST_DOCTYPES:
+		res = save_test(dt)
+		_check(rows, g, "save_test", ERROR if res else OK, _("Fails") if res else _("Works"),
+			   (f"{res['error']}" + (f" — {_('from')} {res['where']}" if res.get("where") else "")) if res else None)
+
+
+@frappe.whitelist(methods=["POST"])
+def disable_broken_scripts():
+	_require_system_manager()
+	done = []
+	for x in broken_server_scripts():
+		frappe.db.set_value("Server Script", x["name"], "disabled", 1)
+		done.append(x["name"])
+	frappe.clear_cache()
+	return {"disabled": done}
+
+
+@frappe.whitelist(methods=["POST"])
+def relax_orphan_fields():
+	"""Make fields left by removed apps optional (nothing is deleted)."""
+	_require_system_manager()
+	done = []
+	for x in orphan_mandatory_fields():
+		if x["kind"] == "Custom Field":
+			frappe.db.set_value("Custom Field", x["name"], "reqd", 0)
+		else:
+			frappe.db.set_value("Property Setter", x["name"], "value", "0")
+		done.append(f"{x['doctype']}.{x['fieldname']}")
+	for dt in {d.split(".")[0] for d in done}:
+		frappe.clear_cache(doctype=dt)
+	return {"relaxed": done}
+
+
 @frappe.whitelist()
 def hr_status():
 	"""Overall HR status for HR Managers: data gaps, documents, approvals, leave and payroll setup."""
 	_require_hr_lead()
-	return _run([_hr_checks, _hr_operational_checks, _print_checks])
+	return _run([_leftover_checks, _hr_checks, _hr_operational_checks, _print_checks])
 
 
 def _spec(df):

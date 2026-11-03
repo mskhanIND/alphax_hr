@@ -800,8 +800,9 @@ def run(site):
                 user = f["emp2"]
                 logs = frappe.get_all("Notification Log", filters={"for_user": user, "creation": [">=", add_days(frappe.utils.now_datetime(), -0.01)]}, pluck="subject")
                 assert any(x.startswith("Checked in") for x in logs), logs
-                if frappe.utils.now_datetime().hour >= 1:
-                    assert any("min late" in x for x in logs), logs
+                st, start = alerts._shift_today(f["e_emp2"], getdate(nowdate()))
+                if st and (frappe.utils.now_datetime() - start).total_seconds() > (alerts._late_grace(f["e_emp2"], st) or 0) * 60 + 120:
+                    assert any("min late" in x for x in logs), logs  # only when the shift of the day has already started
             finally:
                 frappe.flags.in_test = was
                 frappe.set_user("Administrator")
@@ -2334,6 +2335,41 @@ def run(site):
                 frappe.db.set_single_value("Website Settings", {"app_name": "AlphaX HR", "app_logo": None, "favicon": None})
                 frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
         check("white-label: app name, tagline and logo from settings (menu, manifest, sign-in page)", branding)
+
+        def removed_app_leftovers():
+            from alphax_hr.api import setup
+            frappe.set_user("Administrator")
+            for n in frappe.get_all("Server Script", filters={"name": ["like", "AXT Leftover%"]}, pluck="name"):
+                frappe.delete_doc("Server Script", n, force=1)
+            if frappe.db.exists("Custom Field", "Employee-axt_removed_field"):
+                frappe.delete_doc("Custom Field", "Employee-axt_removed_field", force=1)
+            frappe.local.conf.server_script_enabled = True
+            ss = frappe.get_doc({"doctype": "Server Script", "name": "AXT Leftover", "script_type": "DocType Event",
+                                 "reference_doctype": "Employee", "doctype_event": "Before Save", "disabled": 1,
+                                 "script": "for row in doc.custom_earnings:\n    pass\n"}).insert(ignore_permissions=True)
+            frappe.db.set_value("Server Script", ss.name, "disabled", 0)
+            cf = frappe.get_doc({"doctype": "Custom Field", "dt": "Employee", "fieldname": "axt_removed_field", "label": "AXT Removed",
+                                 "fieldtype": "Data", "reqd": 1, "insert_after": "employee_name"}).insert(ignore_permissions=True)
+            frappe.db.set_value("Custom Field", cf.name, "module", "CentralHrms")  # as if its app was uninstalled
+            frappe.clear_cache(doctype="Employee")
+            try:
+                assert any(x["name"] == ss.name and x["fields"] == ["custom_earnings"] for x in setup.broken_server_scripts())
+                assert any(x["fieldname"] == "axt_removed_field" for x in setup.orphan_mandatory_fields())
+                frappe.set_user(f["hr"])
+                keys = {c["key"]: c for c in setup.hr_status()["checks"]}
+                assert keys["broken_scripts"]["status"] == "error" and keys["orphan_mandatory"]["status"] == "warn", keys["broken_scripts"]
+                frappe.set_user("Administrator")
+                assert ss.name in setup.disable_broken_scripts()["disabled"]
+                assert "Employee.axt_removed_field" in setup.relax_orphan_fields()["relaxed"]
+                assert not frappe.get_meta("Employee").get_field("axt_removed_field").reqd
+                assert setup.save_test("Employee") is None  # a clean site saves employees
+            finally:
+                frappe.set_user("Administrator")
+                frappe.delete_doc("Server Script", ss.name, force=1)
+                frappe.delete_doc("Custom Field", cf.name, force=1)
+                frappe.local.conf.server_script_enabled = False
+                frappe.clear_cache(doctype="Employee")
+        check("removed HR apps: broken server scripts, orphan mandatory fields, employee save test", removed_app_leftovers)
 
         print("\n== /alphax page")
         def www_page():

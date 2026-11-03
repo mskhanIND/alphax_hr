@@ -6,6 +6,11 @@ type Lang = 'en' | 'ar'
 // English is the key. Arabic uses Saudi HR terminology.
 const ar: Record<string, string> = {
   'Home': 'الرئيسية',
+  'Server scripts using fields of removed apps': 'سكربتات خادم تستخدم حقولاً لتطبيقات محذوفة',
+  'Mandatory fields left by removed apps': 'حقول إلزامية متبقية من تطبيقات محذوفة',
+  'Saving an employee (test, undone)': 'حفظ موظف (اختبار يتم التراجع عنه)',
+  'Disable these scripts': 'تعطيل هذه السكربتات',
+  'Make them optional': 'جعلها اختيارية',
   'Employee ID or name': 'رقم الموظف أو اسمه',
   'or a whole department': 'أو إدارة كاملة',
   'On iPhone, add this app to the home screen (Share → Add to Home Screen), open it from there, then turn notifications on.': 'على الآيفون، أضف هذا التطبيق إلى الشاشة الرئيسية (مشاركة ← إضافة إلى الشاشة الرئيسية)، وافتحه من هناك ثم فعّل الإشعارات.',

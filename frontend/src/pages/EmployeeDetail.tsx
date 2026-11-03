@@ -96,6 +96,8 @@ export default function EmployeeDetail() {
   if (q.error) return <ErrorBox error={q.error} onRetry={() => q.refetch()} />
   const e = q.data
   const missing = new Set<string>(e.missing_fields ?? [])
+  // A checkbox is always answered (ticked or not), so it is never "required".
+  const needs = (f: string) => missing.has(f) && e.fields?.[f]?.fieldtype !== 'Check' && !(draft[f] ?? '')
   const isSaudi = !!(editing === 'saudi' && 'alphax_is_saudi' in draft ? draft.alphax_is_saudi : e.sections.saudi?.alphax_is_saudi)
   const visible = (f: string) => !(isSaudi && NON_SAUDI_ONLY.has(f))
   const label = (f: string) => (f === 'alphax_iqama_number' && isSaudi ? t('National ID') : e.labels[f] ?? f)
@@ -194,8 +196,8 @@ export default function EmployeeDetail() {
                 {!closed && <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
                   {Object.entries(fields).filter(([f]) => visible(f)).map(([f, v]) => (
                     isEditing && f !== 'status' ? (
-                      <div key={f} className={missing.has(f) && !(draft[f] ?? '') ? 'rounded-xl ring-2 ring-red-300 ring-offset-2' : undefined}>
-                        <Field label={label(f) + (missing.has(f) ? ' *' : '')} error={missing.has(f) && !(draft[f] ?? '') ? t('Required') : undefined}>
+                      <div key={f} className={needs(f) ? 'rounded-xl ring-2 ring-red-300 ring-offset-2' : undefined}>
+                        <Field label={label(f) + (missing.has(f) && e.fields?.[f]?.fieldtype !== 'Check' ? ' *' : '')} error={needs(f) ? t('Required') : undefined}>
                           <Editor field={f} spec={e.fields?.[f]} value={f in draft ? draft[f] : v} onChange={(nv) => setDraft({ ...draft, [f]: nv })} />
                         </Field>
                       </div>

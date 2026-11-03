@@ -354,6 +354,8 @@ def employee(name):
 	for df in _site_required_fields(meta):
 		if doc.get(df.fieldname) in (None, ""):
 			target = mirrors.get(df.fieldname, df.fieldname)  # a legacy duplicate is fixed via its AlphaX field
+			if target in ("alphax_is_saudi", ) or (meta.get_field(target) and meta.get_field(target).fieldtype == "Check"):
+				continue  # ticked or not is an answer; the legacy field is filled from it when the employee is saved
 			if target not in missing_fields:
 				missing_fields.append(target)
 	missing_required = [labels.get(f) or _(meta.get_label(f)) for f in missing_fields]

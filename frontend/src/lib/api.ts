@@ -239,6 +239,8 @@ export const api = {
   cancelPayAdjustment: (name: string, reason?: string) => call<any>(A + 'pay_adjustments.cancel', { name, reason }),
   deductionStatus: (employee: string, month?: string) => call<any>(A + 'pay_adjustments.deduction_status', { employee, month }),
   salaryIncrement: (data: Record<string, unknown>, apply = 0) => call<any>(A + 'pay_adjustments.increment', { data, apply }),
+  disableBrokenScripts: () => call<any>(A + 'setup.disable_broken_scripts'),
+  relaxOrphanFields: () => call<any>(A + 'setup.relax_orphan_fields'),
   restoreStandardArticles: () => call<any>(A + 'knowledge.restore_standard'),
   appraisalSetup: () => call<any>(A + 'appraisals.setup'),
   saveAppraisalTemplate: (data: Record<string, unknown>) => call<any>(A + 'appraisals.save_template', { data }),
