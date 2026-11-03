@@ -89,6 +89,8 @@ export default function EmployeeDetail() {
   const save = useMutation({
     mutationFn: () => api.updateEmployee(id, draft, q.data.modified),
     onSuccess: (d) => { qc.setQueryData(['employee', id], d); setEditing(null); setDraft({}) },
+    // Changed meanwhile (another card, a document upload, a background job): load the latest and keep the edits.
+    onError: (err: any) => { if (/changed this employee|TimestampMismatch/i.test(String(err?.message ?? err))) q.refetch() },
   })
   if (q.isLoading) return <Spinner />
   if (q.error) return <ErrorBox error={q.error} onRetry={() => q.refetch()} />

@@ -487,9 +487,16 @@ def run(site):
 
         def leave_dates(offset, days=1):
             start = getdate(add_days(nowdate(), offset))
+            # keep short ranges off the Friday week-off so working-day leave types count every day
+            while days < 7 and any(getdate(add_days(start, i)).weekday() == 4 for i in range(days)):
+                start = getdate(add_days(start, 1))
             return str(start), str(add_days(start, days - 1))
 
         def statutory_rules():
+            frappe.set_user("Administrator")
+            for n in frappe.get_all("Leave Application", filters={"employee": f["e_emp2"], "docstatus": 0, "leave_type": [
+                    "in", ["Paternity Leave", "Bereavement Leave (Sibling)", "Hajj Leave"]]}, pluck="name"):
+                frappe.delete_doc("Leave Application", n, force=True)  # left by an interrupted earlier run
             frappe.set_user(f["emp2"])
             frm, to = leave_dates(20, 3)
             birth = str(add_days(frm, -1))
@@ -506,10 +513,11 @@ def run(site):
                 raise AssertionError("expected relation error")
             except frappe.ValidationError as exc:
                 frappe.clear_messages(); assert "Brother, Sister" in str(exc), str(exc)
-            sib = ess.apply_leave("Bereavement Leave (Sibling)", *leave_dates(23, 1), event_date=nowdate(), relation="Brother")
+            sib_day = leave_dates(23, 1)
+            sib = ess.apply_leave("Bereavement Leave (Sibling)", *sib_day, event_date=nowdate(), relation="Brother")
             assert sib["name"]
             try:
-                ess.apply_leave("Hajj Leave", *leave_dates(24, 2))
+                ess.apply_leave("Hajj Leave", *leave_dates((getdate(sib_day[0]) - getdate(nowdate())).days + 1, 2))
                 raise AssertionError("expected service error")
             except frappe.ValidationError as exc:
                 frappe.clear_messages(); assert "730 days of service" in str(exc), str(exc)
@@ -2297,7 +2305,9 @@ def run(site):
         def branding():
             from alphax_hr.api import branding as br, session
             frappe.set_user("Administrator")
-            png = frappe.get_doc({"doctype": "File", "file_name": "axt-logo.png", "is_private": 1, "content": b"\x89PNG\r\n\x1a\nAXT",
+            for old_file in frappe.get_all("File", filters={"file_name": ["like", "axt-logo%"]}, pluck="name"):
+                frappe.delete_doc("File", old_file, force=1, ignore_permissions=True)
+            png = frappe.get_doc({"doctype": "File", "file_name": f"axt-logo-{frappe.generate_hash(length=6)}.png", "is_private": 1, "content": b"\x89PNG\r\n\x1a\nAXT",
                                   "attached_to_doctype": "AlphaX HR Settings", "attached_to_name": "AlphaX HR Settings"}).insert(ignore_permissions=True)
             conf = frappe.get_single("AlphaX HR Settings")
             old = (conf.portal_title, conf.get("app_logo"), conf.get("app_tagline"))

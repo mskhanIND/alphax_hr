@@ -4,7 +4,7 @@ import {
 import { useState, type ReactNode } from 'react'
 import { NavLink, Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { api } from '../lib/api'
+import { api, signOut } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 import { useSession } from '../lib/session'
 import { useInstall } from '../lib/pwa'
@@ -265,9 +265,9 @@ export function Layout({ children }: { children: ReactNode }) {
               <div className="text-xs text-muted">{s.employee?.designation ?? s.user}</div>
             </div>
           </Link>
-          <a href="/api/method/logout?redirect-to=/login" className="rounded-lg p-2 text-muted hover:bg-surface" title={t('Sign out')} aria-label={t('Sign out')}>
+          <button type="button" onClick={signOut} className="rounded-lg p-2 text-muted hover:bg-surface" title={t('Sign out')} aria-label={t('Sign out')}>
             <LogOut className="size-5 flip-rtl" />
-          </a>
+          </button>
         </header>
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 pt-6 pb-24 sm:px-6 lg:pb-6">{children}</main>
       </div>

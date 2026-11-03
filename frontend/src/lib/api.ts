@@ -363,3 +363,12 @@ export function downloadUrl(method: string, args: Record<string, unknown>) {
   for (const [k, v] of Object.entries(args)) if (v !== undefined && v !== null && v !== '') qs.set(k, String(v))
   return `/api/method/${A}${method}?${qs.toString()}`
 }
+
+/** Sign out and go to the sign-in page (GET /api/method/logout only returns JSON on Frappe v15). */
+export async function signOut() {
+  try {
+    await fetch('/api/method/logout', { method: 'POST', credentials: 'same-origin', headers: { 'X-Frappe-CSRF-Token': boot.csrf_token } })
+  } catch { /* signed out anyway below */ }
+  try { localStorage.removeItem('alphax-query-cache') } catch { /* ignore */ }
+  window.location.href = '/login?redirect-to=/alphax'
+}

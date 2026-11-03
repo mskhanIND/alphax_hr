@@ -156,9 +156,18 @@ def _validate_terms(employee, loan_type, amount, months, first_month, consent, s
 
 
 @frappe.whitelist()
-def preview(employee, loan_type="Loan", amount=0, installments=1, first_month=None, consent=0):
+def preview(employee=None, loan_type="Loan", amount=0, installments=1, first_month=None, consent=0):
+	"""Live check while HR types: problems come back in the answer instead of as errors."""
 	require_hr()
-	return _validate_terms(employee, loan_type, amount, installments, first_month or _next_month(), consent)
+	if not employee or not frappe.db.exists("Employee", employee):
+		return {"problems": [_("Choose an employee.")], "schedule": [], "wage": 0, "loan_cap": 0, "half_wage": 0, "min_months": 0}
+	try:
+		return _validate_terms(employee, loan_type, amount, installments, first_month or _next_month(), consent)
+	except frappe.ValidationError as exc:
+		frappe.clear_messages()
+		wage = monthly_wage(employee)
+		return {"problems": [frappe.utils.strip_html(str(exc))], "schedule": [], "wage": wage, "loan_cap": rules.loan_cap(wage),
+				"half_wage": rules.total_cap(wage), "min_months": 0}
 
 
 def _next_month():
