@@ -121,13 +121,13 @@ def _get(employee, year, create=False):
 
 
 @frappe.whitelist()
-def my_plan(year=None):
+def my_plan(year: int | str | None = None):
 	employee = current_employee()
 	return _out(_get(employee, cint(year) or default_year()))
 
 
 @frappe.whitelist(methods=["POST"])
-def save_my_plan(year, periods):
+def save_my_plan(year: int | str, periods: str | dict | list):
 	employee = current_employee()
 	year = cint(year)
 	doc = _get(employee, year)
@@ -158,7 +158,7 @@ def save_my_plan(year, periods):
 
 
 @frappe.whitelist(methods=["POST"])
-def submit_my_plan(year):
+def submit_my_plan(year: int | str):
 	employee = current_employee()
 	doc = _get(employee, cint(year))
 	if doc.is_new() or not doc.periods:
@@ -210,12 +210,12 @@ def decide(name, action, comment=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def decide_plan(name, action, comment=None):
+def decide_plan(name: str, action: str, comment: str | None = None):
 	return decide(name, action, comment)
 
 
 @frappe.whitelist(methods=["POST"])
-def apply_period(year, idx):
+def apply_period(year: int | str, idx: int | str):
 	"""Turn an approved planned period into a leave request (annual leave type)."""
 	employee = current_employee()
 	doc = _get(employee, cint(year))
@@ -237,7 +237,7 @@ def apply_period(year, idx):
 
 
 @frappe.whitelist()
-def planner(year=None, department=None):
+def planner(year: int | str | None = None, department: str | None = None):
 	"""Department coverage for the year: plans, who is off each week, and days above the limit."""
 	user = login_required()
 	year = cint(year) or default_year()

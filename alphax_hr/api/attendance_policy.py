@@ -85,7 +85,7 @@ def _covers(p):
 
 
 @frappe.whitelist(methods=["POST"])
-def save(data, name=None):
+def save(data: str | dict | list, name: str | None = None):
 	require_hr_manager()
 	d = parse_json(data, {}) or {}
 	if d.get("applies_to") not in ORDER:
@@ -117,7 +117,7 @@ def save(data, name=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def delete(name):
+def delete(name: str):
 	require_hr_manager()
 	frappe.delete_doc("AlphaX Attendance Policy", name)
 	return {"ok": True}

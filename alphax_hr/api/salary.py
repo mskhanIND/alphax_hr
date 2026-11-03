@@ -52,7 +52,7 @@ def _config():
 
 
 @frappe.whitelist()
-def config(company=None):
+def config(company: str | None = None):
 	require_hr()
 	c = _config()
 	company = company or settings().default_company
@@ -112,7 +112,7 @@ def compute(package, is_saudi=False, gosi_registration_date=None, start_date=Non
 
 
 @frappe.whitelist()
-def preview(package, is_saudi=0, gosi_registration_date=None, start_date=None):
+def preview(package: str | dict | list, is_saudi: int | str = 0, gosi_registration_date: str | None = None, start_date: str | None = None):
 	require_hr()
 	return compute(parse_json(package, {}), is_saudi, gosi_registration_date, start_date)
 
@@ -164,7 +164,7 @@ def _retire_old_structures(employee, keep, start):
 
 
 @frappe.whitelist()
-def set_salary(employee, package, from_date):
+def set_salary(employee: str, package: str | dict | list, from_date: str):
 	"""Profile: new salary from a date (keeps earlier assignments as history)."""
 	require_hr()
 	frappe.get_doc("Employee", employee).check_permission("write")
@@ -172,7 +172,7 @@ def set_salary(employee, package, from_date):
 
 
 @frappe.whitelist()
-def current(employee):
+def current(employee: str):
 	require_hr()
 	frappe.get_doc("Employee", employee).check_permission("read")
 	meta = frappe.get_meta("Salary Structure Assignment")

@@ -21,6 +21,7 @@ add_to_apps_screen = [
 
 website_route_rules = [
 	{"from_route": "/alphax/<path:app_path>", "to_route": "alphax"},
+	{"from_route": "/alphax-login", "to_route": "alphax_login"},
 ]
 
 after_install = "alphax_hr.install.after_install"
@@ -65,6 +66,6 @@ has_permission = {"AlphaX Request": "alphax_hr.api.requests.has_permission",
 # Delivery records never stop a request from being deleted or cancelled.
 ignore_links_on_delete = ["AlphaX Approval Reminder"]
 
-after_request = ["alphax_hr.api.pwa.after_request"]
+after_request = ["alphax_hr.api.pwa.after_request", "alphax_hr.portal.after_request"]
 
 jinja = {"methods": ["alphax_hr.api.payslip.alphax_payslip"]}

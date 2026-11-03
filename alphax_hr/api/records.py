@@ -50,7 +50,7 @@ def _table(df, doc):
 
 
 @frappe.whitelist()
-def get(doctype, name):
+def get(doctype: str, name: str):
 	user = login_required()
 	if doctype not in AUDITED or not frappe.db.exists("DocType", doctype):
 		frappe.throw(_("This record type cannot be opened here."), frappe.PermissionError)

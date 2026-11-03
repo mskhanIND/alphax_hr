@@ -112,7 +112,7 @@ def _actions_for(doc, user, workflow):
 
 
 @frappe.whitelist()
-def inbox(doctype=None, limit=100):
+def inbox(doctype: str | None = None, limit: int | str = 100):
 	user = login_required()
 	results = []
 	targets = [doctype] if doctype in SOURCES else list(SOURCES)
@@ -156,7 +156,7 @@ def inbox(doctype=None, limit=100):
 
 
 @frappe.whitelist()
-def act(doctype, name, action, comment=None):
+def act(doctype: str, name: str, action: str, comment: str | None = None):
 	user = login_required()
 	if doctype not in SOURCES:
 		frappe.throw(_("Unsupported request type."), frappe.PermissionError)
@@ -212,7 +212,7 @@ def pending_with(doc):
 
 
 @frappe.whitelist()
-def activity(doctype, name):
+def activity(doctype: str, name: str):
 	"""Full trail of one request (see alphax_hr.api.activity.trail)."""
 	if doctype not in SOURCES:
 		frappe.throw(_("Unsupported request type."), frappe.PermissionError)
@@ -222,7 +222,7 @@ def activity(doctype, name):
 
 
 @frappe.whitelist()
-def decided(doctype=None, limit=50):
+def decided(doctype: str | None = None, limit: int | str = 50):
 	"""Requests that are no longer waiting (approved, rejected, cancelled) that the user may read."""
 	user = login_required()
 	out = []
@@ -246,7 +246,7 @@ def decided(doctype=None, limit=50):
 
 
 @frappe.whitelist()
-def team_leave_calendar(start, end):
+def team_leave_calendar(start: int | str, end: str):
 	"""Approved/open leave of employees the user approves (or everyone for HR)."""
 	user = login_required()
 	filters = {"from_date": ["<=", end], "to_date": [">=", start], "status": ["in", ["Open", "Approved"]], "docstatus": ["<", 2]}

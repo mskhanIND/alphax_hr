@@ -329,7 +329,7 @@ def _run_ids(doc):
 
 
 @frappe.whitelist()
-def scope_options(company):
+def scope_options(company: str):
 	"""Values HR can run payroll for: departments, branches, business lines, cost centers."""
 	require_hr()
 	field = business_line_field()
@@ -344,7 +344,7 @@ def scope_options(company):
 
 
 @frappe.whitelist()
-def runs(company, month):
+def runs(company: str, month: str):
 	"""Payroll runs of the month for the company."""
 	require_hr()
 	start, end = _bounds(month)
@@ -359,7 +359,7 @@ def runs(company, month):
 
 
 @frappe.whitelist(methods=["POST"])
-def create_run(company, month, scope_type, scope_value=None):
+def create_run(company: str, month: str, scope_type: str, scope_value: str | None = None):
 	"""Open a payroll run for part of the company. An employee can be in only one run per month."""
 	require_hr()
 	if scope_type not in SCOPES:
@@ -389,7 +389,7 @@ def create_run(company, month, scope_type, scope_value=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def delete_run(name):
+def delete_run(name: str):
 	"""Remove a run that has not been processed yet."""
 	require_hr_manager()
 	doc = frappe.get_doc("AlphaX Payroll Period", name)
@@ -472,7 +472,7 @@ def companies():
 
 
 @frappe.whitelist()
-def period(company, month, run=None):
+def period(company: str, month: str, run: str | None = None):
 	require_hr()
 	frappe.has_permission("Company", "read", company, throw=True)
 	doc = _get_period(company, month, run=run)
@@ -489,7 +489,7 @@ def _need(company, month, run, create=True):
 
 
 @frappe.whitelist(methods=["POST"])
-def advance(company, month, step, note=None, override=0, run=None):
+def advance(company: str, month: str, step: str, note: str | None = None, override: int | str = 0, run: str | None = None):
 	"""Move the run one step forward (prepare, review, approve, process, close) or back (reopen)."""
 	require_hr()
 	doc = _need(company, month, run)
@@ -608,7 +608,7 @@ def _process(doc):
 
 
 @frappe.whitelist(methods=["POST"])
-def submit_slips(company, month, run=None):
+def submit_slips(company: str, month: str, run: str | None = None):
 	"""Submit the draft salary slips of the processed run (HR Manager)."""
 	require_hr_manager()
 	doc = _get_period(company, month, create=False, run=run)
@@ -621,7 +621,7 @@ def submit_slips(company, month, run=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def add_overtime(company, month, run=None):
+def add_overtime(company: str, month: str, run: str | None = None):
 	"""Add the month's Art. 107 overtime pay to payroll as Additional Salary (once per employee, within the run)."""
 	require_hr()
 	doc = _get_period(company, month, create=False, run=run) if run else None
@@ -671,7 +671,7 @@ def _guard_open(slip):
 
 
 @frappe.whitelist()
-def slips(company, month, run=None):
+def slips(company: str, month: str, run: str | None = None):
 	"""Every salary slip of the run with the figures HR checks before submitting."""
 	require_hr()
 	doc = _get_period(company, month, create=False, run=run)
@@ -698,7 +698,7 @@ def slips(company, month, run=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def recalculate_slip(name):
+def recalculate_slip(name: str):
 	"""Re-read attendance, leave, additional salary and the salary structure for one draft slip."""
 	require_hr()
 	slip = frappe.get_doc("Salary Slip", name)
@@ -714,7 +714,7 @@ def recalculate_slip(name):
 
 
 @frappe.whitelist(methods=["POST"])
-def remove_slip(name, reason):
+def remove_slip(name: str, reason: str):
 	"""Take one employee out of this run (e.g. on hold); they can be added back later."""
 	require_hr_manager()
 	if not (reason or "").strip():
@@ -732,7 +732,7 @@ def remove_slip(name, reason):
 
 
 @frappe.whitelist(methods=["POST"])
-def add_employee(company, month, employee, run=None):
+def add_employee(company: str, month: str, employee: str, run: str | None = None):
 	"""Create the slip for an employee missing from the run (e.g. salary assigned after processing)."""
 	require_hr()
 	doc = _get_period(company, month, create=False, run=run)
@@ -753,7 +753,7 @@ def add_employee(company, month, employee, run=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def adjust(company, month, employee, salary_component, amount, when="this", note=None):
+def adjust(company: str, month: str, employee: str, salary_component: str, amount: float | str, when: str = "this", note: str | None = None):
 	"""One-off earning or deduction for one employee: in this month's draft slip (recalculated), or in next month's payroll."""
 	require_hr()
 	amount = flt(amount, 2)
@@ -782,7 +782,7 @@ def adjust(company, month, employee, salary_component, amount, when="this", note
 
 
 @frappe.whitelist(methods=["POST"])
-def redo_slip(name, reason):
+def redo_slip(name: str, reason: str):
 	"""Cancel one submitted slip and make a corrected draft, as long as its accounting entry is not posted yet."""
 	require_hr_manager()
 	if not (reason or "").strip():
@@ -813,3 +813,64 @@ def components():
 	if frappe.get_meta("Salary Component").has_field("disabled"):
 		filters["disabled"] = 0
 	return frappe.get_all("Salary Component", filters=filters, fields=["name", "type"], order_by="type asc, name asc")
+
+
+# ------------------------------------------------------------------ bank / WPS salary file
+@frappe.whitelist()
+def salary_file(company: str, month: str, run: str | None = None, submitted_only: int | str = 1):
+	"""Excel salary transfer file for the bank / Mudad (Wage Protection System) from the run's salary slips.
+
+	Columns follow the common WPS layout (ID number, name, bank, IBAN, basic, housing, other earnings, deductions, net).
+	Check the column order against your bank's or Mudad's current template before uploading."""
+	require_hr()
+	from frappe.utils.xlsxutils import make_xlsx
+
+	from alphax_hr.api import components
+	from alphax_hr.api.banks import name_for_iban
+
+	doc = _get_period(company, month, create=False, run=run)
+	ids = _doc_ids(doc) if doc else None
+	filters = _slip_filters(company, month, ids)
+	if cint(submitted_only):
+		filters["docstatus"] = 1
+	slips = frappe.get_all("Salary Slip", filters=filters, fields=["name", "employee", "employee_name", "gross_pay", "total_deduction", "net_pay"],
+						   order_by="employee_name asc")
+	if not slips:
+		frappe.throw(_("No submitted salary slips for this run yet."))
+	basic, housing = components.get("basic"), components.get("housing")
+	details = frappe.get_all("Salary Detail", filters={"parent": ["in", [s.name for s in slips]], "parenttype": "Salary Slip",
+													   "parentfield": "earnings"}, fields=["parent", "salary_component", "amount"])
+	parts = {}
+	for d in details:
+		p = parts.setdefault(d.parent, {"basic": 0.0, "housing": 0.0})
+		if d.salary_component == basic:
+			p["basic"] += flt(d.amount)
+		elif d.salary_component == housing:
+			p["housing"] += flt(d.amount)
+	meta = frappe.get_meta("Employee")
+	fields = ["name", "iban", "bank_name", "bank_ac_no", "alphax_iqama_number"]
+	emps = {e.name: e for e in frappe.get_all("Employee", filters={"name": ["in", [s.employee for s in slips]]},
+											  fields=[f for f in fields if f == "name" or meta.has_field(f)])}
+	bank_meta = frappe.get_meta("Bank")
+	rows = [["Employee ID", "ID / Iqama number", "Employee name", "Bank", "SWIFT", "IBAN", "Basic salary", "Housing allowance",
+			 "Other earnings", "Deductions", "Net salary", "Reference"]]
+	missing = 0
+	for s in slips:
+		e = emps.get(s.employee) or frappe._dict()
+		iban = (e.get("iban") or e.get("bank_ac_no") or "").replace(" ", "")
+		bank = e.get("bank_name") or name_for_iban(iban) or ""
+		swift = frappe.db.get_value("Bank", bank, "swift_number") if bank and bank_meta.has_field("swift_number") and frappe.db.exists("Bank", bank) else ""
+		p = parts.get(s.name, {"basic": 0.0, "housing": 0.0})
+		other = flt(s.gross_pay) - p["basic"] - p["housing"]
+		if not iban:
+			missing += 1
+		rows.append([s.employee, e.get("alphax_iqama_number") or "", s.employee_name, bank, swift or "", iban, flt(p["basic"], 2),
+					 flt(p["housing"], 2), flt(other, 2), flt(s.total_deduction, 2), flt(s.net_pay, 2), s.name])
+	start, _end = _bounds(month)
+	rows.append([])
+	rows.append(["Total", "", f"{len(slips)} employees", "", "", f"{missing} without IBAN" if missing else "",
+				 flt(sum(r[6] for r in rows[1:-1]), 2), flt(sum(r[7] for r in rows[1:-1]), 2), flt(sum(r[8] for r in rows[1:-1]), 2),
+				 flt(sum(r[9] for r in rows[1:-1]), 2), flt(sum(r[10] for r in rows[1:-1]), 2), ""])
+	frappe.response["filecontent"] = make_xlsx(rows, "Salary file").getvalue()
+	frappe.response["filename"] = f"salary-file-{company}-{start.strftime('%Y-%m')}.xlsx".replace(" ", "-")
+	frappe.response["type"] = "binary"

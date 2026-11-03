@@ -1,6 +1,8 @@
 """Setup & health: one place for AlphaX settings and the HR system's health checks."""
 from __future__ import annotations
 
+from typing import Any
+
 import frappe
 from frappe import _
 from frappe.utils import add_days, cint, get_datetime, getdate, now_datetime, nowdate
@@ -78,7 +80,6 @@ def _hr_checks(rows):
 	_check(rows, g, "default_company", OK if conf.default_company else WARN, conf.default_company or _("Not set"), None, None, fix="settings")
 	emps = frappe.get_all("Employee", filters={"status": "Active"},
 						  fields=["name", "holiday_list", "company", "leave_approver", "shift_request_approver", "reports_to", "user_id"])
-	total = len(emps) or 1
 	lists = {h.name: h for h in frappe.get_all("Holiday List", fields=["name", "to_date"])}
 	ending, outdated = set(), 0
 	for e in emps:
@@ -146,7 +147,8 @@ def broken_employee_links():
 		if not frappe.db.exists("DocType", df.options):
 			continue
 		table = f"tab{df.options}"
-		rows = frappe.db.sql(f"""select e.`{df.fieldname}` v, group_concat(e.name) emps from `tabEmployee` e
+		# Reviewed: identifiers come from DocType metadata / a fixed list, not from the request.
+		rows = frappe.db.sql(f"""select e.`{df.fieldname}` v, group_concat(e.name) emps from `tabEmployee` e  # nosemgrep
 			left join `{table}` t on t.name = e.`{df.fieldname}`
 			where ifnull(e.`{df.fieldname}`, '') != '' and t.name is null group by e.`{df.fieldname}`""", as_dict=True)
 		if rows:
@@ -257,7 +259,7 @@ def _employees_without_salary():
 
 
 @frappe.whitelist()
-def affected(key):
+def affected(key: str):
 	"""Employees behind one HR status check, with what is wrong for each."""
 	_require_hr_lead()
 	today = getdate(nowdate())
@@ -293,7 +295,7 @@ def affected(key):
 
 
 @frappe.whitelist()
-def bulk_fix(key, employees, value):
+def bulk_fix(key: str, employees: str | dict | list, value: Any):
 	"""Set one field (approver, manager, holiday list) on many employees. Each save is validated and audited;
 	other missing mandatory data does not block this one change."""
 	require_hr_manager()
@@ -559,7 +561,7 @@ def get_settings():
 
 
 @frappe.whitelist()
-def save_settings(data):
+def save_settings(data: str | dict | list):
 	require_hr_manager()
 	payload = parse_json(data, {})
 	doc = frappe.get_single(SETTINGS)

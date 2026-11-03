@@ -32,7 +32,7 @@ def _balances(employee, on):
 
 
 @frappe.whitelist()
-def summary(employee=None, date=None):
+def summary(employee: str | None = None, date: str | None = None):
 	"""Balances per leave type, the Art. 117 sick-leave year, and the ledger with running balances."""
 	employee = employee or current_employee()
 	if not _can_view(employee):
@@ -55,7 +55,7 @@ def summary(employee=None, date=None):
 
 
 @frappe.whitelist()
-def workforce(department=None, date=None, limit=500):
+def workforce(department: str | None = None, date: str | None = None, limit: int | str = 500):
 	"""HR: balance of every leave type for every active employee (one row per employee)."""
 	require_hr()
 	on = getdate(date or nowdate())
@@ -75,7 +75,7 @@ def workforce(department=None, date=None, limit=500):
 
 
 @frappe.whitelist()
-def export_workforce(department=None, date=None, file_format="xlsx"):
+def export_workforce(department: str | None = None, date: str | None = None, file_format: str = "xlsx"):
 	data = workforce(department, date)
 	types = data["leave_types"]
 	head = [_("Employee ID"), _("Employee"), _("Department")]

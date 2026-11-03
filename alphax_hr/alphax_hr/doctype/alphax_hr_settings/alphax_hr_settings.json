@@ -17,6 +17,14 @@
   "app_icon",
   "brand_login",
   "default_language",
+  "portal_section",
+  "enforce_portal",
+  "desk_roles",
+  "use_alphax_login",
+  "login_welcome",
+  "login_welcome_ar",
+  "pages_section",
+  "page_access",
   "gosi_section",
   "gosi_enabled",
   "gosi_wage_cap",
@@ -89,6 +97,12 @@
   "loan_max_wages",
   "advance_max_percent",
   "cap_includes_gosi",
+  "accruals_section",
+  "eos_accrual_basis",
+  "eos_expense_account",
+  "eos_provision_account",
+  "leave_expense_account",
+  "leave_provision_account",
   "documents_section",
   "document_alert_days"
  ],
@@ -141,6 +155,53 @@
    "label": "Default Language",
    "options": "en\nar",
    "default": "en"
+  },
+  {
+   "fieldname": "portal_section",
+   "fieldtype": "Section Break",
+   "label": "HR portal and sign-in"
+  },
+  {
+   "fieldname": "enforce_portal",
+   "fieldtype": "Check",
+   "label": "Keep HR, managers and employees in AlphaX (no desk)",
+   "description": "Users without a desk role are sent to /alphax when they open /app, and land there after signing in."
+  },
+  {
+   "fieldname": "desk_roles",
+   "fieldtype": "Small Text",
+   "label": "Roles that may still use the desk",
+   "default": "System Manager\nAccounts Manager\nAccounts User",
+   "description": "One role per line. Administrator always may."
+  },
+  {
+   "fieldname": "use_alphax_login",
+   "fieldtype": "Check",
+   "label": "Use the AlphaX sign-in page for /login",
+   "description": "Guests opening /login see the AlphaX sign-in page with your name and logo."
+  },
+  {
+   "fieldname": "login_welcome",
+   "fieldtype": "Small Text",
+   "label": "Sign-in page message",
+   "description": "Short text under the name, e.g. 'HR services for IRSAA staff'."
+  },
+  {
+   "fieldname": "login_welcome_ar",
+   "fieldtype": "Small Text",
+   "label": "Sign-in page message (Arabic)"
+  },
+  {
+   "fieldname": "pages_section",
+   "fieldtype": "Section Break",
+   "label": "Pages"
+  },
+  {
+   "fieldname": "page_access",
+   "fieldtype": "Table",
+   "label": "Page access",
+   "options": "AlphaX Page Access",
+   "description": "Hide pages, or limit them to some roles. Pages not listed follow AlphaX's normal rules."
   },
   {
    "fieldname": "gosi_section",
@@ -575,6 +636,43 @@
    "fieldtype": "Check",
    "label": "Count GOSI in the half-wage cap (Art. 93)",
    "default": "1"
+  },
+  {
+   "fieldname": "accruals_section",
+   "fieldtype": "Section Break",
+   "label": "Accruals (end of service and annual leave)"
+  },
+  {
+   "fieldname": "eos_accrual_basis",
+   "fieldtype": "Select",
+   "label": "End-of-service accrual basis",
+   "options": "Full award (Art. 84)\nResignation award (Art. 85)",
+   "default": "Full award (Art. 84)",
+   "description": "Full award is the prudent standard: the obligation if every employee left today on termination."
+  },
+  {
+   "fieldname": "eos_expense_account",
+   "fieldtype": "Link",
+   "label": "EOS expense account",
+   "options": "Account"
+  },
+  {
+   "fieldname": "eos_provision_account",
+   "fieldtype": "Link",
+   "label": "EOS provision account (liability)",
+   "options": "Account"
+  },
+  {
+   "fieldname": "leave_expense_account",
+   "fieldtype": "Link",
+   "label": "Leave expense account",
+   "options": "Account"
+  },
+  {
+   "fieldname": "leave_provision_account",
+   "fieldtype": "Link",
+   "label": "Leave provision account (liability)",
+   "options": "Account"
   },
   {
    "fieldname": "documents_section",

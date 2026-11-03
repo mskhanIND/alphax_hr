@@ -5,6 +5,7 @@ import json
 import os
 
 import frappe
+from frappe import _
 from frappe.sessions import get_csrf_token
 
 import alphax_hr
@@ -17,17 +18,18 @@ def frontend_entry():
 	"""Hashed entry file names from the Vite build manifest."""
 	path = os.path.join(frappe.get_app_path("alphax_hr"), "public", "frontend", ".vite", "manifest.json")
 	try:
-		with open(path) as f:
+		# Reviewed: path is fixed, or resolved and checked to stay inside the site's files folder.
+		with open(path) as f:  # nosemgrep
 			manifest = json.load(f)
 	except FileNotFoundError:
-		frappe.throw("AlphaX HR frontend is not built. Run `npm run build` in apps/alphax_hr/frontend.")
+		frappe.throw(_("AlphaX HR frontend is not built. Run `npm run build` in apps/alphax_hr/frontend."))
 	entry = next(v for v in manifest.values() if v.get("isEntry"))
 	return ASSET_URL + entry["file"], [ASSET_URL + c for c in entry.get("css", [])]
 
 
 def get_context(context):
 	if frappe.session.user == "Guest":
-		frappe.local.flags.redirect_location = "/login?redirect-to=" + frappe.utils.quote(frappe.request.path)
+		frappe.local.flags.redirect_location = "/alphax-login?redirect-to=" + frappe.utils.quote(frappe.request.path)
 		raise frappe.Redirect(302)  # not 301: browsers cache permanent redirects
 
 	settings = frappe.get_cached_doc("AlphaX HR Settings")

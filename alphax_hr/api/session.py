@@ -1,8 +1,10 @@
 """Who am I, and what can I do? The frontend builds its navigation from this."""
 import frappe
+from frappe import _
 
 import alphax_hr
 from alphax_hr.api.branding import brand
+from alphax_hr.portal import desk_roles, hidden_pages, may_use_desk
 from alphax_hr.api._common import (
 	APPROVER_ROLES,
 	current_employee,
@@ -53,6 +55,8 @@ def boot():
 		"company": conf.default_company,
 		"title": conf.portal_title or "AlphaX HR",
 		"brand": brand(),
+		"hidden_pages": hidden_pages(),
+		"desk": may_use_desk() and bool(set(frappe.get_roles()) & desk_roles()) or frappe.session.user == "Administrator",
 		"version": alphax_hr.__version__,
 		"gosi_enabled": bool(conf.gosi_enabled),
 	}
@@ -67,9 +71,9 @@ def _is_named_approver(user):
 
 
 @frappe.whitelist()
-def set_language(lang):
+def set_language(lang: str):
 	user = login_required()
 	if lang not in ("en", "ar"):
-		frappe.throw("Unsupported language")
+		frappe.throw(_("Unsupported language"))
 	frappe.db.set_value("User", user, "language", lang)
 	return lang

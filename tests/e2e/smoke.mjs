@@ -540,6 +540,14 @@ try {
       await page.screenshot({ path: `${OUT}/35-payslip.png`, fullPage: true })
       await page.keyboard.press('Escape')
     })
+    await step('accruals preview and page access settings', async () => {
+      await page.goto(`${BASE}/alphax/payroll/accruals`)
+      await page.getByText('Monthly provisions for end of service and annual leave').waitFor()
+      await page.getByText('Posted runs').waitFor()
+      await page.screenshot({ path: `${OUT}/35-accruals.png`, fullPage: true })
+      await page.goto(`${BASE}/alphax/setup#settings`)
+      await page.getByText('Hide pages for everyone').waitFor()
+    })
     await step('GOSI register', async () => {
       await page.goto(`${BASE}/alphax/payroll/gosi`)
       await page.getByText('Employer share').first().waitFor()
@@ -562,6 +570,32 @@ try {
     })
     if (errors.length) fail('hr: no console errors', errors.join(' | ')); else ok('hr: no console errors')
     await ctx.close()
+  }
+  console.log('\n== Sign-in page (guest)')
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 860 } })
+    const page = await ctx.newPage()
+    await step('AlphaX sign-in page signs an employee in and lands on /alphax', async () => {
+      await page.goto(`${BASE}/alphax`)
+      await page.waitForURL(/\/alphax-login/)
+      await page.locator('#usr').waitFor()
+      await page.screenshot({ path: `${OUT}/36-sign-in.png` })
+      await page.locator('#usr').fill('emp@axt.test')
+      await page.locator('#pwd').fill(PASSWORD)
+      await page.locator('#go').click()
+      await page.waitForURL(/\/alphax(\/|$|\?)/)
+      await page.getByText(/Leave balance|رصيد الإجازات/).first().waitFor()  // user's own language
+    })
+    await ctx.close()
+    const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+    await phone.addInitScript(() => localStorage.setItem('alphax-lang', 'ar'))
+    const p2 = await phone.newPage()
+    await step('sign-in page in Arabic on a phone', async () => {
+      await p2.goto(`${BASE}/alphax-login`)
+      await p2.locator('html[dir="rtl"]').waitFor()
+      await p2.screenshot({ path: `${OUT}/36b-sign-in-ar-phone.png` })
+    })
+    await phone.close()
   }
 } finally {
   await browser.close()

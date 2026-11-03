@@ -112,7 +112,6 @@ def escalate_pending_approvals():
 							  employee=item.employee, managers=_approver_users(item.approver),
 							  url=LINKS.get(item.doctype, "/alphax/approvals"), doc=ref, tag=f"rem-{item.name}")
 			alerts._log_reminder(item.doctype, item.name, "Reminder", item.approver, to)
-	frappe.db.commit()
 
 
 def _turnaround(days=90):

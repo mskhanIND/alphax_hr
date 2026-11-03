@@ -11,6 +11,8 @@ export interface Session {
   employee: null | { name: string; employee_name: string; image?: string; designation?: string; department?: string; company?: string; date_of_joining?: string }
   company?: string
   title: string
+  hidden_pages?: string[]
+  desk?: boolean
   brand?: { title: string; tagline: string; logo: string; icon: string; custom: boolean }
   version: string
   gosi_enabled: boolean

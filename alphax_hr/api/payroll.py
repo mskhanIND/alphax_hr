@@ -14,7 +14,7 @@ from alphax_hr.saudi import gosi as gosi_rules
 
 
 @frappe.whitelist()
-def payroll_runs(year=None, month=None):
+def payroll_runs(year: int | str | None = None, month: str | None = None):
 	"""Payroll Entries for a month (runs whose period overlaps it) or, without a month, a whole year."""
 	require_hr()
 	if month:
@@ -37,7 +37,7 @@ def payroll_runs(year=None, month=None):
 
 
 @frappe.whitelist()
-def slip_summary(month=None):
+def slip_summary(month: str | None = None):
 	require_hr()
 	ref = getdate(month or nowdate())
 	start, end = get_first_day(ref), get_last_day(ref)
@@ -75,7 +75,7 @@ def _rates():
 
 
 @frappe.whitelist()
-def gosi_register(month=None, company=None):
+def gosi_register(month: str | None = None, company: str | None = None):
 	require_hr()
 	conf = settings()
 	ref = getdate(month or nowdate())
@@ -100,7 +100,7 @@ def gosi_register(month=None, company=None):
 									 cap=flt(conf.gosi_wage_cap) or gosi_rules.DEFAULT_WAGE_CAP,
 									 floor=flt(conf.gosi_wage_floor))
 		except ValueError as exc:
-			frappe.throw(_("GOSI rates are incomplete: {0}").format(exc))
+			frappe.throw(_("GOSI rates are incomplete: {0}").format(str(exc)))
 		data = c.as_dict()
 		data.update({"employee": e.name, "employee_name": e.employee_name, "department": e.department,
 					 "gosi_number": e.alphax_gosi_number, "wage_source": w["source"],
@@ -117,7 +117,7 @@ def gosi_register(month=None, company=None):
 
 
 @frappe.whitelist()
-def eosb(employee, exit_date=None, reason=eosb_rules.TERMINATION, monthly_wage=None):
+def eosb(employee: str, exit_date: str | None = None, reason: str = eosb_rules.TERMINATION, monthly_wage: float | str | None = None):
 	require_hr()
 	doc = frappe.get_doc("Employee", employee)
 	doc.check_permission("read")

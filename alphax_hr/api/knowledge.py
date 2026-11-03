@@ -22,7 +22,7 @@ def _out(r, full=False):
 
 
 @frappe.whitelist()
-def articles(search=None, category=None):
+def articles(search: str | None = None, category: str | None = None):
 	login_required()
 	if not frappe.db.exists("DocType", "AlphaX Knowledge Article"):
 		return {"articles": [], "categories": []}
@@ -40,7 +40,7 @@ def articles(search=None, category=None):
 
 
 @frappe.whitelist()
-def article(name):
+def article(name: str):
 	login_required()
 	r = frappe.get_all("AlphaX Knowledge Article", filters={"name": name, "published": 1}, fields=FIELDS)
 	if not r:
@@ -50,7 +50,7 @@ def article(name):
 
 
 @frappe.whitelist(methods=["POST"])
-def feedback(name, helpful):
+def feedback(name: str, helpful: int | str):
 	login_required()
 	field = "helpful" if cint(helpful) else "not_helpful"
 	cur = cint(frappe.db.get_value("AlphaX Knowledge Article", name, field))
@@ -65,7 +65,7 @@ def all_articles():
 
 
 @frappe.whitelist(methods=["POST"])
-def save(data, name=None):
+def save(data: str | dict | list, name: str | None = None):
 	require_hr()
 	d = parse_json(data, {}) or {}
 	doc = frappe.get_doc("AlphaX Knowledge Article", name) if name else frappe.new_doc("AlphaX Knowledge Article")
@@ -77,7 +77,7 @@ def save(data, name=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def delete(name):
+def delete(name: str):
 	require_hr()
 	frappe.delete_doc("AlphaX Knowledge Article", name)
 	return {"ok": True}

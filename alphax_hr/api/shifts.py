@@ -94,7 +94,7 @@ def _range(start, days):
 
 
 @frappe.whitelist()
-def roster(start, days=7, department=None, company=None):
+def roster(start: int | str, days: int | str = 7, department: str | None = None, company: str | None = None):
 	"""Employees x days: shift, leave and holidays, for the roster grid."""
 	require_hr()
 	start, end, days = _range(start, days)
@@ -122,7 +122,7 @@ def roster(start, days=7, department=None, company=None):
 
 
 @frappe.whitelist()
-def assign(employees, shift_type, start_date, end_date=None):
+def assign(employees: str | dict | list, shift_type: str, start_date: str, end_date: str | None = None):
 	"""Create and submit Shift Assignments. HRMS refuses overlapping ones; those are reported per employee."""
 	require_hr()
 	names = parse_json(employees, [])
@@ -157,7 +157,7 @@ def assign(employees, shift_type, start_date, end_date=None):
 
 
 @frappe.whitelist()
-def end_assignment(name, end_date=None):
+def end_assignment(name: str, end_date: str | None = None):
 	"""Stop an assignment (from a date) instead of deleting history."""
 	require_hr()
 	doc = frappe.get_doc("Shift Assignment", name)
@@ -172,7 +172,7 @@ def end_assignment(name, end_date=None):
 
 
 @frappe.whitelist()
-def set_week_off(employees, weekdays, start_date, end_date, replace=1):
+def set_week_off(employees: str | dict | list, weekdays: str | dict | list, start_date: str, end_date: str, replace: int | str = 1):
 	"""Roster: chosen weekdays become week-offs for these employees in the date range."""
 	require_hr()
 	from alphax_hr import week_off
@@ -200,7 +200,7 @@ def set_week_off(employees, weekdays, start_date, end_date, replace=1):
 
 
 @frappe.whitelist()
-def toggle_week_off(employee, date):
+def toggle_week_off(employee: str, date: str):
 	require_hr()
 	from alphax_hr import week_off
 

@@ -1,3 +1,4 @@
+import { PageAccess } from '../components/PageAccess'
 import { PayrollComponents } from '../components/PayrollComponents'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
@@ -172,6 +173,7 @@ function SettingsForm() {
   return (
     <div className="flex flex-col gap-5">
       <PayrollComponents />
+      <PageAccess />
       {q.data.sections.map((sec: any) => (
         <Card key={sec.key} title={sec.label}>
           <div className="grid gap-4 sm:grid-cols-2">

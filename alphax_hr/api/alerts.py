@@ -152,7 +152,7 @@ def settings():
 
 
 @frappe.whitelist(methods=["POST"])
-def save_settings(rules):
+def save_settings(rules: str | dict | list):
 	require_hr_manager()
 	rules = parse_json(rules) or []
 	conf = frappe.get_single("AlphaX HR Settings")
@@ -172,7 +172,7 @@ def save_settings(rules):
 
 # ------------------------------------------------------- my notifications
 @frappe.whitelist()
-def inbox(limit=30):
+def inbox(limit: int | str = 30):
 	user = frappe.session.user
 	if user == "Guest":
 		raise frappe.PermissionError
@@ -187,7 +187,7 @@ def inbox(limit=30):
 
 
 @frappe.whitelist(methods=["POST"])
-def mark_read(name=None):
+def mark_read(name: str | None = None):
 	user = frappe.session.user
 	if user == "Guest":
 		raise frappe.PermissionError
@@ -301,7 +301,6 @@ def missing_checkins():
 				   _("Your shift {0} started at {1}. Check in from the app, or ask for an attendance correction.").format(
 					   st.name, start.strftime("%H:%M")), employee=e.name, url="/alphax/me/attendance", tag=f"miss-{e.name}-{day}")
 		_log_reminder("Employee", e.name, "Missing check-in", None, to)
-	frappe.db.commit()
 
 
 def _log_reminder(doctype, name, stage, approver, to):

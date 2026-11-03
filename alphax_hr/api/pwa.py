@@ -55,7 +55,8 @@ self.addEventListener('fetch', (e) => {{
 """
 
 
-@frappe.whitelist(allow_guest=True, methods=["GET"])
+# Public: the service worker script is loaded before sign-in; it contains no data.
+@frappe.whitelist(allow_guest=True, methods=["GET"])  # nosemgrep
 def service_worker():
 	import alphax_hr
 

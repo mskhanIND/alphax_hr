@@ -233,7 +233,7 @@ def _violation_for_import():
 
 
 @frappe.whitelist(methods=["POST"])
-def import_legacy(kind, dry_run=1):
+def import_legacy(kind: str, dry_run: int | str = 1):
 	"""kind: requests | warnings | identity. Dry run returns the plan; otherwise it is applied once."""
 	require_hr_manager()
 	dry = cint(dry_run)

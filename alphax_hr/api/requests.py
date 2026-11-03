@@ -148,7 +148,7 @@ def _type_dict(t):
 
 
 @frappe.whitelist()
-def types(include_disabled=0):
+def types(include_disabled: int | str = 0):
 	login_required()
 	filters = {} if cint(include_disabled) and is_hr() else {"enabled": 1}
 	rows = frappe.get_all("AlphaX Request Type", filters=filters, fields=["*"], order_by="category asc, request_type_name asc")
@@ -199,7 +199,7 @@ def _manager(employee):
 
 
 @frappe.whitelist(methods=["POST"])
-def create(request_type, details=None, reason=None, employee=None):
+def create(request_type: str, details: str | dict | list | None = None, reason: str | None = None, employee: str | None = None):
 	"""Raise a request (for yourself; HR may raise one for any employee)."""
 	user = login_required()
 	t = frappe.get_doc("AlphaX Request Type", request_type)
@@ -431,9 +431,12 @@ def _make_letter(doc, t, details):
 	from frappe.utils.pdf import get_pdf
 
 	ctx = _letter_context(doc, details)
-	body = frappe.render_template(t.letter_body or "", ctx)
-	body_ar = frappe.render_template(t.letter_body_ar or "", ctx)
-	html = frappe.render_template("alphax_hr/templates/alphax/letter.html",
+	# Reviewed: template path is fixed in the app, or an HR-authored letter rendered in Frappe's sandboxed Jinja.
+	body = frappe.render_template(t.letter_body or "", ctx)  # nosemgrep
+	# Reviewed: template path is fixed in the app, or an HR-authored letter rendered in Frappe's sandboxed Jinja.
+	body_ar = frappe.render_template(t.letter_body_ar or "", ctx)  # nosemgrep
+	# Reviewed: template path is fixed in the app, or an HR-authored letter rendered in Frappe's sandboxed Jinja.
+	html = frappe.render_template("alphax_hr/templates/alphax/letter.html",  # nosemgrep
 								  {**ctx, "title": t.letter_title or t.request_type_name, "title_ar": t.title_ar or "",
 								   "body": body, "body_ar": body_ar, "ref": doc.name})
 	f = frappe.get_doc({"doctype": "File", "file_name": f"{doc.name}.pdf", "content": get_pdf(html), "is_private": 1,
@@ -461,14 +464,14 @@ def _attach_counts(rows):
 
 
 @frappe.whitelist()
-def mine(limit=50):
+def mine(limit: int | str = 50):
 	employee = current_employee()
 	return _attach_counts([_row(r) for r in frappe.get_list("AlphaX Request", filters={"employee": employee}, fields=FIELDS,
 															 order_by="creation desc", page_length=min(cint(limit) or 50, 200))])
 
 
 @frappe.whitelist()
-def all_requests(status=None, request_type=None, department=None, overdue=0, limit=200):
+def all_requests(status: str | None = None, request_type: str | None = None, department: str | None = None, overdue: int | str = 0, limit: int | str = 200):
 	require_hr()
 	filters = {}
 	if status == "open":
@@ -491,7 +494,7 @@ def all_requests(status=None, request_type=None, department=None, overdue=0, lim
 
 
 @frappe.whitelist(methods=["POST"])
-def update_type(name, data):
+def update_type(name: str, data: str | dict | list):
 	require_hr_manager()
 	payload = parse_json(data, {})
 	t = frappe.get_doc("AlphaX Request Type", name)
@@ -535,7 +538,7 @@ def has_permission(doc, ptype=None, user=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def cancel(name):
+def cancel(name: str):
 	"""The employee withdraws an open request."""
 	return decide(name, "Cancel")
 
@@ -633,7 +636,7 @@ def _can_talk(doc, user):
 
 
 @frappe.whitelist()
-def messages(name):
+def messages(name: str):
 	user = login_required()
 	doc = frappe.get_doc("AlphaX Request", name)
 	if not _can_talk(doc, user):
@@ -646,7 +649,7 @@ def messages(name):
 
 
 @frappe.whitelist(methods=["POST"])
-def post_message(name, text):
+def post_message(name: str, text: str):
 	user = login_required()
 	doc = frappe.get_doc("AlphaX Request", name)
 	if not _can_talk(doc, user):

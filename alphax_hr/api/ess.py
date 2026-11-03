@@ -41,7 +41,7 @@ def my_profile():
 
 
 @frappe.whitelist()
-def update_my_contact(data):
+def update_my_contact(data: str | dict | list):
 	"""Employees may update their own contact details only."""
 	payload = frappe.parse_json(data) if isinstance(data, str) else data
 	doc = _employee_doc()
@@ -76,14 +76,14 @@ def profile_change_form():
 
 
 @frappe.whitelist(methods=["POST"])
-def request_profile_change(changes, reason=None):
+def request_profile_change(changes: str | dict | list, reason: str | None = None):
 	from alphax_hr.api.requests import create_profile_update
 
 	return create_profile_update(current_employee(), changes, reason)
 
 
 @frappe.whitelist()
-def my_activity(limit=15):
+def my_activity(limit: int | str = 15):
 	"""What happened recently on my requests, leave, pay and warnings."""
 	employee = current_employee()
 	limit = min(cint(limit) or 15, 50)
@@ -119,7 +119,7 @@ def my_activity(limit=15):
 
 # ------------------------------------------------------------------ leave
 @frappe.whitelist()
-def my_leave_balances(date=None):
+def my_leave_balances(date: str | None = None):
 	employee = current_employee()
 	on = date or nowdate()
 	from hrms.hr.doctype.leave_application.leave_application import get_leave_details
@@ -143,7 +143,7 @@ def my_leave_balances(date=None):
 
 
 @frappe.whitelist()
-def my_leave_applications(limit=30):
+def my_leave_applications(limit: int | str = 30):
 	employee = current_employee()
 	fields = ["name", "leave_type", "from_date", "to_date", "total_leave_days", "status", "docstatus",
 			  "description", "posting_date", "leave_approver_name", "half_day"]
@@ -224,7 +224,7 @@ def leave_form():
 
 
 @frappe.whitelist()
-def leave_days(leave_type, from_date, to_date, half_day=0):
+def leave_days(leave_type: str, from_date: str, to_date: str, half_day: int | str = 0):
 	"""How many days these dates will cost under HR's counting policy (preview before applying)."""
 	from alphax_hr import leave_engine
 
@@ -259,7 +259,7 @@ def next_working_day(employee, after):
 
 
 @frappe.whitelist()
-def lookup(doctype, txt=""):
+def lookup(doctype: str, txt: str = ""):
 	"""Suggestions for Link fields on the employee's own forms (only doctypes those forms link to)."""
 	current_employee()
 	allowed = {f["options"] for f in leave_form()["fields"] if f["fieldtype"] == "Link"}
@@ -287,7 +287,7 @@ def _leave_approver_for(employee):
 
 
 @frappe.whitelist()
-def apply_leave(leave_type, from_date, to_date, reason=None, half_day=0, half_day_date=None, event_date=None, relation=None, extra=None):
+def apply_leave(leave_type: str, from_date: str, to_date: str, reason: str | None = None, half_day: int | str = 0, half_day_date: str | None = None, event_date: str | None = None, relation: str | None = None, extra: str | dict | list | None = None):
 	employee = current_employee()
 	emp = frappe.db.get_value("Employee", employee, ["company", "holiday_list"], as_dict=True)
 
@@ -357,7 +357,7 @@ def _outside_plan(employee, leave_type, from_date, to_date):
 
 
 @frappe.whitelist()
-def withdraw_leave(name):
+def withdraw_leave(name: str):
 	"""Delete one of my own leave requests that is still a draft and not yet acted on."""
 	employee = current_employee()
 	doc = frappe.get_doc("Leave Application", name)
@@ -377,7 +377,7 @@ def withdraw_leave(name):
 
 # ------------------------------------------------------------- attendance
 @frappe.whitelist()
-def my_attendance(month=None):
+def my_attendance(month: str | None = None):
 	employee = current_employee()
 	ref = getdate(month or nowdate())
 	start, end = get_first_day(ref), get_last_day(ref)
@@ -452,7 +452,7 @@ def nearest_location(company, lat, lon):
 
 
 @frappe.whitelist()
-def check_in(log_type, latitude=None, longitude=None, accuracy=None):
+def check_in(log_type: str, latitude: float | str | None = None, longitude: float | str | None = None, accuracy: float | str | None = None):
 	if log_type not in ("IN", "OUT"):
 		frappe.throw(_("Invalid check-in type."))
 	employee = current_employee()
@@ -513,7 +513,7 @@ def shift_types():
 
 
 @frappe.whitelist()
-def request_shift(shift_type, from_date, to_date=None, reason=None):
+def request_shift(shift_type: str, from_date: str, to_date: str | None = None, reason: str | None = None):
 	"""Ask for a different shift. Goes to the shift approver's inbox in AlphaX."""
 	employee = current_employee()
 	approver = _shift_approver(employee)
@@ -531,7 +531,7 @@ def request_shift(shift_type, from_date, to_date=None, reason=None):
 
 
 @frappe.whitelist()
-def request_attendance(from_date, to_date, reason, explanation=None, half_day=0, half_day_date=None):
+def request_attendance(from_date: str, to_date: str, reason: str, explanation: str | None = None, half_day: int | str = 0, half_day_date: str | None = None):
 	"""Correct attendance (missed punch, on duty, work from home); approved in the AlphaX inbox."""
 	employee = current_employee()
 	if reason not in ATTENDANCE_REASONS:
@@ -552,7 +552,7 @@ def request_attendance(from_date, to_date, reason, explanation=None, half_day=0,
 
 
 @frappe.whitelist()
-def my_requests(limit=30):
+def my_requests(limit: int | str = 30):
 	"""My shift and attendance requests, newest first."""
 	employee = current_employee()
 	limit = min(cint(limit) or 30, 100)
@@ -575,7 +575,7 @@ def my_requests(limit=30):
 
 # --------------------------------------------------------------- payslips
 @frappe.whitelist()
-def my_payslips(limit=24):
+def my_payslips(limit: int | str = 24):
 	employee = current_employee()
 	slips = frappe.get_list(
 		"Salary Slip",
@@ -588,7 +588,7 @@ def my_payslips(limit=24):
 
 
 @frappe.whitelist()
-def payslip(name):
+def payslip(name: str):
 	employee = current_employee()
 	doc = frappe.get_doc("Salary Slip", name)
 	if doc.employee != employee or doc.docstatus != 1:
@@ -606,7 +606,7 @@ def payslip(name):
 
 # --------------------------------------------------------------- expenses
 @frappe.whitelist()
-def my_expense_claims(limit=20):
+def my_expense_claims(limit: int | str = 20):
 	employee = current_employee()
 	if not frappe.db.exists("DocType", "Expense Claim"):
 		return []
@@ -620,7 +620,7 @@ def my_expense_claims(limit=20):
 
 
 @frappe.whitelist()
-def upcoming_holidays(days=60):
+def upcoming_holidays(days: int | str = 60):
 	employee = current_employee()
 	from hrms.hr.utils import get_holiday_list_for_employee
 
@@ -658,7 +658,7 @@ def _expense_approver(emp):
 
 
 @frappe.whitelist(methods=["POST"])
-def submit_expense(expense_type, amount, expense_date, description=None):
+def submit_expense(expense_type: str, amount: float | str, expense_date: str, description: str | None = None):
 	"""File an expense claim for yourself; it goes to your expense approver (Approvals inbox)."""
 	employee = current_employee()
 	emp = frappe.get_doc("Employee", employee)
@@ -682,7 +682,7 @@ def submit_expense(expense_type, amount, expense_date, description=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def withdraw_expense(name):
+def withdraw_expense(name: str):
 	employee = current_employee()
 	doc = frappe.get_doc("Expense Claim", name)
 	if doc.employee != employee or doc.docstatus != 0 or doc.approval_status != "Draft":

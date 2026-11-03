@@ -93,7 +93,7 @@ def create_statutory_leave_types():
 
 
 @frappe.whitelist()
-def allow_without_allocation(leave_type):
+def allow_without_allocation(leave_type: str):
 	"""Statutory leaves are capped by their rule, not by an allocation."""
 	require_hr_manager()
 	if leave_type not in {r.leave_type for r in frappe.get_single("AlphaX HR Settings").leave_rules}:
@@ -105,7 +105,7 @@ def allow_without_allocation(leave_type):
 
 
 @frappe.whitelist()
-def update_rule(name, data):
+def update_rule(name: str, data: str | dict | list):
 	require_hr_manager()
 	payload = parse_json(data, {})
 	conf = frappe.get_single("AlphaX HR Settings")
@@ -120,7 +120,7 @@ def update_rule(name, data):
 
 
 @frappe.whitelist()
-def update_annual_settings(data):
+def update_annual_settings(data: str | dict | list):
 	"""Annual policy and numbers. The leave type itself is fixed once set (see setup_annual_leave_type)."""
 	require_hr_manager()
 	payload = parse_json(data, {})
@@ -161,7 +161,7 @@ def setup_annual_leave_type():
 
 
 @frappe.whitelist()
-def annual_allocation(apply=0):
+def annual_allocation(apply: int | str = 0):
 	"""Preview (default) or create this service year's annual leave allocations."""
 	if cint(apply):
 		require_hr_manager()
@@ -189,7 +189,7 @@ def counting_rules():
 
 
 @frappe.whitelist(methods=["POST"])
-def save_counting_rule(data):
+def save_counting_rule(data: str | dict | list):
 	require_hr_manager()
 	data = parse_json(data) or {}
 	leave_type = data.get("leave_type")
@@ -206,7 +206,7 @@ def save_counting_rule(data):
 
 
 @frappe.whitelist(methods=["POST"])
-def delete_counting_rule(name):
+def delete_counting_rule(name: str):
 	require_hr_manager()
 	frappe.delete_doc("AlphaX Leave Counting Rule", name)
 	return True

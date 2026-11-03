@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ReactNode } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { ErrorBox, Spinner } from './components/ui'
 import { SessionProvider, useSession, useSessionQuery } from './lib/session'
@@ -46,6 +46,7 @@ const Loans = lazy(() => import('./pages/Loans'))
 const MyLoans = lazy(() => import('./pages/MyLoans'))
 const PayAdjustments = lazy(() => import('./pages/PayAdjustments'))
 const BulkUpdate = lazy(() => import('./pages/BulkUpdate'))
+const Accruals = lazy(() => import('./pages/Accruals'))
 const VacationPlan = lazy(() => import('./pages/VacationPlan'))
 const VacationPlanner = lazy(() => import('./pages/VacationPlanner'))
 const AnnouncementsAdmin = lazy(() => import('./pages/AnnouncementsAdmin'))
@@ -56,6 +57,9 @@ const KnowledgeAdmin = lazy(() => import('./pages/KnowledgeAdmin'))
 
 function Guard({ when, children }: { when: (s: ReturnType<typeof useSession>) => boolean; children: ReactNode }) {
   const s = useSession()
+  const loc = useLocation()
+  // Pages HR switched off (HR status & setup → Settings → Pages)
+  if ((s.hidden_pages ?? []).some((p) => loc.pathname === p || loc.pathname.startsWith(p + '/'))) return <Navigate to="/" replace />
   return when(s) ? <>{children}</> : <Navigate to="/" replace />
 }
 
@@ -97,6 +101,7 @@ export default function App() {
             <Route path="/approval-delays" element={<Guard when={mgr}><ApprovalDelays /></Guard>} />
             <Route path="/team-appraisals" element={<Guard when={mgr}><TeamAppraisals /></Guard>} />
             <Route path="/people/bulk-update" element={<Guard when={hr}><BulkUpdate /></Guard>} />
+            <Route path="/payroll/accruals" element={<Guard when={hr}><Accruals /></Guard>} />
             <Route path="/payroll/loans" element={<Guard when={hr}><Loans /></Guard>} />
             <Route path="/payroll/adjustments" element={<Guard when={hr}><PayAdjustments /></Guard>} />
             <Route path="/me/loans" element={<Guard when={emp}><MyLoans /></Guard>} />

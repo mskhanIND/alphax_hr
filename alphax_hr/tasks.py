@@ -1,6 +1,6 @@
 """Scheduled jobs."""
 import frappe
-from frappe.utils import add_days, getdate, nowdate
+from frappe.utils import add_days, nowdate
 
 
 def notify_expiring_documents():

@@ -16,7 +16,11 @@ React SPA (/alphax)  ──►  alphax_hr API (permission-checked)  ──►  F
 |---|---|---|
 | ![HR home](docs/screenshots/09-hr-home.png) | ![Compliance](docs/screenshots/ar-compliance.png) | ![Phone](docs/screenshots/05-arabic-phone-home.png) |
 
-## Modules (v0.18)
+| Sign-in | Accruals | Payroll control |
+|---|---|---|
+| ![Sign-in](docs/screenshots/36-sign-in.png) | ![Accruals](docs/screenshots/35-accruals.png) | ![Payroll](docs/screenshots/23-payroll-control.png) |
+
+## Modules (v0.19)
 
 | Area | Who | What |
 |---|---|---|
@@ -56,6 +60,9 @@ React SPA (/alphax)  ──►  alphax_hr API (permission-checked)  ──►  F
 | Cut-over | HR Manager | Readiness page before uninstalling CentralHRMS: legacy requests, warning letters and Iqama data to import (dry run, then once), legacy fields that still hold data, active workflows, and what AlphaX needs to run alone |
 | Saudi leave engine | HR, every employee | Statutory leave rules checked on every request (maternity 84, paternity 3, marriage 5, bereavement 5/3, Iddah 130/15, exam, Hajj once after 2 years), sick-leave pay tiers 30/60/30 with certificate before approval, annual leave 21/30 days allocated per service year, escalation of leave requests left pending |
 | Employee rules | HR | National ID / Iqama / border number checks (Saudi flag set from the ID), duplicate IDs, Saudi IBAN check, minimum age, probation end date |
+| Portal & sign-in | HR Manager | *Portal mode*: HR and self-service users always land in `/alphax` and cannot open the Desk; roles that keep the Desk are listed in Settings (default System Manager, Accounts Manager, Accounts User). Branded bilingual sign-in page at `/alphax-login` (optionally used for `/login`). *Pages*: hide any page for everyone or show it only to chosen roles |
+| Accruals | HR Manager, Accounts Manager | Each month the end-of-service obligation (Art. 84 full award, or Art. 85 resignation basis) and the unused-annual-leave obligation (days × daily wage) are measured again per employee and only the difference is posted — one journal entry, Dr expense / Cr provision by cost center. Later months must be cancelled first. Warnings until the End of Service Benefit and Leave Encashment components post to the provision accounts, so final settlements use the provision |
+| Bank salary file | HR | Excel salary transfer file from a submitted payroll run (ID/Iqama, bank, SWIFT, IBAN, basic, housing, other earnings, deductions, net) for the bank's WPS upload |
 | Compliance | HR | Nitaqat estimate, Iqama/work permit/passport/contract expiry, data-readiness checks (holiday lists, approvers, GOSI dates, Iqama data …) |
 
 ## Install
@@ -69,7 +76,7 @@ CentralHRMS, the Lending app or any other custom app; CI installs exactly these 
 cd frappe-bench
 bench get-app --branch version-15 erpnext
 bench get-app --branch version-15 hrms
-bench get-app https://github.com/mskhanIND/alphax_hr
+bench get-app --branch version-15 https://github.com/mskhanIND/alphax_hr
 bench new-site YOUR_SITE --install-app erpnext
 bench --site YOUR_SITE install-app hrms
 bench --site YOUR_SITE install-app alphax_hr
@@ -80,6 +87,18 @@ bench --site YOUR_SITE install-app alphax_hr
 notification e-mails and the sign-in page (uploads are made public automatically).
 
 The built frontend is committed under `alphax_hr/public/frontend`, so no Node build is needed on servers. Open `https://YOUR_SITE/alphax`.
+
+**Portal mode.** HR status & setup → Settings → *HR portal and sign-in*: tick *Keep HR, managers and employees in AlphaX (no desk)*. Everyone without one
+of the *Roles that may still use the desk* is sent from `/app` to `/alphax`, and *Default App* becomes AlphaX HR. Administrator
+always keeps the Desk. *Use the AlphaX sign-in page for /login* (off by default) sends `/login` to `/alphax-login`;
+`/login?standard=1` always shows Frappe's own page (two-factor and social logins use it automatically).
+
+**Pages.** Settings → *Pages*: hide a page for everyone, or list the roles that may open it.
+
+**Accruals (month end).** Settings → *Accruals*: basis, and the EOS / leave expense and provision accounts. Set the
+*End of Service Benefit* and *Leave Encashment* salary components to post to the same provision accounts. Then
+Payroll → *Accruals*: pick the month, check the lines, *Post accruals*. Companies reporting under full IFRS should still
+have the end-of-service obligation valued by an actuary each year (IAS 19) and post the difference.
 
 **Make /alphax the landing page.** Set *System Settings → Default App* (or a user's *Default App*) to **AlphaX HR**. Users then land on `/alphax` after login.
 
@@ -105,7 +124,8 @@ HR Manager → **Administration → Cut-over readiness**. Preview and import leg
 
 ## Security model
 
-* No guest endpoints. Every API checks login, then server-side roles (never a role sent by the browser).
+* Only three things are public: the sign-in page, the web app manifest and the service worker script. Every API checks login, then server-side roles (never a role sent by the browser).
+* Every API argument is type-annotated and checked by Frappe; CI runs Frappe's Semgrep security rules.
 * Reads use permission-aware `frappe.get_list` / `check_permission`; writes go through `insert/save/submit`, so HRMS validations, Workflows and User Permissions remain authoritative.
 * Employee self-service is always scoped to the employee linked to the signed-in user.
 * Employee edits use optimistic locking (`modified`).
@@ -130,11 +150,11 @@ For local dev against a bench, sign in at the bench URL first and set `"ignore_c
 | Suite | What | Run |
 |---|---|---|
 | Rules engine | 18 tests: GOSI Legacy/New/Non-Saudi rates by period, cap, EOSB Art. 84/85/87/80, annual and sick leave, Nitaqat, document buckets | `python -m unittest discover -s tests` |
-| API integration | 21 tests on a real Frappe + ERPNext + HRMS site, as Guest, Employee, second Employee, Manager and HR: data isolation, role checks, approvals (incl. a Workflow action literally named "Submit"), stale-write rejection, GOSI/EOSB, compliance | `tests/integration/run_frappe_tests.py SITE` |
-| Browser E2E | 17 checks driving `/alphax` in Chromium: apply → approve leave, attendance, people edit, compliance, GOSI, EOSB, Arabic RTL on a phone, no console errors | `node tests/e2e/smoke.mjs URL` |
+| API integration | 79 tests on a real Frappe + ERPNext + HRMS site, as Guest, Employee, second Employee, Manager and HR: data isolation, role checks, approvals (incl. a Workflow action literally named "Submit"), stale-write rejection, GOSI/EOSB, compliance | `tests/integration/run_frappe_tests.py SITE` |
+| Browser E2E | 52 checks driving `/alphax` in Chromium: sign-in page, apply → approve leave, attendance, people, payroll, loans, accruals, compliance, GOSI, EOSB, Arabic RTL on a phone, no console errors | `node tests/e2e/smoke.mjs URL` |
 | Frontend | Riyadh-time dates, and every UI string has an Arabic translation | `cd frontend && npx vitest run` |
 
-All four run in GitHub Actions (`.github/workflows/ci.yml`).
+All four run in GitHub Actions (`.github/workflows/ci.yml`); `linters.yml` runs Frappe's Semgrep rules, ruff and a dependency audit.
 
 ## Layout
 
@@ -150,5 +170,7 @@ tests/            rules-engine tests and Frappe integration tests
 ```
 
 Nitaqat figures are an internal estimate; Qiwa remains the official source.
+
+Changes: [CHANGELOG.md](CHANGELOG.md) · Privacy: [PRIVACY.md](PRIVACY.md) · Support: [issues](https://github.com/mskhanIND/alphax_hr/issues) or support@neotec.ai
 
 License: MIT

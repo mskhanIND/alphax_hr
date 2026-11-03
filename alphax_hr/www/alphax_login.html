@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="{{ lang }}" dir="{{ 'rtl' if lang == 'ar' else 'ltr' }}">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<meta name="theme-color" content="#0f5132" />
+	<title>{{ title }}</title>
+	<link rel="icon" href="{{ brand.favicon }}" />
+	<link rel="manifest" href="/api/method/alphax_hr.api.branding.manifest" />
+	<style>
+		:root { --brand: #0f5132; --brand-2: #14653f; --ink: #1c2421; --muted: #5f6b66; --line: #e3e7e4; --surface: #f6f7f4; }
+		* { box-sizing: border-box; }
+		body { margin: 0; font-family: "Segoe UI", system-ui, -apple-system, "Noto Sans Arabic", Tahoma, sans-serif; color: var(--ink); background: var(--surface); }
+		.wrap { min-height: 100vh; display: grid; grid-template-columns: 1.1fr 1fr; }
+		.hero { background: linear-gradient(135deg, var(--brand), var(--brand-2)); color: #fff; padding: 56px; display: flex; flex-direction: column; justify-content: space-between; }
+		.logo { display: flex; align-items: center; gap: 14px; }
+		.logo img { height: 52px; max-width: 160px; object-fit: contain; background: rgba(255,255,255,.95); border-radius: 12px; padding: 6px; }
+		.logo b { font-size: 22px; }
+		.hero h1 { font-size: 34px; line-height: 1.2; margin: 40px 0 12px; max-width: 520px; }
+		.hero p { opacity: .85; max-width: 480px; line-height: 1.6; margin: 0; }
+		.features { list-style: none; padding: 0; margin: 32px 0 0; display: grid; gap: 14px; max-width: 460px; }
+		.features li { display: flex; gap: 12px; align-items: flex-start; background: rgba(255,255,255,.08); border-radius: 14px; padding: 12px 14px; }
+		.features span { font-size: 20px; }
+		.foot { font-size: 12px; opacity: .7; }
+		.panel { display: flex; align-items: center; justify-content: center; padding: 32px 20px; }
+		.card { width: 100%; max-width: 400px; background: #fff; border: 1px solid var(--line); border-radius: 22px; padding: 32px; box-shadow: 0 10px 40px rgba(15,81,50,.08); }
+		.card h2 { margin: 0 0 4px; font-size: 22px; }
+		.card .sub { color: var(--muted); margin: 0 0 22px; font-size: 14px; }
+		label { display: block; font-size: 13px; font-weight: 600; margin: 14px 0 6px; }
+		input { width: 100%; height: 46px; border: 1px solid var(--line); border-radius: 12px; padding: 0 14px; font-size: 15px; background: #fff; }
+		input:focus { outline: 2px solid rgba(15,81,50,.25); border-color: var(--brand); }
+		.pw { position: relative; }
+		.pw button { position: absolute; inset-inline-end: 8px; top: 8px; border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 13px; padding: 6px; }
+		.btn { margin-top: 22px; width: 100%; height: 48px; border: 0; border-radius: 12px; background: var(--brand); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+		.btn[disabled] { opacity: .6; cursor: wait; }
+		.row { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; font-size: 13px; }
+		.row a, .row button.link { color: var(--brand); text-decoration: none; background: none; border: 0; cursor: pointer; font-size: 13px; padding: 0; }
+		.msg { margin-top: 14px; font-size: 13px; border-radius: 10px; padding: 10px 12px; display: none; }
+		.msg.err { display: block; background: #fdecec; color: #8a1c1c; }
+		.msg.ok { display: block; background: #e8f6ee; color: #145c36; }
+		.lang { position: fixed; top: 16px; inset-inline-end: 16px; border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 7px 12px; cursor: pointer; font-size: 13px; }
+		@media (max-width: 860px) { .wrap { grid-template-columns: 1fr; } .hero { padding: 28px 22px; } .hero h1 { font-size: 24px; margin-top: 22px; } .features, .foot { display: none; } }
+	</style>
+</head>
+<body>
+	<button class="lang" id="lang" type="button">{{ 'English' if lang == 'ar' else 'العربية' }}</button>
+	<div class="wrap">
+		<section class="hero">
+			<div>
+				<div class="logo"><img src="{{ brand.logo }}" alt="" /><b>{{ title }}</b></div>
+				<h1 data-en="Your HR services in one place" data-ar="خدمات الموارد البشرية في مكان واحد"></h1>
+				<p data-en="{{ welcome or brand.tagline or 'Leave, attendance, payslips, loans and requests to HR — on the web and on your phone.' }}"
+				   data-ar="{{ welcome_ar or welcome or 'الإجازات والحضور ورواتبي والقروض وطلبات الموارد البشرية — على الويب وعلى جوالك.' }}"></p>
+				<ul class="features">
+					<li><span>🗓️</span><div data-en="Apply for leave and see your balance" data-ar="اطلب إجازة واطّلع على رصيدك"></div></li>
+					<li><span>📍</span><div data-en="Check in and out from your phone" data-ar="سجّل الحضور والانصراف من جوالك"></div></li>
+					<li><span>💳</span><div data-en="Payslips, loans and letters anytime" data-ar="قسائم الرواتب والقروض والخطابات في أي وقت"></div></li>
+					<li><span>✅</span><div data-en="Managers approve on the go" data-ar="يعتمد المديرون الطلبات من أي مكان"></div></li>
+				</ul>
+			</div>
+			<div class="foot">© {{ frappe.utils.nowdate()[:4] }} {{ title }}</div>
+		</section>
+		<section class="panel">
+			<form class="card" id="form" autocomplete="on" novalidate>
+				<h2 data-en="Sign in" data-ar="تسجيل الدخول"></h2>
+				<p class="sub" data-en="Use your work e-mail and password." data-ar="استخدم بريد العمل وكلمة المرور."></p>
+				<label for="usr" data-en="E-mail or user name" data-ar="البريد الإلكتروني أو اسم المستخدم"></label>
+				<input id="usr" name="usr" type="text" autocomplete="username" required autofocus />
+				<label for="pwd" data-en="Password" data-ar="كلمة المرور"></label>
+				<div class="pw"><input id="pwd" name="pwd" type="password" autocomplete="current-password" required />
+					<button type="button" id="show" data-en="Show" data-ar="إظهار"></button></div>
+				<button class="btn" id="go" type="submit" data-en="Sign in" data-ar="دخول"></button>
+				<div class="row">
+					<button type="button" class="link" id="forgot" data-en="Forgot password?" data-ar="نسيت كلمة المرور؟"></button>
+					<a href="/login?standard=1" data-en="Other sign-in options" data-ar="طرق دخول أخرى"></a>
+				</div>
+				<div class="msg" id="msg" role="alert"></div>
+			</form>
+		</section>
+	</div>
+	<script>
+	(function () {
+		var lang = localStorage.getItem('alphax-lang') || '{{ lang }}';
+		var redirectTo = {{ (redirect_to or '') | tojson }};
+		var T = {
+			en: { empty: 'Enter your e-mail and password.', bad: 'The e-mail or password is not right.', wait: 'Too many attempts. Try again in a few minutes.',
+				  sent: 'If the account exists, a reset link was sent to its e-mail.', need: 'Enter your e-mail first.', show: 'Show', hide: 'Hide', fail: 'Could not sign in. Please try again.' },
+			ar: { empty: 'أدخل البريد الإلكتروني وكلمة المرور.', bad: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.', wait: 'محاولات كثيرة. حاول بعد دقائق.',
+				  sent: 'إذا كان الحساب موجوداً فقد أُرسل رابط الاستعادة إلى بريده.', need: 'أدخل بريدك الإلكتروني أولاً.', show: 'إظهار', hide: 'إخفاء', fail: 'تعذّر الدخول. حاول مرة أخرى.' }
+		};
+		function paint() {
+			document.documentElement.lang = lang; document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+			document.querySelectorAll('[data-en]').forEach(function (el) { el.textContent = el.getAttribute('data-' + lang) || el.getAttribute('data-en'); });
+			document.getElementById('lang').textContent = lang === 'ar' ? 'English' : 'العربية';
+		}
+		function say(text, ok) { var m = document.getElementById('msg'); m.textContent = text; m.className = 'msg ' + (ok ? 'ok' : 'err'); }
+		paint();
+		document.getElementById('lang').onclick = function () { lang = lang === 'ar' ? 'en' : 'ar'; localStorage.setItem('alphax-lang', lang); paint(); };
+		document.getElementById('show').onclick = function () {
+			var p = document.getElementById('pwd'); var hidden = p.type === 'password'; p.type = hidden ? 'text' : 'password';
+			this.textContent = T[lang][hidden ? 'hide' : 'show'];
+		};
+		function post(url, data) {
+			return fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(data) });
+		}
+		document.getElementById('form').onsubmit = function (e) {
+			e.preventDefault();
+			var usr = document.getElementById('usr').value.trim(), pwd = document.getElementById('pwd').value;
+			if (!usr || !pwd) return say(T[lang].empty);
+			var btn = document.getElementById('go'); btn.disabled = true;
+			post('/api/method/login', { usr: usr, pwd: pwd }).then(function (r) {
+				return r.json().catch(function () { return {}; }).then(function (d) { return { status: r.status, d: d }; });
+			}).then(function (res) {
+				if (res.status === 200 && res.d && res.d.verification) { window.location.href = '/login?standard=1'; return; }  // two-factor sign-in
+				if (res.status === 200) {
+					if (redirectTo) { window.location.href = redirectTo; return; }
+					return fetch('/api/method/alphax_hr.portal.landing', { credentials: 'same-origin' }).then(function (r) { return r.json(); })
+						.then(function (d) { window.location.href = (d && d.message) || '/alphax'; });
+				}
+				btn.disabled = false;
+				say(res.status === 429 ? T[lang].wait : (res.status === 401 ? T[lang].bad : T[lang].fail));
+			}).catch(function () { btn.disabled = false; say(T[lang].fail); });
+		};
+		document.getElementById('forgot').onclick = function () {
+			var usr = document.getElementById('usr').value.trim();
+			if (!usr) return say(T[lang].need);
+			post('/api/method/frappe.core.doctype.user.user.reset_password', { user: usr }).then(function () { say(T[lang].sent, true); })
+				.catch(function () { say(T[lang].sent, true); });
+		};
+	})();
+	</script>
+</body>
+</html>

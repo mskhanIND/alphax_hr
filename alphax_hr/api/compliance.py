@@ -27,7 +27,7 @@ def _sample(rows, limit=25):
 
 
 @frappe.whitelist()
-def overview(company=None):
+def overview(company: str | None = None):
 	require_hr()
 	conf = settings()
 	company = company or conf.default_company
@@ -102,7 +102,7 @@ def overview(company=None):
 
 
 @frappe.whitelist()
-def expiring_documents(days=90, company=None):
+def expiring_documents(days: int | str = 90, company: str | None = None):
 	require_hr()
 	conf = settings()
 	today = getdate(nowdate())
@@ -129,7 +129,7 @@ LEGACY_MAP = (
 
 
 @frappe.whitelist()
-def import_legacy_fields(dry_run=1, saudi_nationality="Saudi"):
+def import_legacy_fields(dry_run: int | str = 1, saudi_nationality: str = "Saudi"):
 	"""One-time onboarding for sites coming from CentralHRMS: copy legacy values into
 	empty AlphaX fields. Never overwrites a value already set. HR Manager only."""
 	require_hr_manager()

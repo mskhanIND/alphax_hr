@@ -175,13 +175,13 @@ def _time(value):
 
 
 @frappe.whitelist()
-def register(month=None, department=None, company=None):
+def register(month: str | None = None, department: str | None = None, company: str | None = None):
 	require_hr()
 	return month_data(month, department, company)
 
 
 @frappe.whitelist()
-def overtime(month=None, department=None, company=None, daily_hours=None):
+def overtime(month: str | None = None, department: str | None = None, company: str | None = None, daily_hours: float | str | None = None):
 	"""Overtime per employee for the month with the Art. 107 amount (wage from payslips/salary)."""
 	require_hr()
 	data = month_data(month, department, company)
@@ -206,7 +206,7 @@ def overtime(month=None, department=None, company=None, daily_hours=None):
 
 
 @frappe.whitelist()
-def export_register(month=None, department=None, company=None, file_format="xlsx"):
+def export_register(month: str | None = None, department: str | None = None, company: str | None = None, file_format: str = "xlsx"):
 	require_hr()
 	data = month_data(month, department, company)
 	header = [_("Employee ID"), _("Employee"), _("Department")] + [d[-2:] for d in data["dates"]] + [
@@ -253,7 +253,7 @@ def _monitor_scope(user, department=None):
 
 
 @frappe.whitelist()
-def live(date=None, department=None):
+def live(date: str | None = None, department: str | None = None):
 	"""Today's (or a day's) check-ins with locations: who is in, out, not in yet or on leave, and punches outside work locations."""
 	user = frappe.session.user
 	day = getdate(date or nowdate())
@@ -294,7 +294,7 @@ def work_locations():
 
 
 @frappe.whitelist(methods=["POST"])
-def save_work_location(data, name=None):
+def save_work_location(data: str | dict | list, name: str | None = None):
 	from alphax_hr.api._common import parse_json, require_hr_manager
 
 	require_hr_manager()
@@ -316,7 +316,7 @@ def save_work_location(data, name=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def delete_work_location(name):
+def delete_work_location(name: str):
 	from alphax_hr.api._common import require_hr_manager
 
 	require_hr_manager()

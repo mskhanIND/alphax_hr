@@ -74,7 +74,8 @@ def shrink_own_columns():
 			continue
 		if int(current[8:-1]) <= length:
 			continue
-		longest = frappe.db.sql(f"SELECT MAX(CHAR_LENGTH(`{col}`)) FROM `tabEmployee`")[0][0] or 0
+		# Reviewed: identifiers come from DocType metadata / a fixed list, not from the request.
+		longest = frappe.db.sql(f"SELECT MAX(CHAR_LENGTH(`{col}`)) FROM `tabEmployee`")[0][0] or 0  # nosemgrep
 		if longest > length:
 			print(f"AlphaX: kept {col} as {current}; a stored value has {longest} characters")
 			continue

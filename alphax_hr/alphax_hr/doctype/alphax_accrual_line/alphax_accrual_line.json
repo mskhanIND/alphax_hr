@@ -1,0 +1,113 @@
+{
+ "doctype": "DocType",
+ "name": "AlphaX Accrual Line",
+ "module": "AlphaX HR",
+ "custom": 0,
+ "engine": "InnoDB",
+ "creation": "2026-11-02 00:00:00.000000",
+ "modified": "2026-11-02 00:00:00.000000",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "field_order": [
+  "employee",
+  "employee_name",
+  "cost_center",
+  "service_years",
+  "eos_wage",
+  "eos_obligation",
+  "eos_previous",
+  "eos_charge",
+  "leave_days",
+  "leave_wage",
+  "leave_obligation",
+  "leave_previous",
+  "leave_charge",
+  "note"
+ ],
+ "fields": [
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "label": "Employee",
+   "options": "Employee",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "employee_name",
+   "fieldtype": "Data",
+   "label": "Employee Name",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "label": "Cost Center",
+   "options": "Cost Center"
+  },
+  {
+   "fieldname": "service_years",
+   "fieldtype": "Float",
+   "label": "Service (years)"
+  },
+  {
+   "fieldname": "eos_wage",
+   "fieldtype": "Currency",
+   "label": "EOS wage"
+  },
+  {
+   "fieldname": "eos_obligation",
+   "fieldtype": "Currency",
+   "label": "EOS obligation",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "eos_previous",
+   "fieldtype": "Currency",
+   "label": "EOS accrued before"
+  },
+  {
+   "fieldname": "eos_charge",
+   "fieldtype": "Currency",
+   "label": "EOS this month",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "leave_days",
+   "fieldtype": "Float",
+   "label": "Leave days owed"
+  },
+  {
+   "fieldname": "leave_wage",
+   "fieldtype": "Currency",
+   "label": "Leave wage"
+  },
+  {
+   "fieldname": "leave_obligation",
+   "fieldtype": "Currency",
+   "label": "Leave obligation",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "leave_previous",
+   "fieldtype": "Currency",
+   "label": "Leave accrued before"
+  },
+  {
+   "fieldname": "leave_charge",
+   "fieldtype": "Currency",
+   "label": "Leave this month",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "note",
+   "fieldtype": "Data",
+   "label": "Note"
+  }
+ ],
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "istable": 1
+}

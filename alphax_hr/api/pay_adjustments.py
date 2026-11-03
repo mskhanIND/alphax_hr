@@ -71,7 +71,7 @@ def _plan(employee, data):
 
 
 @frappe.whitelist(methods=["POST"])
-def preview(data):
+def preview(data: str | dict | list):
 	require_hr()
 	data = parse_json(data) or {}
 	_validate(data)
@@ -86,7 +86,7 @@ def _validate(data):
 
 
 @frappe.whitelist(methods=["POST"])
-def create(data):
+def create(data: str | dict | list):
 	"""Post the adjustment(s) as Additional Salary for each employee. Nothing is posted if any employee breaks a limit."""
 	require_hr()
 	data = parse_json(data) or {}
@@ -132,7 +132,7 @@ def create(data):
 
 
 @frappe.whitelist()
-def adjustments(month=None, kind=None):
+def adjustments(month: str | None = None, kind: str | None = None):
 	require_hr()
 	filters = {}
 	if month:
@@ -151,7 +151,7 @@ def adjustments(month=None, kind=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def cancel(name, reason=None):
+def cancel(name: str, reason: str | None = None):
 	require_hr_manager()
 	doc = frappe.get_doc(DT, name)
 	if doc.status != "Posted":
@@ -173,7 +173,7 @@ def cancel(name, reason=None):
 
 
 @frappe.whitelist()
-def deduction_status(employee, month=None):
+def deduction_status(employee: str, month: str | None = None):
 	"""Everything deducted from the employee in a month against the legal limits (shown before HR adds more)."""
 	require_hr()
 	month = loans._month(month or nowdate())
@@ -212,7 +212,7 @@ def _increment_package(employee, mode, value):
 
 
 @frappe.whitelist(methods=["POST"])
-def increment(data, apply=0):
+def increment(data: str | dict | list, apply: int | str = 0):
 	"""Salary increment for one or many employees from a date: % of all components, % of basic, or an amount on basic."""
 	require_hr_manager() if cint(apply) else require_hr()
 	data = parse_json(data) or {}

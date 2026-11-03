@@ -21,5 +21,7 @@ class AlphaXHRSettings(Document):
 
 	def on_update(self):
 		from alphax_hr.api.branding import apply
+		from alphax_hr.portal import sync_default_app
 
 		apply(self)
+		sync_default_app(self)

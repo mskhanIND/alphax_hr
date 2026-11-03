@@ -64,7 +64,7 @@ def _title(doctype, name):
 
 
 @frappe.whitelist()
-def trail(doctype, name):
+def trail(doctype: str, name: str):
 	"""Every change, comment, workflow step and attachment of one record."""
 	login_required()
 	if not _audited(doctype):
@@ -124,7 +124,7 @@ def _employee_records(employee):
 
 
 @frappe.whitelist()
-def feed(doctype=None, user=None, employee=None, from_date=None, to_date=None, start=0, limit=50):
+def feed(doctype: str | None = None, user: str | None = None, employee: str | None = None, from_date: str | None = None, to_date: str | None = None, start: int | str = 0, limit: int | str = 50):
 	"""HR: recent changes across HR records, newest first."""
 	require_hr()
 	limit = min(cint(limit) or 50, 200)

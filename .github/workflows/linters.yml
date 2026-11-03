@@ -1,0 +1,62 @@
+name: Linters
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linters-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  semgrep:
+    name: Frappe Semgrep rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download Frappe Semgrep rules
+        run: git clone --depth 1 https://github.com/frappe/semgrep-rules.git frappe-semgrep-rules
+      - name: Run Semgrep
+        run: |
+          pip install semgrep
+          semgrep scan --error --metrics=off \
+            --config ./frappe-semgrep-rules/rules \
+            --config r/python.lang.correctness \
+            --exclude frappe-semgrep-rules --exclude frontend --exclude tests --exclude 'alphax_hr/public' .
+
+  ruff:
+    name: Ruff (errors)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install ruff
+      - run: ruff check --select F,E9 alphax_hr tests
+
+  deps-audit:
+    name: Vulnerable dependency check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Python
+        run: |
+          pip install pip-audit
+          pip-audit --desc on .
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Frontend (production dependencies)
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high

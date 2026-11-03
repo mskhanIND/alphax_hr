@@ -33,7 +33,7 @@ def public_key():
 
 
 @frappe.whitelist(methods=["POST"])
-def subscribe(subscription, device=None):
+def subscribe(subscription: str | dict | list, device: str | dict | list | None = None):
 	user = login_required()
 	sub = parse_json(subscription, {}) or {}
 	endpoint = sub.get("endpoint") or ""
@@ -51,7 +51,7 @@ def subscribe(subscription, device=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def unsubscribe(endpoint):
+def unsubscribe(endpoint: str):
 	user = login_required()
 	frappe.db.delete(DOCTYPE, {"endpoint_hash": push.endpoint_hash(endpoint or ""), "user": user})
 	return {"ok": True}

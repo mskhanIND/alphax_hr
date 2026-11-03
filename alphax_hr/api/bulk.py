@@ -1,6 +1,8 @@
 """Bulk update employees, and per-employee exceptions to the attendance / check-in rules."""
 from __future__ import annotations
 
+from typing import Any
+
 import frappe
 from frappe import _
 from frappe.utils import cint
@@ -59,7 +61,7 @@ def _employees(filters=None, employees=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def preview(field, filters=None, employees=None):
+def preview(field: str, filters: str | dict | list | None = None, employees: str | dict | list | None = None):
 	require_hr()
 	ids = _employees(parse_json(filters) or {}, parse_json(employees) or [])
 	rows = []
@@ -77,7 +79,7 @@ def preview(field, filters=None, employees=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def apply(field, value, filters=None, employees=None):
+def apply(field: str, value: Any, filters: str | dict | list | None = None, employees: str | dict | list | None = None):
 	"""Set one field for many employees. Each employee is saved on its own; failures are listed, the rest go through."""
 	require_hr_manager()
 	allowed = {s["fieldname"] for s in _field_specs()}
@@ -116,7 +118,7 @@ def _policy_name(employee):
 
 
 @frappe.whitelist()
-def exception(employee):
+def exception(employee: str):
 	"""The rules that apply to this employee today, and whether they come from the employee's own exception."""
 	require_hr()
 	from alphax_hr.api import attendance_policy
@@ -133,7 +135,7 @@ def exception(employee):
 
 
 @frappe.whitelist(methods=["POST"])
-def save_exception(employee, data, _check=True):
+def save_exception(employee: str, data: str | dict | list, _check: bool = True):
 	"""Create or update the employee's own policy. The first time, it starts from the rules that applied before."""
 	if _check:
 		require_hr_manager()
@@ -162,7 +164,7 @@ def save_exception(employee, data, _check=True):
 
 
 @frappe.whitelist(methods=["POST"])
-def remove_exception(employee):
+def remove_exception(employee: str):
 	require_hr_manager()
 	name = _policy_name(employee)
 	if name:

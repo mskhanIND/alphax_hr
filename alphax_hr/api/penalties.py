@@ -137,7 +137,7 @@ def _out(doc):
 
 # ------------------------------------------------------------------ HR
 @frappe.whitelist()
-def violation_types(include_disabled=0):
+def violation_types(include_disabled: int | str = 0):
 	require_hr()
 	filters = {} if cint(include_disabled) else {"enabled": 1}
 	rows = frappe.get_all("AlphaX Violation Type", filters=filters, fields=["*"], order_by="category asc, violation_name asc")
@@ -147,7 +147,7 @@ def violation_types(include_disabled=0):
 
 
 @frappe.whitelist(methods=["POST"])
-def save_violation_type(name, data):
+def save_violation_type(name: str, data: str | dict | list):
 	from alphax_hr.api._common import require_hr_manager
 
 	require_hr_manager()
@@ -171,7 +171,7 @@ def save_violation_type(name, data):
 
 
 @frappe.whitelist()
-def preview(employee, violation_type, violation_date, payroll_date=None):
+def preview(employee: str, violation_type: str, violation_date: str, payroll_date: str | None = None):
 	require_hr()
 	doc = frappe.new_doc("AlphaX Penalty")
 	doc.update({"employee": employee, "violation_type": violation_type, "violation_date": violation_date, "payroll_date": payroll_date})
@@ -179,7 +179,7 @@ def preview(employee, violation_type, violation_date, payroll_date=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def create(employee, violation_type, violation_date, description, discovered_on=None, payroll_date=None, issue=0, source_ref=None):
+def create(employee: str, violation_type: str, violation_date: str, description: str, discovered_on: str | None = None, payroll_date: str | None = None, issue: int | str = 0, source_ref: str | None = None):
 	require_hr()
 	if getdate(violation_date) > getdate(nowdate()):
 		frappe.throw(_("The violation date cannot be in the future."))
@@ -196,7 +196,7 @@ def create(employee, violation_type, violation_date, description, discovered_on=
 
 
 @frappe.whitelist(methods=["POST"])
-def issue_penalty(name):
+def issue_penalty(name: str):
 	require_hr()
 	doc = frappe.get_doc("AlphaX Penalty", name)
 	if doc.status != "Draft":
@@ -231,7 +231,7 @@ def _notify(doc):
 
 
 @frappe.whitelist(methods=["POST"])
-def cancel_penalty(name, reason):
+def cancel_penalty(name: str, reason: str):
 	require_hr()
 	if not (reason or "").strip():
 		frappe.throw(_("Please give a reason for cancelling."))
@@ -249,7 +249,7 @@ def cancel_penalty(name, reason):
 
 
 @frappe.whitelist()
-def penalties(employee=None, status=None, month=None, violation_type=None, limit=500):
+def penalties(employee: str | None = None, status: str | None = None, month: str | None = None, violation_type: str | None = None, limit: int | str = 500):
 	require_hr()
 	filters = {}
 	if employee:
@@ -266,7 +266,7 @@ def penalties(employee=None, status=None, month=None, violation_type=None, limit
 
 
 @frappe.whitelist()
-def suggestions(month=None, department=None):
+def suggestions(month: str | None = None, department: str | None = None):
 	"""Attendance issues of the month that match a violation type and have no penalty yet."""
 	require_hr()
 	from alphax_hr.api.attendance import month_data
@@ -317,7 +317,7 @@ def mine():
 
 
 @frappe.whitelist(methods=["POST"])
-def respond(name, action, reply=None):
+def respond(name: str, action: str, reply: str | None = None):
 	"""Employee acknowledges a penalty, or objects (with a reply) within 15 days."""
 	login_required()
 	doc = frappe.get_doc("AlphaX Penalty", name)

@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import {
-  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History, Network, CalendarCheck, Activity, ChevronDown, Inbox, Gavel, ShieldAlert, Receipt, Star, ArrowRightLeft, LayoutGrid, Folder, Download, Megaphone, MapPin, LocateFixed, LifeBuoy, BookOpen, BellRing, Hourglass, HandCoins, BadgePercent } from 'lucide-react'
+  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History, Network, CalendarCheck, Activity, ChevronDown, Inbox, Gavel, ShieldAlert, Receipt, Star, ArrowRightLeft, LayoutGrid, Folder, Download, Megaphone, MapPin, LocateFixed, LifeBuoy, BookOpen, BellRing, Hourglass, HandCoins, BadgePercent, BookOpenCheck } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { NavLink, Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -98,6 +98,7 @@ export function useNav(): { group: string; items: NavItem[] }[] {
         { to: '/payroll', label: t('Payroll control centre'), icon: <Landmark className="size-5" /> },
         { to: '/payroll/loans', label: t('Loans & advances'), icon: <HandCoins className="size-5" /> },
         { to: '/payroll/adjustments', label: t('Bonuses & deductions'), icon: <BadgePercent className="size-5" /> },
+        { to: '/payroll/accruals', label: t('Accruals'), icon: <BookOpenCheck className="size-5" /> },
         { to: '/payroll/settlements', label: t('Final settlements'), icon: <Receipt className="size-5" /> },
         { to: '/payroll/gosi', label: t('GOSI Register'), icon: <FileText className="size-5" /> },
         { to: '/payroll/eosb', label: t('End of Service'), icon: <Scale className="size-5" /> },
@@ -115,7 +116,10 @@ export function useNav(): { group: string; items: NavItem[] }[] {
       ],
     })
   }
+  const hidden = s.hidden_pages ?? []
   return groups
+    .map((g) => ({ ...g, items: g.items.filter((i) => !hidden.includes(i.to.split('?')[0])) }))
+    .filter((g) => g.items.length)
 }
 
 const NAV_KEY = 'alphax-nav-collapsed'
@@ -202,7 +206,7 @@ function TabBar() {
     ...(s.persona.approver || s.persona.hr
       ? [{ to: '/approvals', label: t('Approvals'), icon: <BadgeCheck className="size-5" />, badge: (inbox.data as any)?.total }]
       : s.persona.employee ? [{ to: '/me/profile', label: t('Profile'), icon: <User className="size-5" /> }] : []),
-  ]
+  ].filter((tab) => !(s.hidden_pages ?? []).includes(tab.to))
   if (tabs.length < 3) return null
   return (
     <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur print:hidden lg:hidden" aria-label={t('Main')}>
@@ -252,6 +256,7 @@ export function Layout({ children }: { children: ReactNode }) {
           <div className="flex-1" />
           <InstallButton />
           <NotificationBell />
+          {s.desk && <a href="/app" className="hidden rounded-lg border border-line px-3 py-1.5 text-sm font-medium hover:bg-surface sm:inline-block" title={t('Open the desk')}>{t('Desk')}</a>}
           <button
             onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
             className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium hover:bg-surface"

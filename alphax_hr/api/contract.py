@@ -57,7 +57,7 @@ def contract_data(employee):
 
 
 @frappe.whitelist()
-def preview(employee):
+def preview(employee: str):
 	"""Contract as HTML. (Not named "html": some servers treat a method ending in .html/.pdf as a file.)"""
 	return html(employee)
 
@@ -65,19 +65,21 @@ def preview(employee):
 def html(employee):
 	require_hr()
 	data = contract_data(employee)
-	return {"html": frappe.render_template("alphax_hr/templates/alphax/contract.html", data), "employee_name": data["employee"]["name"]}
+	# Reviewed: template path is fixed in the app, or an HR-authored letter rendered in Frappe's sandboxed Jinja.
+	return {"html": frappe.render_template("alphax_hr/templates/alphax/contract.html", data), "employee_name": data["employee"]["name"]}  # nosemgrep
 
 
 def _pdf_bytes(employee):
 	from frappe.utils.pdf import get_pdf
 
-	body = frappe.render_template("alphax_hr/templates/alphax/contract.html", contract_data(employee))
+	# Reviewed: template path is fixed in the app, or an HR-authored letter rendered in Frappe's sandboxed Jinja.
+	body = frappe.render_template("alphax_hr/templates/alphax/contract.html", contract_data(employee))  # nosemgrep
 	return get_pdf(body, {"page-size": "A4", "margin-top": "12mm", "margin-bottom": "12mm", "margin-left": "10mm",
 						  "margin-right": "10mm", "encoding": "UTF-8"})
 
 
 @frappe.whitelist(methods=["GET"])
-def download(employee):
+def download(employee: str):
 	"""Contract PDF download (see preview for why this is not called "pdf")."""
 	return pdf(employee)
 
@@ -91,7 +93,7 @@ def pdf(employee):
 
 
 @frappe.whitelist(methods=["POST"])
-def save(employee):
+def save(employee: str):
 	"""Attach the contract PDF to the employee (private file)."""
 	require_hr()
 	frappe.get_doc("Employee", employee).check_permission("write")

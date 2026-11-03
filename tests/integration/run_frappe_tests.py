@@ -878,7 +878,6 @@ def run(site):
 
         def employee_v2_rules():
             import random
-            from frappe.utils import add_months
             frappe.set_user(f["hr"])
             uid = lambda p: p + "".join(random.choice("0123456789") for _ in range(9))
             base = {"first_name": "Rules", "last_name": "Check", "gender": "Male", "date_of_birth": "1990-05-05",
@@ -1615,7 +1614,7 @@ def run(site):
             assert a["status"] == "Pending Manager"
             assert frappe.parse_json(frappe.db.get_value("AlphaX Request", a["name"], "details"))["time"] == "09:30"
             expect_error(lambda: rq.create("Late Arrival Permission", {"date": day, "time": "10:00"}), frappe.ValidationError)  # same day
-            b = rq.create("Early Exit Permission", {"date": day, "time": "15:00"})
+            rq.create("Early Exit Permission", {"date": day, "time": "15:00"})
             expect_error(lambda: rq.create("Early Exit Permission", {"date": add_days(day, 1), "time": "15:00"}), frappe.ValidationError)  # limit 2
             from alphax_hr.api import ess
             assert any(r["type"] == "Permission" for r in ess.my_requests())
@@ -2082,6 +2081,9 @@ def run(site):
                     pe = frappe.get_doc("Payroll Entry", p["payroll_entry"])
                     assert [r.employee for r in pe.employees] == [f["e_emp"]]
                     assert pc.slips(COMPANY, month, run=bulk["name"])["rows"] == []
+                    pc.salary_file(COMPANY, month, run=single["name"], submitted_only=0)  # bank / WPS file of this run
+                    assert frappe.response["filecontent"][:2] == b"PK" and frappe.response["filename"].endswith(".xlsx")
+                    frappe.response.pop("filecontent", None); frappe.response.pop("type", None)
                     expect_error(lambda: pc.delete_run(single["name"]), frappe.ValidationError)
         check("payroll by group: runs per department / employees (single or bulk), no employee in two runs, single-salary processing", payroll_by_group)
 
@@ -2438,6 +2440,94 @@ def run(site):
             assert not bulk.remove_exception(f["e_emp"])["own"]
             bulk.remove_exception(f["e_emp2"])
         check("payroll components catalogue, Saudi banks from IBAN, salary history, bulk update and check-in exception", components_banks_bulk)
+
+        def portal_and_pages():
+            from alphax_hr import portal
+            from alphax_hr.www import alphax_login as login_page
+            frappe.set_user("Administrator")
+            conf = frappe.get_single("AlphaX HR Settings")
+            conf.enforce_portal, conf.desk_roles = 1, "System Manager\nAccounts Manager"
+            conf.save()
+            frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
+            try:
+                assert not portal.may_use_desk(f["emp"]) and not portal.may_use_desk(f["hr"]) and portal.may_use_desk("Administrator")
+                assert portal.landing_path(f["emp"]) == "/alphax"
+                assert frappe.db.get_single_value("System Settings", "default_app") == "alphax_hr"
+                class Req:  # minimal request for the after_request hook
+                    method = "GET"; path = "/app/employee"; args = {}
+                class Resp:
+                    status_code = 200; headers = {}
+                    def set_data(self, d): self.data = d
+                frappe.set_user(f["emp"])
+                r = Resp(); r.headers = {}
+                portal.after_request(r, Req())
+                assert r.status_code == 302 and r.headers["Location"] == "/alphax", r.headers
+                frappe.set_user("Guest")
+                Req.path = "/login"; r = Resp(); r.headers = {}
+                portal.after_request(r, Req())
+                assert r.headers.get("Location", "").startswith("/alphax-login")
+                ctx = login_page.get_context(frappe._dict())
+                assert ctx.title and ctx.brand["logo"]
+                # page access
+                frappe.set_user(f["hr"])
+                pages = portal.pages()["pages"]
+                rows = [dict(p, hidden=1) if p["page"] == "/me/loans" else (dict(p, roles=["HR Manager"]) if p["page"] == "/payroll/accruals" else p)
+                        for p in pages]
+                portal.save_pages(rows)
+                frappe.set_user(f["emp"])
+                hidden = portal.hidden_pages()
+                assert "/me/loans" in hidden and "/payroll/accruals" in hidden, hidden
+                frappe.set_user(f["hr"])
+                assert "/payroll/accruals" not in portal.hidden_pages()
+                portal.save_pages([])
+                frappe.set_user(f["emp"])
+                expect_error(lambda: login_page.get_context(frappe._dict()), frappe.Redirect)  # signed in: go to the app
+            finally:
+                frappe.set_user("Administrator")
+                conf = frappe.get_single("AlphaX HR Settings")
+                conf.enforce_portal = 0
+                conf.set("page_access", [])
+                conf.save()
+                frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
+        check("HR portal: desk kept for desk roles only, AlphaX sign-in page, pages hidden or limited by role", portal_and_pages)
+
+        def accruals_flow():
+            from alphax_hr.api import accruals
+            frappe.set_user("Administrator")
+            abbr = frappe.get_cached_value("Company", COMPANY, "abbr")
+            def acc(name, root, kind=""):
+                full = f"{name} - {abbr}"
+                if not frappe.db.exists("Account", full):
+                    parent = frappe.db.get_value("Account", {"company": COMPANY, "is_group": 1, "root_type": root}, "name", order_by="lft asc")
+                    frappe.get_doc({"doctype": "Account", "account_name": name, "company": COMPANY, "parent_account": parent,
+                                    "account_type": kind, "is_group": 0}).insert(ignore_permissions=True)
+                return full
+            frappe.db.set_single_value("AlphaX HR Settings", {
+                "eos_expense_account": acc("AXT EOS Expense", "Expense"), "eos_provision_account": acc("AXT EOS Provision", "Liability"),
+                "leave_expense_account": acc("AXT Leave Expense", "Expense"), "leave_provision_account": acc("AXT Leave Provision", "Liability")})
+            frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
+            m1 = str(frappe.utils.get_first_day(add_days(frappe.utils.get_first_day(nowdate()), -40)))
+            m2 = str(frappe.utils.get_first_day(add_days(get_last_day(m1), 1)))
+            for r in frappe.get_all("AlphaX Accrual Run", filters={"company": COMPANY, "status": "Posted"}, pluck="name", order_by="month desc"):
+                frappe.set_user(f["hr"]); accruals.cancel(r); frappe.set_user("Administrator")
+            frappe.set_user(f["emp"])
+            expect_error(lambda: accruals.post(COMPANY, m1), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            pv = accruals.preview(COMPANY, m1)
+            line = next(x for x in pv["lines"] if x["employee"] == f["e_emp"])
+            assert line["eos_obligation"] > 0 and line["eos_charge"] == line["eos_obligation"], line
+            first = accruals.post(COMPANY, m1)
+            assert first["journal_entry"] and frappe.db.get_value("Journal Entry", first["journal_entry"], "docstatus") == 1
+            expect_error(lambda: accruals.post(COMPANY, m1), frappe.ValidationError)  # already posted
+            nxt = accruals.preview(COMPANY, m2)
+            l2 = next(x for x in nxt["lines"] if x["employee"] == f["e_emp"])
+            assert l2["eos_previous"] == line["eos_obligation"] and abs(l2["eos_charge"] - (l2["eos_obligation"] - line["eos_obligation"])) < 0.02, l2
+            assert 0 < l2["eos_charge"] < line["eos_obligation"]  # one more month of service, not the whole award again
+            second = accruals.post(COMPANY, m2)
+            expect_error(lambda: accruals.cancel(first["name"]), frappe.ValidationError)  # later month first
+            accruals.cancel(second["name"]); accruals.cancel(first["name"])
+            assert frappe.db.get_value("Journal Entry", first["journal_entry"], "docstatus") == 2
+        check("accruals: end-of-service and leave provisions re-measured monthly, true-up journal entries, ordered cancel", accruals_flow)
 
         print("\n== /alphax page")
         def www_page():

@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 
 import frappe
-from frappe import _
+from frappe import N_, _
 from frappe.utils import add_days, add_months, cint, date_diff, getdate, nowdate
 
 from alphax_hr.saudi import identity
@@ -12,12 +12,12 @@ from alphax_hr.saudi import identity
 ID_FIELD = "alphax_iqama_number"
 
 MESSAGES = {
-    "id_not_digits": _("National ID / Iqama number must contain digits only."),
-    "id_wrong_length": _("National ID / Iqama number must be 10 digits."),
-    "id_bad_prefix": _("National ID / Iqama number must start with 1 (Saudi), 2 (Iqama) or 3/4 (border number)."),
-    "iban_bad_characters": _("IBAN may contain only letters and digits."),
-    "iban_wrong_length": _("IBAN has the wrong length (Saudi IBANs are 24 characters)."),
-    "iban_bad_checksum": _("IBAN check digits are wrong. Please re-check the number."),
+    "id_not_digits": N_("National ID / Iqama number must contain digits only."),
+    "id_wrong_length": N_("National ID / Iqama number must be 10 digits."),
+    "id_bad_prefix": N_("National ID / Iqama number must start with 1 (Saudi), 2 (Iqama) or 3/4 (border number)."),
+    "iban_bad_characters": N_("IBAN may contain only letters and digits."),
+    "iban_wrong_length": N_("IBAN has the wrong length (Saudi IBANs are 24 characters)."),
+    "iban_bad_checksum": N_("IBAN check digits are wrong. Please re-check the number."),
 }
 
 
@@ -113,7 +113,7 @@ def _validate_identity(doc):
 		return
 	kind, error = identity.classify_id(number)
 	if error:
-		frappe.throw(MESSAGES[error], title=_("Invalid ID number"))
+		frappe.throw(_(MESSAGES[error]), title=_("Invalid ID number"))
 	doc.set(ID_FIELD, number)
 	# The number decides nationality: 1 = Saudi national ID, 2/3/4 = non-Saudi.
 	doc.alphax_is_saudi = 1 if kind == identity.SAUDI else 0
@@ -127,7 +127,7 @@ def _validate_iban(doc, conf):
 		return
 	error = identity.iban_error(doc.iban)
 	if error:
-		frappe.throw(MESSAGES[error], title=_("Invalid IBAN"))
+		frappe.throw(_(MESSAGES[error]), title=_("Invalid IBAN"))
 	doc.iban = identity.normalise_iban(doc.iban)
 	if doc.meta.has_field("bank_name") and doc.iban.startswith("SA"):
 		from alphax_hr.api.banks import name_for_iban

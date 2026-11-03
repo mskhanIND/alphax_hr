@@ -57,7 +57,8 @@ def brand():
 			"favicon": icon or DEFAULT_LOGO, "custom": bool(conf.get("app_logo") or conf.get("app_icon"))}
 
 
-@frappe.whitelist(allow_guest=True)
+# Public: browsers fetch the web app manifest before sign-in; returns only the app name and icons.
+@frappe.whitelist(allow_guest=True)  # nosemgrep
 def manifest():
 	"""Web app manifest with the company's own name and icon."""
 	b = brand()

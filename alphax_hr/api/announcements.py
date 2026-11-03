@@ -45,7 +45,7 @@ def all_announcements():
 
 
 @frappe.whitelist(methods=["POST"])
-def save(data, name=None):
+def save(data: str | dict | list, name: str | None = None):
 	require_hr()
 	d = parse_json(data, {}) or {}
 	doc = frappe.get_doc("AlphaX Announcement", name) if name else frappe.new_doc("AlphaX Announcement")
@@ -71,7 +71,7 @@ def save(data, name=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def delete(name):
+def delete(name: str):
 	require_hr()
 	frappe.delete_doc("AlphaX Announcement", name)
 	return {"ok": True}

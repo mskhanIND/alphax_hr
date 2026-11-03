@@ -245,6 +245,12 @@ export const api = {
   bulkOptions: () => call<any>(A + 'bulk.options'),
   bulkPreview: (field: string, args: Record<string, unknown>) => call<any>(A + 'bulk.preview', { field, ...args }),
   bulkApply: (field: string, value: unknown, args: Record<string, unknown>) => call<any>(A + 'bulk.apply', { field, value, ...args }),
+  accrualRuns: (company?: string) => call<any>(A + 'accruals.runs', company ? { company } : {}),
+  accrualPreview: (company: string, month: string) => call<any>(A + 'accruals.preview', { company, month }),
+  accrualPost: (company: string, month: string) => call<any>(A + 'accruals.post', { company, month }),
+  accrualCancel: (name: string) => call<any>(A + 'accruals.cancel', { name }),
+  pageAccess: () => call<any>('alphax_hr.portal.pages'),
+  savePageAccess: (rows: any[]) => call<any>('alphax_hr.portal.save_pages', { rows }),
   banks: () => call<any[]>(A + 'banks.banks'),
   componentCatalogue: () => call<any>(A + 'components.catalogue'),
   createStandardComponents: () => call<any>(A + 'components.create_missing'),
@@ -381,5 +387,5 @@ export async function signOut() {
     await fetch('/api/method/logout', { method: 'POST', credentials: 'same-origin', headers: { 'X-Frappe-CSRF-Token': boot.csrf_token } })
   } catch { /* signed out anyway below */ }
   try { localStorage.removeItem('alphax-query-cache') } catch { /* ignore */ }
-  window.location.href = '/login?redirect-to=/alphax'
+  window.location.href = '/alphax-login'
 }

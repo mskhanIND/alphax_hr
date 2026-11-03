@@ -7,7 +7,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint, get_datetime, getdate, nowdate
 
-from alphax_hr.api._common import clamp_page, parse_json, require_hr
+from alphax_hr.api._common import clamp_page, parse_json, require_hr, require_hr_manager
 from alphax_hr.saudi import documents
 
 LIST_FIELDS = ["name", "employee_name", "image", "department", "designation", "branch", "company",
@@ -262,7 +262,7 @@ def _required_to_check(meta):
 
 
 @frappe.whitelist()
-def employees(search=None, status="Active", department=None, company=None, saudi=None, start=0, page_length=25):
+def employees(search: str | None = None, status: str = "Active", department: str | None = None, company: str | None = None, saudi: int | str | None = None, start: int | str = 0, page_length: int | str = 25):
 	require_hr()
 	meta = frappe.get_meta("Employee")
 	start, page_length = clamp_page(start, page_length)
@@ -283,7 +283,7 @@ def employees(search=None, status="Active", department=None, company=None, saudi
 
 
 @frappe.whitelist()
-def export_employees(search=None, status="Active", department=None, company=None, saudi=None, file_format="xlsx"):
+def export_employees(search: str | None = None, status: str = "Active", department: str | None = None, company: str | None = None, saudi: int | str | None = None, file_format: str = "xlsx"):
 	"""Download the filtered directory (permission-aware) as Excel or CSV."""
 	require_hr()
 	meta = frappe.get_meta("Employee")
@@ -319,7 +319,7 @@ def _cell(value):
 
 
 @frappe.whitelist()
-def org_chart(company=None, department=None):
+def org_chart(company: str | None = None, department: str | None = None):
 	"""Active employees with their manager, for the organisation chart."""
 	require_hr()
 	filters = {"status": "Active"}
@@ -333,7 +333,7 @@ def org_chart(company=None, department=None):
 
 
 @frappe.whitelist()
-def employee(name):
+def employee(name: str):
 	require_hr()
 	doc = frappe.get_doc("Employee", name)
 	doc.check_permission("read")
@@ -401,7 +401,7 @@ def _issues(doc):
 
 
 @frappe.whitelist()
-def update_employee(name, data, modified):
+def update_employee(name: str, data: str | dict | list, modified: str):
 	require_hr()
 	payload = parse_json(data, {})
 	doc = frappe.get_doc("Employee", name)
@@ -495,7 +495,7 @@ def _missing_specs(doc):
 
 
 @frappe.whitelist()
-def check_new_employee(data):
+def check_new_employee(data: str | dict | list):
 	"""Dry run before Create: which mandatory fields are still empty (nothing is saved)."""
 	require_hr()
 	doc = _draft_employee(parse_json(data, {}))
@@ -503,7 +503,7 @@ def check_new_employee(data):
 
 
 @frappe.whitelist()
-def create_employee(data):
+def create_employee(data: str | dict | list):
 	require_hr()
 	payload = parse_json(data, {})
 	doc = _draft_employee(payload)
@@ -521,7 +521,7 @@ def create_employee(data):
 
 
 @frappe.whitelist()
-def link_field(site_field, same_as=None):
+def link_field(site_field: str, same_as: str | None = None):
 	"""Employee fields tab: mark a site field as the same data as an AlphaX field (or remove the link)."""
 	from alphax_hr.api._common import require_hr_manager
 
@@ -572,9 +572,18 @@ def _claim_attachments(doc, payload):
 
 
 @frappe.whitelist()
-def lookup(doctype, txt="", filters=None):
+def lookup(doctype: str, txt: str = "", filters: str | dict | list | None = None):
 	"""Typeahead for Link fields, limited to HR-relevant doctypes and permissions."""
 	require_hr()
+	if doctype == "Account":
+		# Accrual / payroll accounts in AlphaX settings: HR managers pick ledger accounts without Accounts roles.
+		require_hr_manager()
+		txt = str(txt or "")[:80]
+		rows = frappe.get_all("Account", filters={"is_group": 0, "disabled": 0},
+							  or_filters={"name": ["like", f"%{txt}%"], "account_name": ["like", f"%{txt}%"]},
+							  fields=["name", "account_type", "root_type", "company"], order_by="name", limit=20)
+		return [{"value": r.name, "description": " · ".join(x for x in (r.root_type, r.account_type, r.company) if x)}
+				for r in rows]
 	employee_links = {df.options for df in frappe.get_meta("Employee").fields if df.fieldtype == "Link" and df.options}
 	if doctype not in LOOKUP_DOCTYPES | employee_links:
 		frappe.throw(_("Lookup not allowed."), frappe.PermissionError)
@@ -597,7 +606,7 @@ def org_summary():
 
 
 @frappe.whitelist()
-def set_photo(name, file_url):
+def set_photo(name: str, file_url: str):
 	"""Use an uploaded File (attached to this employee) as the profile picture."""
 	require_hr()
 	doc = frappe.get_doc("Employee", name)
@@ -611,7 +620,7 @@ def set_photo(name, file_url):
 
 
 @frappe.whitelist()
-def export_org_chart(department=None, company=None, file_format="xlsx"):
+def export_org_chart(department: str | None = None, company: str | None = None, file_format: str = "xlsx"):
 	"""Reporting lines as a table: level, manager, team size; people without a manager are flagged."""
 	require_hr()
 	rows = org_chart(company, department)["rows"]

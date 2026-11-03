@@ -8,7 +8,7 @@ the employee's advance account. AlphaX keeps the schedule and enforces the Saudi
 from __future__ import annotations
 
 import frappe
-from frappe import _
+from frappe import N_, _
 from frappe.utils import add_days, cint, flt, get_first_day, get_last_day, getdate, nowdate
 
 from alphax_hr.api._common import current_employee, login_required, parse_json, require_hr, require_hr_manager, settings
@@ -93,17 +93,17 @@ def month_items(employee, month, skip_loan=None, skip_adjustment=None):
 
 
 PROBLEM_TEXT = {
-	"loan_over_10": _("Loan installments of {amount:,.2f} are above 10% of the wage ({cap:,.2f}) without the employee's written consent (Art. 92)."),
-	"damage_over_5_days": _("Damage deductions of {amount:,.2f} are above five days' wage ({cap:,.2f}) in one month (Art. 91)."),
-	"fines_over_5_days": _("Penalties of {amount:,.2f} are above five days' wage ({cap:,.2f}) in one month."),
-	"court_over_quarter": _("Court-ordered deductions of {amount:,.2f} are above a quarter of the wage ({cap:,.2f}) (Art. 92)."),
-	"over_half_wage": _("Total deductions of {amount:,.2f} are above half the wage ({cap:,.2f}) (Art. 93)."),
-	"no_wage": _("The employee has no salary to deduct from."),
+	"loan_over_10": N_("Loan installments of {amount:,.2f} are above 10% of the wage ({cap:,.2f}) without the employee's written consent (Art. 92)."),
+	"damage_over_5_days": N_("Damage deductions of {amount:,.2f} are above five days' wage ({cap:,.2f}) in one month (Art. 91)."),
+	"fines_over_5_days": N_("Penalties of {amount:,.2f} are above five days' wage ({cap:,.2f}) in one month."),
+	"court_over_quarter": N_("Court-ordered deductions of {amount:,.2f} are above a quarter of the wage ({cap:,.2f}) (Art. 92)."),
+	"over_half_wage": N_("Total deductions of {amount:,.2f} are above half the wage ({cap:,.2f}) (Art. 93)."),
+	"no_wage": N_("The employee has no salary to deduct from."),
 }
 
 
 def describe(problems):
-	return [PROBLEM_TEXT[c].format(**p) for c, p in problems]
+	return [_(PROBLEM_TEXT[c]).format(**p) for c, p in problems]
 
 
 def check(employee, month, extra, consent=False, skip_loan=None, skip_adjustment=None, wage=None):
@@ -151,7 +151,7 @@ def _validate_terms(employee, loan_type, amount, months, first_month, consent, s
 
 
 @frappe.whitelist()
-def preview(employee=None, loan_type="Loan", amount=0, installments=1, first_month=None, consent=0):
+def preview(employee: str | None = None, loan_type: str = "Loan", amount: float | str = 0, installments: int | str = 1, first_month: str | None = None, consent: int | str = 0):
 	"""Live check while HR types: problems come back in the answer instead of as errors."""
 	require_hr()
 	if not employee or not frappe.db.exists("Employee", employee):
@@ -184,7 +184,7 @@ def _create(employee, loan_type, amount, installments, first_month, purpose=None
 
 
 @frappe.whitelist(methods=["POST"])
-def create(data):
+def create(data: str | dict | list):
 	"""HR records an approved loan or salary advance (requests from employees arrive here automatically)."""
 	require_hr()
 	d = parse_json(data) or {}
@@ -257,7 +257,7 @@ def _save(doc):
 
 
 @frappe.whitelist()
-def loans(status=None, employee=None, loan_type=None):
+def loans(status: str | None = None, employee: str | None = None, loan_type: str | None = None):
 	require_hr()
 	filters = {}
 	if status:
@@ -280,7 +280,7 @@ def loans(status=None, employee=None, loan_type=None):
 
 
 @frappe.whitelist()
-def detail(name):
+def detail(name: str):
 	user = login_required()
 	doc = frappe.get_doc(DT, name)
 	from alphax_hr.api._common import is_hr
@@ -335,7 +335,7 @@ def _journal(company, posting_date, paid_by, lines, remark, ref):
 
 
 @frappe.whitelist(methods=["POST"])
-def disburse(name, paid_by, account=None, posting_date=None):
+def disburse(name: str, paid_by: str, account: str | None = None, posting_date: str | None = None):
 	"""Pay the loan / advance to the employee by cash or bank transfer (HRMS Employee Advance + Journal Entry)."""
 	require_hr_manager()
 	if paid_by not in ("Cash", "Bank transfer"):
@@ -396,7 +396,7 @@ def _post_row(doc, row):
 
 
 @frappe.whitelist(methods=["POST"])
-def post_due(month=None, company=None):
+def post_due(month: str | None = None, company: str | None = None):
 	"""Put this month's installments into payroll (also run daily and when payroll is processed)."""
 	if frappe.session.user != "Administrator":
 		require_hr()
@@ -422,7 +422,6 @@ def post_due(month=None, company=None):
 
 def daily_post_due():
 	post_due(nowdate())
-	frappe.db.commit()
 
 
 def _release(doc, row):
@@ -440,7 +439,7 @@ def _release(doc, row):
 
 
 @frappe.whitelist(methods=["POST"])
-def postpone(name, row=None, months=1, reason=None):
+def postpone(name: str, row: str | dict | list | None = None, months: int | str = 1, reason: str | None = None):
 	"""Move the next (or a chosen) open installment to the end of the schedule, ``months`` later."""
 	require_hr()
 	return _postpone(name, row, months, reason)
@@ -472,7 +471,7 @@ def _postpone(name, row=None, months=1, reason=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def settle(name, mode, account=None, month=None, consent=0, posting_date=None):
+def settle(name: str, mode: str, account: str | None = None, month: str | None = None, consent: int | str = 0, posting_date: str | None = None):
 	"""One-time settlement of everything still owed: in one payroll, or paid back by cash / bank transfer."""
 	require_hr_manager()
 	doc = frappe.get_doc(DT, name)
@@ -521,7 +520,7 @@ def settle(name, mode, account=None, month=None, consent=0, posting_date=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def cancel(name, reason=None):
+def cancel(name: str, reason: str | None = None):
 	require_hr_manager()
 	doc = frappe.get_doc(DT, name)
 	if doc.status != "Approved":

@@ -4,7 +4,7 @@ import { AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge, Button, Card, ErrorBox, Modal, PageHeader, Select, Spinner, Stat, Textarea } from '../components/ui'
-import { api } from '../lib/api'
+import { api, downloadFile, downloadUrl } from '../lib/api'
 import { fmtDate, fmtMoney, fmtMonth, fmtNumber, monthStart, shiftMonth, todayISO } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 import { recordPath } from '../lib/links'
@@ -74,6 +74,7 @@ export default function Payroll() {
   }
   const m = useMutation({ mutationFn: () => act!.step === 'submit_slips' ? api.payrollSubmitSlips(company, month, run || undefined)
     : api.payrollAdvance(company, month, act!.step, note || undefined, override ? 1 : 0, run || undefined), onSuccess: done })
+  const file = useMutation({ mutationFn: () => downloadFile(downloadUrl('payroll_control.salary_file', { company, month, run: run || undefined }), `salary-file-${month.slice(0, 7)}.xlsx`) })
   const ot = useMutation({ mutationFn: () => api.payrollAddOvertime(company, month, run || undefined), onSuccess: () => qc.invalidateQueries({ queryKey: ['payroll-period'] }) })
   const p = q.data
   const cl = p?.checklist
@@ -129,6 +130,9 @@ export default function Payroll() {
               {p.status === 'Processed' && !p.slips.submitted && p.can_approve && (
                 <Button variant="secondary" onClick={() => setAct({ step: 'submit_slips', label: 'Submit salary slips' })}>{t('Submit salary slips')}</Button>
               )}
+              {(p.slips.submitted_count ?? 0) > 0 && (
+                <Button variant="secondary" loading={file.isPending} onClick={() => file.mutate()}>{t('Bank salary file (WPS)')}</Button>
+              )}
               {['Prepared', 'Reviewed', 'Approved'].includes(p.status) && p.can_approve && (
                 <Button variant="secondary" onClick={() => setAct({ step: 'reopen', label: 'Reopen' })}>{t('Reopen')}</Button>
               )}
@@ -147,6 +151,7 @@ export default function Payroll() {
             <Stat label={t('Loan repayments')} value={fmtMoney(p.slips.loans, lang)} />
             <Stat label={t('Penalties')} value={fmtMoney(p.slips.penalties, lang)} tone="red" />
           </div>
+          {file.error && <ErrorBox error={file.error} />}
           {p.payroll_entry_status === 'Queued' && <p className="rounded-xl bg-blue-50 p-3 text-sm text-blue-900">{t('Salary slips are being created in the background. Refresh in a minute.')}</p>}
           {p.payroll_entry && <PayrollSlips company={company} month={month} run={run || undefined} closed={p.status === 'Closed'} canManage={p.can_approve} />}
           <div className="grid gap-5 lg:grid-cols-3">

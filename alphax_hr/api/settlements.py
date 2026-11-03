@@ -93,8 +93,8 @@ def _out(doc):
 
 
 @frappe.whitelist(methods=["POST"])
-def prepare(employee, exit_date, reason, mode="With payroll", monthly_wage=None, leave_days=None, unpaid_days=0,
-			other_earnings=0, other_deductions=0, advances=None, notes=None, name=None):
+def prepare(employee: str, exit_date: str, reason: str, mode: str = "With payroll", monthly_wage: float | str | None = None, leave_days: float | str | None = None, unpaid_days: int | str = 0,
+			other_earnings: float | str = 0, other_deductions: float | str = 0, advances: str | dict | list | None = None, notes: str | None = None, name: str | None = None):
 	"""Create or update a draft settlement and calculate it."""
 	require_hr()
 	frappe.get_doc("Employee", employee).check_permission("read")
@@ -122,13 +122,13 @@ def prepare(employee, exit_date, reason, mode="With payroll", monthly_wage=None,
 
 
 @frappe.whitelist()
-def settlement(name):
+def settlement(name: str):
 	require_hr()
 	return _out(frappe.get_doc("AlphaX Final Settlement", name))
 
 
 @frappe.whitelist()
-def settlements(status=None, limit=200):
+def settlements(status: str | None = None, limit: int | str = 200):
 	require_hr()
 	filters = {"status": status} if status else {}
 	return [_out(r) for r in frappe.get_list("AlphaX Final Settlement", filters=filters, fields=list(FIELDS),
@@ -146,7 +146,7 @@ def _additional(doc, key, amount):
 
 
 @frappe.whitelist(methods=["POST"])
-def approve(name):
+def approve(name: str):
 	require_hr_manager()
 	doc = frappe.get_doc("AlphaX Final Settlement", name)
 	if doc.status != "Draft":
@@ -173,7 +173,7 @@ def approve(name):
 
 
 @frappe.whitelist(methods=["POST"])
-def mark_paid(name, paid_on=None):
+def mark_paid(name: str, paid_on: str | None = None):
 	require_hr_manager()
 	doc = frappe.get_doc("AlphaX Final Settlement", name)
 	if doc.status != "Approved":
@@ -186,7 +186,7 @@ def mark_paid(name, paid_on=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def cancel(name, reason):
+def cancel(name: str, reason: str):
 	require_hr_manager()
 	if not (reason or "").strip():
 		frappe.throw(_("Please give a reason for cancelling."))
@@ -205,7 +205,7 @@ def cancel(name, reason):
 
 
 @frappe.whitelist(methods=["GET"])
-def statement(name):
+def statement(name: str):
 	"""Bilingual settlement statement as PDF."""
 	require_hr()
 	from frappe.utils.pdf import get_pdf
@@ -213,7 +213,8 @@ def statement(name):
 	doc = frappe.get_doc("AlphaX Final Settlement", name)
 	company_ar = frappe.db.get_value("Company", doc.company, "company_name_in_arabic") if frappe.get_meta("Company").has_field(
 		"company_name_in_arabic") else ""
-	html = frappe.render_template("alphax_hr/templates/alphax/settlement.html",
+	# Reviewed: template path is fixed in the app, or an HR-authored letter rendered in Frappe's sandboxed Jinja.
+	html = frappe.render_template("alphax_hr/templates/alphax/settlement.html",  # nosemgrep
 								  {"d": frappe._dict(_out(doc)), "company": doc.company, "company_ar": company_ar or "",
 								   "fmt": lambda v: f"{flt(v):,.2f}", "today": frappe.utils.formatdate(nowdate())})
 	frappe.response.filename = f"{doc.name}.pdf"

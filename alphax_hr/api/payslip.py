@@ -34,10 +34,13 @@ def _data_uri(url):
 		full = frappe.get_site_path("public", "files", path[len("/files/"):])
 	else:
 		return None
-	if not os.path.exists(full):
+	base = os.path.realpath(frappe.get_site_path("private" if path.startswith("/private/") else "public", "files"))
+	full = os.path.realpath(full)
+	if not full.startswith(base + os.sep) or not os.path.exists(full):
 		return None
 	mime = mimetypes.guess_type(full)[0] or "image/png"
-	with open(full, "rb") as f:
+	# Reviewed: path is fixed, or resolved and checked to stay inside the site's files folder.
+	with open(full, "rb") as f:  # nosemgrep
 		return f"data:{mime};base64,{base64.b64encode(f.read()).decode()}"
 
 
@@ -101,7 +104,8 @@ def context(doc):
 
 def alphax_payslip(doc):
 	"""Jinja method for the ERPNext print format: {{ alphax_payslip(doc) }}."""
-	return frappe.render_template("alphax_hr/templates/alphax/payslip.html", context(doc))
+	# Reviewed: template path is fixed in the app, or an HR-authored letter rendered in Frappe's sandboxed Jinja.
+	return frappe.render_template("alphax_hr/templates/alphax/payslip.html", context(doc))  # nosemgrep
 
 
 def _get(name):
@@ -116,12 +120,12 @@ def _get(name):
 
 
 @frappe.whitelist()
-def preview(name):
+def preview(name: str):
 	return {"html": alphax_payslip(_get(name))}
 
 
 @frappe.whitelist(methods=["GET"])
-def download(name):
+def download(name: str):
 	from frappe.utils.pdf import get_pdf
 
 	doc = _get(name)
@@ -133,7 +137,7 @@ def download(name):
 
 
 @frappe.whitelist(methods=["POST"])
-def install_print_format(make_default=1):
+def install_print_format(make_default: int | str = 1):
 	"""Create (or refresh) the ERPNext print format so desk printing and e-mailed slips use the same layout."""
 	from alphax_hr.api._common import require_hr_manager
 

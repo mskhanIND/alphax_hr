@@ -7,7 +7,7 @@ reads site data, applies them and writes back through normal Frappe APIs.
 from __future__ import annotations
 
 import frappe
-from frappe import _
+from frappe import N_, _
 from frappe.utils import add_days, cint, flt, getdate, nowdate
 
 from alphax_hr.saudi import leave as annual
@@ -15,15 +15,15 @@ from alphax_hr.saudi import leave_counting as lc
 from alphax_hr.saudi import leave_rules as lr
 
 ERROR_TEXT = {
-	"leave_gender": _("{leave_type} is only for {gender} employees."),
-	"leave_max_days": _("{leave_type} cannot exceed {max:g} days per request."),
-	"leave_min_service": _("{leave_type} requires at least {days} days of service."),
-	"leave_lifetime_limit": _("{leave_type} can be taken {times} time(s) during employment, and it has already been used."),
-	"leave_relation_required": _("Please choose the relation for {leave_type}."),
-	"leave_relation_not_allowed": _("{leave_type} applies to: {allowed}."),
-	"leave_event_date_required": _("Please enter the {label} for {leave_type}."),
-	"leave_too_early": _("{leave_type} can start at most {days} day(s) before the {label}."),
-	"leave_too_late": _("{leave_type} must end within {days} day(s) after the {label}."),
+	"leave_gender": N_("{leave_type} is only for {gender} employees."),
+	"leave_max_days": N_("{leave_type} cannot exceed {max:g} days per request."),
+	"leave_min_service": N_("{leave_type} requires at least {days} days of service."),
+	"leave_lifetime_limit": N_("{leave_type} can be taken {times} time(s) during employment, and it has already been used."),
+	"leave_relation_required": N_("Please choose the relation for {leave_type}."),
+	"leave_relation_not_allowed": N_("{leave_type} applies to: {allowed}."),
+	"leave_event_date_required": N_("Please enter the {label} for {leave_type}."),
+	"leave_too_early": N_("{leave_type} can start at most {days} day(s) before the {label}."),
+	"leave_too_late": N_("{leave_type} must end within {days} day(s) after the {label}."),
 }
 
 
@@ -93,7 +93,7 @@ def validate_leave_application(doc, method=None):
 		relation=doc.get("alphax_relation") or None, previous_uses=previous_uses)
 	errors = lr.check(rule, request)
 	if errors:
-		lines = [ERROR_TEXT[code].format(leave_type=doc.leave_type, **params) for code, params in errors]
+		lines = [_(ERROR_TEXT[code]).format(leave_type=doc.leave_type, **params) for code, params in errors]
 		frappe.throw("<br>".join(lines), title=_("Leave rules"))
 	if rule.kind == lr.SICK:
 		_set_sick_breakdown(doc, rules)
@@ -308,7 +308,6 @@ def daily_annual_allocation():
 	if not conf or not cint(conf.annual_auto_allocate) or not conf.annual_leave_type:
 		return
 	result = apply_annual_allocations()
-	frappe.db.commit()
 	if result["failed"]:
 		frappe.logger("alphax_hr").warning(f"Annual allocation failures: {result['failed']}")
 

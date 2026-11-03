@@ -42,7 +42,7 @@ def cycles():
 
 
 @frappe.whitelist()
-def appraisals(cycle=None, department=None):
+def appraisals(cycle: str | None = None, department: str | None = None):
 	require_hr()
 	filters = {"docstatus": ["<", 2]}
 	if cycle:
@@ -115,7 +115,7 @@ def setup():
 
 
 @frappe.whitelist(methods=["POST"])
-def save_template(data):
+def save_template(data: str | dict | list):
 	"""Create or update a template; goals (KRAs) and rating criteria are created when new."""
 	require_hr_manager()
 	_installed()
@@ -166,7 +166,7 @@ def _cycle_employees(data):
 
 
 @frappe.whitelist(methods=["POST"])
-def preview_cycle(data):
+def preview_cycle(data: str | dict | list):
 	require_hr()
 	_installed()
 	emps = _cycle_employees(parse_json(data) or {})
@@ -174,7 +174,7 @@ def preview_cycle(data):
 
 
 @frappe.whitelist(methods=["POST"])
-def start_cycle(data):
+def start_cycle(data: str | dict | list):
 	"""Create the cycle (manual rating) and one appraisal per employee."""
 	require_hr_manager()
 	_installed()
@@ -234,7 +234,7 @@ def _stage(a):
 
 
 @frappe.whitelist()
-def cycle_detail(name):
+def cycle_detail(name: str):
 	require_hr()
 	c = frappe.get_doc("Appraisal Cycle", name)
 	rows = frappe.get_all("Appraisal", filters={"appraisal_cycle": name, "docstatus": ["<", 2]},
@@ -265,7 +265,7 @@ def _role_on(a, user):
 
 
 @frappe.whitelist()
-def appraisal(name):
+def appraisal(name: str):
 	"""One appraisal with what this user can do on it."""
 	user = login_required()
 	a = frappe.get_doc("Appraisal", name)
@@ -307,7 +307,7 @@ def _stars(v):
 
 
 @frappe.whitelist(methods=["POST"])
-def save_self(name, ratings=None, reflections=None):
+def save_self(name: str, ratings: str | dict | list | None = None, reflections: str | dict | list | None = None):
 	user = login_required()
 	a = frappe.get_doc("Appraisal", name)
 	if "employee" not in _role_on(a, user) or a.docstatus != 0:
@@ -324,7 +324,7 @@ def save_self(name, ratings=None, reflections=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def save_review(name, goals=None, ratings=None, feedback=None):
+def save_review(name: str, goals: str | dict | list | None = None, ratings: str | dict | list | None = None, feedback: str | dict | list | None = None):
 	"""Reporting manager (or HR): score the goals 0-5 and rate the criteria; one feedback per reviewer (replaced on edit)."""
 	user = login_required()
 	a = frappe.get_doc("Appraisal", name)
@@ -366,7 +366,7 @@ def save_review(name, goals=None, ratings=None, feedback=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def finalise(name, remarks=None):
+def finalise(name: str, remarks: str | None = None):
 	require_hr()
 	a = frappe.get_doc("Appraisal", name)
 	if a.docstatus != 0:
@@ -388,7 +388,7 @@ def finalise(name, remarks=None):
 
 
 @frappe.whitelist(methods=["POST"])
-def finalise_reviewed(cycle):
+def finalise_reviewed(cycle: str):
 	"""Finalise every appraisal of the cycle that the manager has reviewed."""
 	require_hr()
 	done, failed = [], []
@@ -405,7 +405,7 @@ def finalise_reviewed(cycle):
 
 
 @frappe.whitelist(methods=["POST"])
-def complete_cycle(name):
+def complete_cycle(name: str):
 	require_hr_manager()
 	c = frappe.get_doc("Appraisal Cycle", name)
 	c.flags.ignore_permissions = True
@@ -449,7 +449,7 @@ def management():
 
 
 @frappe.whitelist(methods=["POST"])
-def set_management(user, enabled=1):
+def set_management(user: str, enabled: int | str = 1):
 	require_hr_manager()
 	if not frappe.db.exists("User", user) and frappe.db.exists("Employee", user):
 		user = frappe.db.get_value("Employee", user, "user_id")
