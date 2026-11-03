@@ -1579,7 +1579,10 @@ def run(site):
                 expect_error(lambda: lp.apply_period(year, 1), frappe.ValidationError)
                 from alphax_hr.api import ess
                 ess.withdraw_leave(r["name"])
+                assert not frappe.db.get_value("AlphaX Leave Plan Period", {"parent": mine["name"]}, "leave_application")  # back to planned
             except frappe.ValidationError as exc:
+                if "linked" in str(exc):
+                    raise
                 print("    apply from plan reported:", exc)  # e.g. no allocation for that leave type on a fresh site
             frappe.set_user("Administrator")
             frappe.db.set_single_value("AlphaX HR Settings", "plan_min_block_days", 0)
@@ -1706,6 +1709,10 @@ def run(site):
                                                               "payslip_signatory": "Hana Test", "payslip_signatory_title": "HR Manager"})
             frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
             start = frappe.utils.get_first_day(add_days(nowdate(), -40))
+            for y in {getdate(start).year, getdate(nowdate()).year}:
+                if not frappe.db.exists("Fiscal Year", {"year_start_date": f"{y}-01-01"}):
+                    frappe.get_doc({"doctype": "Fiscal Year", "year": str(y), "year_start_date": f"{y}-01-01", "year_end_date": f"{y}-12-31",
+                                    "companies": [{"company": COMPANY}]}).insert(ignore_permissions=True)
             slip = frappe.db.get_value("Salary Slip", {"employee": f["e_emp"], "start_date": start, "docstatus": ["<", 2]})
             if not slip:
                 try:

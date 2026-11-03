@@ -346,6 +346,9 @@ def withdraw_leave(name):
 		frappe.throw(_("Only open requests that have not been approved can be withdrawn."))
 	if doc.meta.has_field("workflow_state") and doc.get("workflow_state") not in (None, "", "Draft", "Open"):
 		frappe.throw(_("This request is already in the approval workflow."))
+	# A request made from a vacation plan goes back to "planned" (the plan keeps the period).
+	if frappe.db.exists("DocType", "AlphaX Leave Plan Period"):
+		frappe.db.set_value("AlphaX Leave Plan Period", {"leave_application": name}, "leave_application", None)
 	# HRMS gives employees no delete right on Leave Application; ownership and state are checked above.
 	frappe.delete_doc("Leave Application", name, ignore_permissions=True)
 	return True
