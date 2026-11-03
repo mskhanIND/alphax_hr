@@ -5,6 +5,7 @@ import { Badge, Button, Card, ErrorBox, Field, Input, PageHeader, Spinner } from
 import { api } from '../lib/api'
 import { fmtDate, fmtNumber } from '../lib/format'
 import { useI18n } from '../lib/i18n'
+import LeaveCountingCard from '../components/LeaveCountingCard'
 
 const KIND_LABEL: Record<string, string> = {
   annual: 'Annual leave', sick: 'Sick leave', maternity: 'Maternity', paternity: 'Paternity', marriage: 'Marriage',
@@ -172,14 +173,19 @@ function AnnualCard({ annual, canEdit, onSaved }: { annual: any; canEdit: boolea
   )
 }
 
-function EscalationCard({ hours, canEdit, onSaved }: { hours: number; canEdit: boolean; onSaved: (d: any) => void }) {
+function EscalationCard({ hours, remind, canEdit, onSaved }: { hours: number; remind: number; canEdit: boolean; onSaved: (d: any) => void }) {
   const { t } = useI18n()
   const [v, setV] = useState<string>(String(hours ?? 0))
+  const [r, setR] = useState<string>(String(remind ?? 0))
   useEffect(() => setV(String(hours ?? 0)), [hours])
-  const save = useMutation({ mutationFn: () => api.updateAnnualSettings({ leave_escalation_hours: Number(v) || 0 }), onSuccess: onSaved })
+  useEffect(() => setR(String(remind ?? 0)), [remind])
+  const save = useMutation({ mutationFn: () => api.updateAnnualSettings({ leave_escalation_hours: Number(v) || 0, approval_remind_hours: Number(r) || 0 }), onSuccess: onSaved })
   return (
-    <Card title={t('Pending requests')} subtitle={t('Remind the approver and HR when a leave request is left waiting.')}>
+    <Card title={t('Approval delays')} subtitle={t('Remind the approver, then escalate to their manager and HR, when any request is left waiting.')}>
       <div className="flex flex-wrap items-end gap-3">
+        <Field label={t('Remind approver after (hours)')} hint={t('0 = off')}>
+          <Input type="number" min={0} className="!w-32" value={r} disabled={!canEdit} onChange={(e) => setR(e.target.value)} />
+        </Field>
         <Field label={t('Escalate after (hours)')} hint={t('0 = off')}>
           <Input type="number" min={0} className="!w-32" value={v} disabled={!canEdit} onChange={(e) => setV(e.target.value)} />
         </Field>
@@ -224,7 +230,8 @@ export default function LeaveSetup() {
           </table>
         </div>
       </Card>
-      <EscalationCard hours={d.annual.leave_escalation_hours} canEdit={d.can_edit} onSaved={onSaved} />
+      <LeaveCountingCard />
+      <EscalationCard hours={d.annual.leave_escalation_hours} remind={d.annual.approval_remind_hours} canEdit={d.can_edit} onSaved={onSaved} />
     </div>
   )
 }

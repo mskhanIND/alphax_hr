@@ -41,6 +41,12 @@ function ApplyForm({ onDone }: { onDone: (warnings: string[]) => void }) {
       onDone(r.warnings ?? [])
     },
   })
+  const days = useQuery({
+    queryKey: ['leaveDays', form.leave_type, form.from_date, form.to_date, form.half_day],
+    queryFn: () => api.leaveDays({ leave_type: form.leave_type, from_date: form.from_date, to_date: form.to_date, half_day: form.half_day ? 1 : 0 }),
+    enabled: !!form.leave_type && !!form.from_date && !!form.to_date && form.to_date >= form.from_date,
+    retry: false,
+  })
   const set = (k: string, v: unknown) => {
     if (m.error) m.reset() // a stale error must not linger once the user edits the request
     setForm((f) => ({ ...f, [k]: v }))
@@ -64,6 +70,14 @@ function ApplyForm({ onDone }: { onDone: (warnings: string[]) => void }) {
         <Field label={t('From')}><Input type="date" required value={form.from_date} onChange={(e) => { set('from_date', e.target.value); if (e.target.value > form.to_date) set('to_date', e.target.value) }} /></Field>
         <Field label={t('To')}><Input type="date" required min={form.from_date} value={form.to_date} onChange={(e) => set('to_date', e.target.value)} /></Field>
       </div>
+      {days.data && days.data.days != null && (
+        <div className="rounded-xl border border-line bg-surface p-3 text-sm" data-testid="leave-days">
+          <div className="font-medium">{t('Days counted')}: {fmtNumber(days.data.days)}</div>
+          {days.data.text && <div className="text-xs text-muted">{days.data.text}</div>}
+          {days.data.must_start_working_day && <div className="text-xs text-red-700">{t('This leave must start and end on a working day.')}</div>}
+          {days.data.min_notice_days ? <div className="text-xs text-muted">{t('Request at least')} {days.data.min_notice_days} {t('day(s) in advance')}</div> : null}
+        </div>
+      )}
       {rule?.requires_event_date && (
         <Field label={rule.event_label ? t(rule.event_label) : t('Event date')}><Input type="date" required value={form.event_date} onChange={(e) => set('event_date', e.target.value)} /></Field>
       )}

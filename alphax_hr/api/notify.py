@@ -5,7 +5,7 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import cint, getdate, nowdate
+from frappe.utils import cint, get_datetime, getdate, now_datetime, nowdate
 
 from alphax_hr.api._common import login_required, parse_json, settings
 from alphax_hr import push
@@ -119,7 +119,9 @@ def _safe(fn):
 @_safe
 def on_notification_log(doc, method=None):
 	"""Every Frappe/AlphaX alert to a user (messages, warnings, assignments, mentions) also goes to their phone."""
-	if doc.for_user and doc.get("document_type") not in ("Leave Application",):  # leave has its own, clearer push below
+	if doc.flags.get("alphax_pushed"):  # sent by alerts.event with its own push
+		return
+	if doc.for_user and doc.get("document_type") not in ("Leave Application",):
 		url = "/alphax"
 		if doc.document_type == "AlphaX Request":
 			url = "/alphax/me/requests"
@@ -128,40 +130,71 @@ def on_notification_log(doc, method=None):
 		send([doc.for_user], _("AlphaX HR"), frappe.utils.strip_html(doc.subject or ""), url)
 
 
+def _dates(doc):
+	return f"{frappe.utils.formatdate(doc.from_date)} → {frappe.utils.formatdate(doc.to_date)}"
+
+
 @_safe
 def on_leave_insert(doc, method=None):
-	if doc.leave_approver and doc.status == "Open":
-		send([doc.leave_approver], _("Leave request"), _("{0}: {1}, {2} → {3}").format(doc.employee_name, doc.leave_type,
-			frappe.utils.formatdate(doc.from_date), frappe.utils.formatdate(doc.to_date)), "/alphax/approvals", tag=doc.name)
+	from alphax_hr.api import alerts
+	from alphax_hr.leave_engine import counting_rule
+
+	if doc.status != "Open":
+		return
+	ref = ("Leave Application", doc.name)
+	days = f" · {doc.total_leave_days:g} " + _("day(s)") if doc.get("total_leave_days") else ""
+	rule = counting_rule(doc.leave_type)
+	if rule and cint(rule.emergency):
+		alerts.event("Emergency leave", _("Emergency leave: {0}").format(doc.employee_name),
+					 f"{doc.leave_type}, {_dates(doc)}{days}. {doc.description or ''}".strip(), employee=doc.employee,
+					 managers=[doc.leave_approver] if doc.leave_approver else None, url="/alphax/approvals", doc=ref, tag=doc.name)
+		return
+	if doc.leave_approver:
+		alerts.event("Leave request", _("Leave request from {0}").format(doc.employee_name),
+					 f"{doc.leave_type}, {_dates(doc)}{days}", employee=doc.employee, managers=[doc.leave_approver],
+					 url="/alphax/approvals", doc=ref, tag=doc.name)
 
 
 @_safe
 def on_leave_decided(doc, method=None):
-	user = frappe.db.get_value("Employee", doc.employee, "user_id")
-	if user and doc.status in ("Approved", "Rejected"):
-		send([user], _("Leave {0}").format(_(doc.status).lower()), _("{0}, {1} → {2}").format(doc.leave_type,
-			frappe.utils.formatdate(doc.from_date), frappe.utils.formatdate(doc.to_date)), "/alphax/me/leave", tag=doc.name)
+	from alphax_hr.api import alerts
+
+	if doc.status in ("Approved", "Rejected"):
+		alerts.event("Leave decision", _("Leave {0}").format(_(doc.status).lower()), f"{doc.leave_type}, {_dates(doc)}",
+					 employee=doc.employee, url="/alphax/me/leave", doc=("Leave Application", doc.name), tag=doc.name)
 
 
 @_safe
 def request_created(doc):
+	from alphax_hr.api import alerts
+
 	if doc.status == "Pending Manager" and doc.approver:
-		send([doc.approver], _("New request"), f"{doc.employee_name}: {_(doc.request_type)}", "/alphax/approvals", tag=doc.name)
+		managers = [doc.approver]
+	elif doc.status == "Pending HR":
+		managers = list(alerts.hr_users())
+	else:
+		return
+	alerts.event("Request submitted", _("New request: {0}").format(_(doc.request_type)), doc.employee_name or "",
+				 employee=doc.employee, managers=managers, url="/alphax/approvals" if doc.status == "Pending Manager" else "/alphax/requests",
+				 doc=("AlphaX Request", doc.name), tag=doc.name)
 
 
 @_safe
 def request_decided(doc):
+	from alphax_hr.api import alerts
+
 	user = frappe.db.get_value("Employee", doc.employee, "user_id")
 	if user and user != frappe.session.user:
-		send([user], _(doc.request_type), _("Your request is now: {0}").format(_(doc.status)), "/alphax/me/requests", tag=doc.name)
-	if doc.status == "Pending HR":
-		return
-	if doc.status == "Pending Manager" and doc.approver:
+		alerts.event("Request decision", _(doc.request_type), _("Your request is now: {0}").format(_(doc.status)),
+					 employee=doc.employee, url="/alphax/me/requests", doc=("AlphaX Request", doc.name), tag=doc.name)
+	if doc.status in ("Pending Manager", "Pending HR"):
 		request_created(doc)
 
 
 @_safe
 def announcement(doc):
+	from alphax_hr.api import alerts
+
 	if getdate(doc.publish_on) > getdate(nowdate()):
 		return
 	filters = {"status": "Active", "user_id": ["is", "set"]}
@@ -170,7 +203,20 @@ def announcement(doc):
 	elif doc.audience == "Department":
 		filters["department"] = doc.department
 	users = frappe.get_all("Employee", filters=filters, pluck="user_id")
-	send(users, doc.title, frappe.utils.strip_html(doc.body or "")[:160], "/alphax", tag=f"ann-{doc.name}")
+	alerts.event("Announcement", doc.title, frappe.utils.strip_html(doc.body or "")[:160], users=users, url="/alphax",
+				 doc=("AlphaX Announcement", doc.name), tag=f"ann-{doc.name}")
+
+
+@_safe
+def on_checkin(doc, method=None):
+	"""Every punch (app, device or import of today's punches) can confirm to the employee and flag late arrival."""
+	if frappe.flags.in_import or frappe.flags.in_migrate or not doc.time:
+		return
+	if (now_datetime() - get_datetime(doc.time)).total_seconds() > 6 * 3600:
+		return  # a historical sync, not a live punch
+	frappe.enqueue("alphax_hr.api.alerts.on_checkin", queue="short", enqueue_after_commit=True, now=bool(frappe.flags.in_test),
+				   employee=doc.employee, log_type=doc.log_type or "IN", when=get_datetime(doc.time),
+				   location=doc.get("alphax_location"))
 
 
 @frappe.whitelist()

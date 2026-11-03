@@ -646,18 +646,166 @@ def run(site):
         check("people: missing-field counts, Excel/CSV export, org chart; employees blocked", people_export_and_org_chart)
 
         def escalation():
+            from alphax_hr.api import delays
             frappe.set_user(f["emp2"])
-            name = ess.apply_leave("AXT Annual", *leave_dates(28, 1))["name"]
+            start = getdate(add_days(nowdate(), 28))
+            while start.weekday() == 4:  # not on the Friday week-off
+                start = add_days(start, 1)
+            name = ess.apply_leave("AXT Annual", str(start), str(start))["name"]
+            assert frappe.db.exists("Notification Log", {"for_user": f["mgr"], "document_name": name})  # leave request alert
             frappe.set_user("Administrator")
-            frappe.db.set_single_value("AlphaX HR Settings", "leave_escalation_hours", 24)
+            frappe.db.set_single_value("AlphaX HR Settings", {"approval_remind_hours": 24, "leave_escalation_hours": 48})
             frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
-            frappe.db.set_value("Leave Application", name, "creation", add_days(nowdate(), -3), update_modified=False)
-            leave_engine.escalate_pending_leaves()
-            assert frappe.db.get_value("Leave Application", name, "alphax_escalated_on")
-            assert frappe.db.exists("Notification Log", {"for_user": f["mgr"], "document_name": name})
-            leave_engine.escalate_pending_leaves()  # second run must not notify again
-            assert frappe.db.count("Notification Log", {"for_user": f["mgr"], "document_name": name}) == 1
-        check("untouched requests escalate once to approver and HR", escalation)
+            frappe.db.set_value("Leave Application", name, "creation", add_days(frappe.utils.now_datetime(), -1.25), update_modified=False)
+            reminders = lambda stage: frappe.db.count("AlphaX Approval Reminder", {"reference_name": name, "stage": stage})
+            delays.escalate_pending_approvals()
+            assert reminders("Reminder") == 1 and reminders("Escalation") == 0
+            delays.escalate_pending_approvals()  # second run must not notify again
+            assert reminders("Reminder") == 1
+            frappe.db.set_value("Leave Application", name, "creation", add_days(frappe.utils.now_datetime(), -3), update_modified=False)
+            delays.escalate_pending_approvals()
+            delays.escalate_pending_approvals()
+            assert reminders("Escalation") == 1
+            assert frappe.db.exists("Notification Log", {"for_user": f["hr"], "document_name": name, "subject": ["like", "Waiting%"]})
+            frappe.set_user(f["hr"])
+            rep = delays.report()
+            row = next(r for r in rep["rows"] if r["name"] == name)
+            assert row["stage"] == "Escalated" and row["approver"] == f["mgr"] and row["age_hours"] >= 70, row
+            assert any(a["approver"] == f["mgr"] and a["overdue"] >= 1 for a in rep["approvers"]), rep["approvers"]
+            frappe.set_user(f["mgr"])
+            assert {r["approver"] for r in delays.report()["rows"]} == {f["mgr"]}
+            frappe.set_user(f["emp2"])
+            assert delays.report()["rows"] == []
+            frappe.set_user("Administrator")
+            frappe.delete_doc("Leave Application", name, force=True)
+            frappe.db.set_single_value("AlphaX HR Settings", {"approval_remind_hours": 0, "leave_escalation_hours": 0})
+            frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
+        check("approval delays: one reminder, then escalation to manager and HR; delay report by approver", escalation)
+
+        def leave_counting():
+            from alphax_hr.api import leave_setup
+            frappe.set_user("Administrator")
+            lt = ensure("Leave Type", {"leave_type_name": "AXT Counted"}, {"max_continuous_days_allowed": 0}).name
+            year_end = f"{getdate(nowdate()).year}-12-31"
+            if not frappe.db.exists("Leave Allocation", {"employee": f["e_emp2"], "leave_type": lt, "docstatus": 1}):
+                frappe.get_doc({"doctype": "Leave Allocation", "employee": f["e_emp2"], "leave_type": lt, "from_date": nowdate(),
+                                "to_date": year_end, "new_leaves_allocated": 10}).insert(ignore_permissions=True).submit()
+            for n in frappe.get_all("Leave Application", filters={"employee": f["e_emp2"], "leave_type": lt}, pluck="name"):
+                frappe.delete_doc("Leave Application", n, force=True)
+            thu = getdate(add_days(nowdate(), 30))
+            while thu.weekday() != 3:
+                thu = add_days(thu, 1)
+            fri, sat, sun = add_days(thu, 1), add_days(thu, 2), add_days(thu, 3)
+            for n in frappe.get_all("Leave Application", filters={"employee": f["e_emp2"], "from_date": ["<=", add_days(thu, 11)],
+                                                                   "to_date": [">=", add_days(thu, -7)], "docstatus": ["<", 2]}, pluck="name"):
+                old = frappe.get_doc("Leave Application", n)
+                if old.docstatus == 1:
+                    old.cancel()
+                else:
+                    old.delete()  # this test owns these days
+            frappe.set_user(f["emp"])
+            expect_error(lambda: leave_setup.save_counting_rule({"leave_type": lt}), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            leave_setup.save_counting_rule({"leave_type": lt, "count_mode": "Working days only", "sandwich": "Off"})
+            assert not frappe.db.get_value("Leave Type", lt, "include_holiday")  # HRMS never counts more than AlphaX
+            created = []
+            def apply(a, b):
+                r = ess.apply_leave(lt, str(a), str(b)); created.append(r["name"]); return r
+            frappe.set_user(f["emp2"])
+            assert ess.leave_days(lt, str(thu), str(sat))["days"] == 2
+            r = apply(thu, sat)
+            assert r["total_leave_days"] == 2, r
+            assert "weekend" in frappe.db.get_value("Leave Application", r["name"], "alphax_counting")
+            frappe.set_user("Administrator"); frappe.delete_doc("Leave Application", created.pop(), force=True)
+            frappe.set_user(f["hr"])
+            leave_setup.save_counting_rule({"leave_type": lt, "sandwich": "Inside one request"})
+            frappe.set_user(f["emp2"])
+            assert ess.leave_days(lt, str(thu), str(sat))["days"] == 3  # Friday between two leave days counts
+            assert ess.leave_days(lt, str(fri), str(sat))["days"] == 1  # starting on the week-off does not
+            frappe.set_user(f["hr"])
+            leave_setup.save_counting_rule({"leave_type": lt, "sandwich": "Also across requests"})
+            frappe.set_user(f["emp2"])
+            assert apply(thu, thu)["total_leave_days"] == 1
+            assert apply(sat, sat)["total_leave_days"] == 2, "Thursday + Saturday leave: the Friday between is counted once"
+            frappe.set_user("Administrator")
+            for n in created:
+                frappe.delete_doc("Leave Application", n, force=True)
+            created.clear()
+            frappe.set_user(f["hr"])
+            leave_setup.save_counting_rule({"leave_type": lt, "sandwich": "Off", "working_day_edges": 1, "max_days_per_request": 2, "min_notice_days": 90})
+            frappe.set_user(f["emp2"])
+            expect_error(lambda: apply(fri, sat), frappe.ValidationError)  # starts on the week-off
+            expect_error(lambda: apply(sat, add_days(sun, 1)), frappe.ValidationError)  # notice 90 days
+            frappe.set_user(f["hr"])
+            leave_setup.save_counting_rule({"leave_type": lt, "min_notice_days": 0})
+            frappe.set_user(f["emp2"])
+            expect_error(lambda: apply(sat, add_days(sun, 1)), frappe.ValidationError)  # 3 counted days > max 2
+            assert apply(sat, sun)["total_leave_days"] == 2
+            frappe.set_user(f["hr"])
+            rules = leave_setup.counting_rules()
+            assert any(x["leave_type"] == lt and x["max_days_per_request"] == 2 for x in rules["rules"])
+            frappe.set_user("Administrator")
+            for n in created:
+                frappe.delete_doc("Leave Application", n, force=True)
+            frappe.delete_doc("AlphaX Leave Counting Rule", lt)
+        check("leave counting: working days only, sandwich within and across requests, working-day edges, notice, max days", leave_counting)
+
+        def event_notifications():
+            from alphax_hr.api import alerts, leave_setup
+            frappe.set_user(f["emp"])
+            expect_error(lambda: alerts.settings(), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            conf = alerts.settings()
+            assert len(conf["rules"]) == len(alerts.DEFAULTS), conf["rules"]
+            rows = [dict(r, email=0) for r in conf["rules"]]  # keep the test site's mail queue quiet
+            alerts.save_settings(rows)
+            # emergency leave: manager and HR at once
+            frappe.set_user("Administrator")
+            lt = ensure("Leave Type", {"leave_type_name": "AXT Emergency"}, {"max_continuous_days_allowed": 0, "allow_negative": 1}).name
+            frappe.set_user(f["hr"])
+            leave_setup.save_counting_rule({"leave_type": lt, "emergency": 1, "min_notice_days": 10})
+            frappe.set_user(f["emp2"])
+            day = getdate(add_days(nowdate(), 2))
+            while day.weekday() == 4:
+                day = add_days(day, 1)
+            r = ess.apply_leave(lt, str(day), str(day))  # notice does not apply to emergency leave
+            for user in (f["mgr"], f["hr"]):
+                assert frappe.db.exists("Notification Log", {"for_user": user, "document_name": r["name"], "subject": ["like", "Emergency%"]}), user
+            frappe.set_user(f["mgr"])
+            box = alerts.inbox()
+            assert box["unread"] >= 1 and any(i["document_name"] == r["name"] for i in box["items"]), box
+            assert alerts.mark_read()["unread"] == 0
+            # check-in confirmation and late arrival
+            frappe.set_user("Administrator")
+            frappe.delete_doc("Leave Application", r["name"], force=True)
+            frappe.delete_doc("AlphaX Leave Counting Rule", lt)
+            frappe.db.delete("Employee Checkin", {"employee": f["e_emp2"]})
+            shift = ensure("Shift Type", {"name": "AXT Midnight"}, {"start_time": "00:00:00", "end_time": "08:00:00", "begin_check_in_before_shift_start_time": 0,
+                                                                 "allow_check_out_after_shift_end_time": 0}).name
+            old_shift = frappe.db.get_value("Employee", f["e_emp2"], "default_shift")
+            frappe.db.set_value("Employee", f["e_emp2"], "default_shift", shift)
+            frappe.flags.in_test, was = True, frappe.flags.in_test
+            try:
+                frappe.set_user(f["emp2"])
+                ess.check_in("IN")
+                user = f["emp2"]
+                logs = frappe.get_all("Notification Log", filters={"for_user": user, "creation": [">=", add_days(frappe.utils.now_datetime(), -0.01)]}, pluck="subject")
+                assert any(x.startswith("Checked in") for x in logs), logs
+                if frappe.utils.now_datetime().hour >= 1:
+                    assert any("min late" in x for x in logs), logs
+            finally:
+                frappe.flags.in_test = was
+                frappe.set_user("Administrator")
+                frappe.db.set_value("Employee", f["e_emp2"], "default_shift", old_shift)
+                frappe.db.delete("Employee Checkin", {"employee": f["e_emp2"]})
+            alerts.missing_checkins()  # scheduled job runs cleanly (dedupe per employee per day)
+            alerts.missing_checkins()
+            # turning an event off stops it
+            frappe.set_user(f["hr"])
+            alerts.save_settings([{"event": "Leave request", "enabled": 0}])
+            assert not alerts.rule("Leave request").enabled, alerts.rule("Leave request")
+            alerts.save_settings([{"event": "Leave request", "enabled": 1}])
+        check("notifications by event: HR settings, emergency leave to manager and HR, bell inbox, check-in and late alerts", event_notifications)
 
         def employee_rules():
             frappe.set_user(f["hr"])

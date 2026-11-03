@@ -41,6 +41,7 @@ doc_events = {
 		"on_submit": "alphax_hr.api.notify.on_leave_decided",
 	},
 	"Notification Log": {"after_insert": "alphax_hr.api.notify.on_notification_log"},
+	"Employee Checkin": {"after_insert": "alphax_hr.api.notify.on_checkin"},
 }
 
 scheduler_events = {
@@ -49,7 +50,8 @@ scheduler_events = {
 		"alphax_hr.leave_engine.daily_annual_allocation",
 		"alphax_hr.api.notify.daily_announcements",
 	],
-	"hourly": ["alphax_hr.leave_engine.escalate_pending_leaves"],
+	"hourly": ["alphax_hr.api.delays.escalate_pending_approvals"],
+	"cron": {"*/15 * * * *": ["alphax_hr.api.alerts.missing_checkins"]},
 }
 
 permission_query_conditions = {"AlphaX Request": "alphax_hr.api.requests.query_conditions",
@@ -58,6 +60,9 @@ permission_query_conditions = {"AlphaX Request": "alphax_hr.api.requests.query_c
 has_permission = {"AlphaX Request": "alphax_hr.api.requests.has_permission",
 				  "AlphaX Penalty": "alphax_hr.api.penalties.has_permission",
 				  "AlphaX Leave Plan": "alphax_hr.api.leave_plan.has_permission"}
+
+# Delivery records never stop a request from being deleted or cancelled.
+ignore_links_on_delete = ["AlphaX Approval Reminder"]
 
 after_request = ["alphax_hr.api.pwa.after_request"]
 

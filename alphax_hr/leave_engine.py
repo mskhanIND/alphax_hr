@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import frappe
 from frappe import _
-from frappe.utils import add_days, add_to_date, cint, flt, getdate, now_datetime, nowdate
+from frappe.utils import add_days, cint, flt, getdate, nowdate
 
 from alphax_hr.saudi import leave as annual
+from alphax_hr.saudi import leave_counting as lc
 from alphax_hr.saudi import leave_rules as lr
 
 ERROR_TEXT = {
@@ -75,6 +76,8 @@ def rule_to_dict(rule: lr.Rule | None):
 
 # ---------------------------------------------------- Leave Application hooks
 def validate_leave_application(doc, method=None):
+	if doc.status not in ("Cancelled", "Rejected"):
+		apply_counting(doc)
 	rules = rules_by_leave_type()
 	rule = rules.get(doc.leave_type)
 	if not rule or doc.status in ("Cancelled", "Rejected"):
@@ -94,6 +97,112 @@ def validate_leave_application(doc, method=None):
 		frappe.throw("<br>".join(lines), title=_("Leave rules"))
 	if rule.kind == lr.SICK:
 		_set_sick_breakdown(doc, rules)
+
+
+# ------------------------------------------------------- counting policy
+COUNTING_FIELDS = ["name", "leave_type", "count_mode", "sandwich", "sandwich_holidays", "working_day_edges",
+				   "min_notice_days", "max_days_per_request", "emergency", "notes"]
+
+
+def counting_rule(leave_type):
+	if not leave_type or not frappe.db.exists("DocType", "AlphaX Leave Counting Rule"):
+		return None
+	return frappe.db.get_value("AlphaX Leave Counting Rule", {"leave_type": leave_type}, COUNTING_FIELDS, as_dict=True)
+
+
+def off_days(employee, start, end):
+	"""(weekends, public holidays) from the employee's holiday list between two dates."""
+	from hrms.hr.utils import get_holiday_list_for_employee
+
+	holiday_list = get_holiday_list_for_employee(employee, raise_exception=False)
+	if not holiday_list:
+		return set(), set()
+	rows = frappe.get_all("Holiday", filters={"parent": holiday_list, "holiday_date": ["between", [start, end]]},
+						  fields=["holiday_date", "weekly_off"])
+	weekends = {getdate(r.holiday_date) for r in rows if cint(r.weekly_off)}
+	holidays = {getdate(r.holiday_date) for r in rows if not cint(r.weekly_off)}
+	return weekends, holidays
+
+
+def _neighbour(doc, before: bool):
+	"""End (or start) of the employee's other leave right before (after) this one, created before this one."""
+	filters = {"employee": doc.employee, "docstatus": ["<", 2], "status": ["not in", ["Rejected", "Cancelled"]],
+			   "name": ["!=", doc.name or ""]}
+	if doc.get("creation"):
+		filters["creation"] = ["<", doc.creation]
+	if before:
+		filters["to_date"] = ["between", [add_days(doc.from_date, -7), add_days(doc.from_date, -1)]]
+		rows = frappe.get_all("Leave Application", filters=filters, fields=["to_date"], order_by="to_date desc", limit=1)
+		return getdate(rows[0].to_date) if rows else None
+	filters["from_date"] = ["between", [add_days(doc.to_date, 1), add_days(doc.to_date, 7)]]
+	rows = frappe.get_all("Leave Application", filters=filters, fields=["from_date"], order_by="from_date asc", limit=1)
+	return getdate(rows[0].from_date) if rows else None
+
+
+def count_days(employee, leave_type, from_date, to_date, half_day=False, doc=None):
+	"""Counted days for a request under the leave type's counting rule, or None when no rule applies."""
+	rule = counting_rule(leave_type)
+	if not rule or not from_date or not to_date:
+		return None, rule
+	start, end = getdate(from_date), getdate(to_date)
+	if end < start:
+		return None, rule
+	weekends, holidays = off_days(employee, add_days(start, -7), add_days(end, 7))
+	policy = lc.Policy(rule.count_mode or lc.CALENDAR, rule.sandwich or lc.SANDWICH_OFF, bool(cint(rule.sandwich_holidays)))
+	before = after = None
+	if policy.sandwich == lc.SANDWICH_ACROSS:
+		probe = doc or frappe._dict(employee=employee, from_date=start, to_date=end, name=None, creation=None)
+		before, after = _neighbour(probe, True), _neighbour(probe, False)
+	result = lc.count(start, end, weekends, holidays, policy, half_day=bool(half_day), leave_before=before, leave_after=after)
+	result.notes = [d for d in (start, end) if d in weekends or d in holidays]  # off-day edges
+	return result, rule
+
+
+def describe_counting(result, rule):
+	return _("Counted as {0}: {1}").format(rule.count_mode or lc.CALENDAR, result.describe())
+
+
+def apply_counting(doc):
+	half = cint(doc.get("half_day")) and doc.get("half_day_date")
+	result, rule = count_days(doc.employee, doc.leave_type, doc.from_date, doc.to_date, half, doc)
+	if not rule or result is None:
+		return
+	if cint(rule.working_day_edges) and result.notes:
+		frappe.throw(_("{0} must start and end on a working day.").format(doc.leave_type), title=_("Leave counting"))
+	if result.days <= 0:
+		frappe.throw(_("The chosen dates are all weekends or public holidays, so no leave days are needed."),
+					 title=_("Leave counting"))
+	if doc.is_new() and not cint(rule.emergency) and cint(rule.min_notice_days):
+		notice = (getdate(doc.from_date) - getdate(nowdate())).days
+		if notice < cint(rule.min_notice_days):
+			frappe.throw(_("{0} must be requested at least {1} day(s) before it starts.").format(
+				doc.leave_type, cint(rule.min_notice_days)), title=_("Leave counting"))
+	if flt(rule.max_days_per_request) and result.days > flt(rule.max_days_per_request):
+		frappe.throw(_("{0} cannot exceed {1:g} counted day(s) per request (this request counts {2:g}).").format(
+			doc.leave_type, flt(rule.max_days_per_request), result.days), title=_("Leave counting"))
+	doc.total_leave_days = result.days
+	if doc.meta.has_field("alphax_counting"):
+		doc.alphax_counting = describe_counting(result, rule)
+	lt = frappe.db.get_value("Leave Type", doc.leave_type, ["allow_negative", "is_lwp"], as_dict=True) or frappe._dict()
+	if cint(lt.allow_negative) or cint(lt.is_lwp) or doc.docstatus != 0:
+		return
+	from hrms.hr.doctype.leave_application.leave_application import get_leave_balance_on
+
+	balance = get_leave_balance_on(doc.employee, doc.leave_type, doc.from_date, doc.to_date,
+								   consider_all_leaves_in_the_allocation_period=True, for_consumption=True,
+								   leave_application=None if doc.is_new() else doc.name)
+	available = flt(balance.get("leave_balance_for_consumption"))
+	if available < result.days:
+		frappe.throw(_("This request counts {0:g} day(s) but only {1:g} are available for {2}.").format(
+			result.days, available, doc.leave_type), title=_("Insufficient leave balance"))
+
+
+def sync_leave_type_holidays(rule_doc, method=None):
+	"""HRMS should never count more days than AlphaX; AlphaX adds back what its policy counts."""
+	if rule_doc.leave_type and frappe.db.exists("Leave Type", rule_doc.leave_type):
+		include = 1 if (rule_doc.count_mode or lc.CALENDAR) == lc.CALENDAR else 0
+		if cint(frappe.db.get_value("Leave Type", rule_doc.leave_type, "include_holiday")) != include:
+			frappe.db.set_value("Leave Type", rule_doc.leave_type, "include_holiday", include)
 
 
 def _set_sick_breakdown(doc, rules):
@@ -206,33 +315,10 @@ def daily_annual_allocation():
 
 # ------------------------------------------------------------ escalation
 def escalate_pending_leaves():
-	conf = _settings()
-	hours = cint(conf.leave_escalation_hours) if conf else 0
-	if not hours or not frappe.get_meta("Leave Application").has_field("alphax_escalated_on"):
-		return
-	cutoff = add_to_date(now_datetime(), hours=-hours)
-	pending = frappe.get_all("Leave Application", filters={
-		"docstatus": 0, "status": "Open", "creation": ["<", cutoff], "alphax_escalated_on": ["is", "not set"]},
-		fields=["name", "employee_name", "leave_type", "from_date", "leave_approver"], limit=500)
-	if not pending:
-		return
-	managers = {u for u in frappe.get_all("Has Role", filters={"role": "HR Manager", "parenttype": "User"}, pluck="parent")
-				if u not in ("Administrator", "Guest")}
-	for row in pending:
-		recipients = set(managers)
-		if row.leave_approver:
-			recipients.add(row.leave_approver)
-		for user in recipients:
-			if not frappe.db.get_value("User", user, "enabled"):
-				continue
-			frappe.get_doc({
-				"doctype": "Notification Log", "for_user": user, "type": "Alert",
-				"document_type": "Leave Application", "document_name": row.name,
-				"subject": _("Leave request from {0} ({1}, {2}) has waited more than {3} hours").format(
-					row.employee_name, row.leave_type, frappe.utils.formatdate(row.from_date), hours),
-			}).insert(ignore_permissions=True)
-		frappe.db.set_value("Leave Application", row.name, "alphax_escalated_on", now_datetime(), update_modified=False)
-	frappe.db.commit()
+	"""Kept for old scheduler entries; every approval type is now handled by delays.escalate_pending_approvals."""
+	from alphax_hr.api.delays import escalate_pending_approvals
+
+	escalate_pending_approvals()
 
 
 # ------------------------------------------------- fixed leave type names

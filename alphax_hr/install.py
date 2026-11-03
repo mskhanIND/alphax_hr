@@ -29,6 +29,9 @@ def seed_catalogues():
 
 	seed_types()
 	seed_violations()
+	from alphax_hr.api.alerts import seed_rules
+
+	seed_rules()
 
 
 # AlphaX's own Employee columns and the width they really need. Sites with many

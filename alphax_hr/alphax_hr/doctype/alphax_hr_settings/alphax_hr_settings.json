@@ -33,6 +33,7 @@
   "annual_senior_after_years",
   "annual_senior_count_from",
   "leave_escalation_hours",
+  "approval_remind_hours",
   "employee_section",
   "probation_days",
   "permissions_per_month",
@@ -57,6 +58,8 @@
   "push_public_key",
   "push_private_key",
   "push_contact",
+  "notify_section",
+  "notify_rules",
   "field_links",
   "salary_section",
   "salary_basic_component",
@@ -215,6 +218,13 @@
    "fieldtype": "Int",
    "label": "Escalate Untouched Requests After (hours)",
    "default": "48",
+   "description": "Requests still waiting go to the approver's own manager and HR. Applies to every approval. 0 = off"
+  },
+  {
+   "fieldname": "approval_remind_hours",
+   "fieldtype": "Int",
+   "label": "Remind the Approver After (hours)",
+   "default": "24",
    "description": "0 = off"
   },
   {
@@ -357,6 +367,17 @@
    "fieldtype": "Data",
    "label": "Push contact e-mail",
    "description": "Sent to the browser push services (mailto:)."
+  },
+  {
+   "fieldname": "notify_section",
+   "fieldtype": "Section Break",
+   "label": "Notifications by event"
+  },
+  {
+   "fieldname": "notify_rules",
+   "fieldtype": "Table",
+   "label": "Notification Rules",
+   "options": "AlphaX Notification Rule"
   },
   {
    "fieldname": "field_links",

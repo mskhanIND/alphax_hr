@@ -97,6 +97,24 @@
    "read_only": 1,
    "hidden": 1,
    "no_copy": 1
+  },
+  {
+   "doctype": "Custom Field",
+   "dt": "Leave Application",
+   "module": "AlphaX HR",
+   "name": "Leave Application-alphax_counting",
+   "fieldname": "alphax_counting",
+   "fieldtype": "Small Text",
+   "label": "Day count (AlphaX)",
+   "insert_after": "alphax_escalated_on",
+   "creation": "2026-11-03 00:00:00.000000",
+   "modified": "2026-11-03 00:00:00.000000",
+   "owner": "Administrator",
+   "modified_by": "Administrator",
+   "is_system_generated": 0,
+   "read_only": 1,
+   "no_copy": 1,
+   "description": "How AlphaX counted the leave days (weekends, holidays, sandwich)."
   }
  ],
  "property_setters": [],

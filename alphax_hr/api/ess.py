@@ -223,6 +223,27 @@ def leave_form():
 	return {"fields": fields, "auto": auto}
 
 
+@frappe.whitelist()
+def leave_days(leave_type, from_date, to_date, half_day=0):
+	"""How many days these dates will cost under HR's counting policy (preview before applying)."""
+	from alphax_hr import leave_engine
+
+	employee = current_employee()
+	result, rule = leave_engine.count_days(employee, leave_type, from_date, to_date, cint(half_day))
+	if result is not None:
+		edges_off = bool(cint(rule.working_day_edges) and result.notes)
+		return {"days": result.days, "text": leave_engine.describe_counting(result, rule), "policy": True,
+				"must_start_working_day": edges_off, "emergency": bool(cint(rule.emergency)),
+				"min_notice_days": cint(rule.min_notice_days) or None,
+				"max_days": flt(rule.max_days_per_request) or None}
+	from hrms.hr.doctype.leave_application.leave_application import get_number_of_leave_days
+
+	if not (leave_type and from_date and to_date) or getdate(to_date) < getdate(from_date):
+		return {"days": None, "policy": False}
+	days = get_number_of_leave_days(employee, leave_type, from_date, to_date, cint(half_day), from_date if cint(half_day) else None)
+	return {"days": flt(days), "policy": False, "text": None}
+
+
 def next_working_day(employee, after):
 	"""First day after ``after`` that is not a holiday / week-off for the employee."""
 	from hrms.hr.utils import get_holiday_list_for_employee

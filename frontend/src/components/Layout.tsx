@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import {
-  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History, Network, CalendarCheck, Activity, ChevronDown, Inbox, Gavel, ShieldAlert, Receipt, Star, ArrowRightLeft, LayoutGrid, Folder, Download, Megaphone, MapPin, LocateFixed, LifeBuoy, BookOpen } from 'lucide-react'
+  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History, Network, CalendarCheck, Activity, ChevronDown, Inbox, Gavel, ShieldAlert, Receipt, Star, ArrowRightLeft, LayoutGrid, Folder, Download, Megaphone, MapPin, LocateFixed, LifeBuoy, BookOpen, BellRing, Hourglass } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { NavLink, Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -9,6 +9,7 @@ import { useI18n } from '../lib/i18n'
 import { useSession } from '../lib/session'
 import { useInstall } from '../lib/pwa'
 import { Avatar } from './ui'
+import NotificationBell from './NotificationBell'
 
 interface NavItem { to: string; label: string; icon: ReactNode; badge?: number }
 
@@ -51,6 +52,7 @@ export function useNav(): { group: string; items: NavItem[] }[] {
       group: t('Manager'),
       items: [
         { to: '/approvals', label: t('Approvals'), icon: <BadgeCheck className="size-5" />, badge: (inbox.data as any)?.total },
+        { to: '/approval-delays', label: t('Approval delays'), icon: <Hourglass className="size-5" /> },
         { to: '/my-team', label: t('My team'), icon: <Users className="size-5" /> },
         ...(!s.persona.hr ? [{ to: '/checkins', label: t('Check-ins & movements'), icon: <MapPin className="size-5" /> }] : []),
         { to: '/vacation-planner', label: t('Vacation planner'), icon: <CalendarRange className="size-5" /> },
@@ -102,6 +104,7 @@ export function useNav(): { group: string; items: NavItem[] }[] {
         ...(s.persona.hr_manager || s.persona.system_manager
           ? [{ to: '/setup', label: t('HR status & setup'), icon: <Activity className="size-5" /> }] : []),
         { to: '/leave-setup', label: t('Leave setup'), icon: <Settings2 className="size-5" /> },
+        { to: '/notifications-setup', label: t('Notifications'), icon: <BellRing className="size-5" /> },
         ...(s.persona.hr_manager ? [{ to: '/cutover', label: t('Cut-over readiness'), icon: <ArrowRightLeft className="size-5" /> }] : []),
         { to: '/activity', label: t('Activity log'), icon: <History className="size-5" /> },
       ],
@@ -243,6 +246,7 @@ export function Layout({ children }: { children: ReactNode }) {
           <button className="rounded-lg p-2 hover:bg-surface lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu"><Menu /></button>
           <div className="flex-1" />
           <InstallButton />
+          <NotificationBell />
           <button
             onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}
             className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium hover:bg-surface"

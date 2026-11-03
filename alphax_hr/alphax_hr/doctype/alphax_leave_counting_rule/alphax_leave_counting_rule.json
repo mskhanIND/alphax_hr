@@ -1,0 +1,117 @@
+{
+ "doctype": "DocType",
+ "name": "AlphaX Leave Counting Rule",
+ "module": "AlphaX HR",
+ "custom": 0,
+ "engine": "InnoDB",
+ "creation": "2026-11-02 00:00:00.000000",
+ "modified": "2026-11-02 00:00:00.000000",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "field_order": [
+  "leave_type",
+  "count_mode",
+  "sandwich",
+  "sandwich_holidays",
+  "cb1",
+  "working_day_edges",
+  "min_notice_days",
+  "max_days_per_request",
+  "emergency",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "leave_type",
+   "fieldtype": "Link",
+   "label": "Leave Type",
+   "options": "Leave Type",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "count_mode",
+   "fieldtype": "Select",
+   "label": "Count",
+   "options": "Calendar days\nWorking days only\nSkip public holidays\nSkip weekends",
+   "default": "Calendar days",
+   "in_list_view": 1,
+   "description": "Working days only = weekends and public holidays inside the leave are not deducted (e.g. marriage 5 working days)."
+  },
+  {
+   "fieldname": "sandwich",
+   "fieldtype": "Select",
+   "label": "Sandwich rule",
+   "options": "Off\nInside one request\nAlso across requests",
+   "default": "Off",
+   "in_list_view": 1,
+   "description": "Weekends between leave days count as leave. 'Across requests': leave on Thursday and again on Sunday also counts the weekend."
+  },
+  {
+   "fieldname": "sandwich_holidays",
+   "fieldtype": "Check",
+   "label": "Public holidays are sandwiched too"
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "working_day_edges",
+   "fieldtype": "Check",
+   "label": "Must start and end on a working day"
+  },
+  {
+   "fieldname": "min_notice_days",
+   "fieldtype": "Int",
+   "label": "Apply at least (days) before"
+  },
+  {
+   "fieldname": "max_days_per_request",
+   "fieldtype": "Int",
+   "label": "At most (days) per request"
+  },
+  {
+   "fieldname": "emergency",
+   "fieldtype": "Check",
+   "label": "Emergency leave",
+   "description": "No notice needed; the manager and HR are told at once."
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "HR Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "HR User",
+   "read": 1
+  },
+  {
+   "role": "Employee",
+   "read": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1,
+ "states": [],
+ "autoname": "field:leave_type",
+ "title_field": "leave_type"
+}

@@ -62,6 +62,7 @@ def overview():
 			"annual_senior_after_years": cint(conf.annual_senior_after_years) or annual_law.SENIOR_AFTER_YEARS,
 			"annual_senior_count_from": str(conf.annual_senior_count_from) if conf.annual_senior_count_from else None,
 			"leave_escalation_hours": cint(conf.leave_escalation_hours),
+			"approval_remind_hours": cint(conf.get("approval_remind_hours")),
 		},
 		"can_edit": bool(set(frappe.get_roles()) & {"HR Manager", "System Manager"}),
 	}
@@ -136,7 +137,7 @@ def update_annual_settings(data):
 		if key in payload and not cint(payload[key]):
 			payload[key] = 0  # stored as 0 = law default
 	for key in ("annual_policy", "annual_fixed_days", "annual_auto_allocate", "annual_base_days", "annual_senior_days",
-				"annual_senior_after_years", "annual_senior_count_from", "leave_escalation_hours"):
+				"annual_senior_after_years", "annual_senior_count_from", "leave_escalation_hours", "approval_remind_hours"):
 		if key in payload:
 			conf.set(key, payload[key] or None if key == "annual_senior_count_from" else payload[key])
 	conf.save()
@@ -167,3 +168,45 @@ def annual_allocation(apply=0):
 		return leave_engine.apply_annual_allocations()
 	require_hr()
 	return leave_engine.plan_annual_allocations()
+
+
+# ------------------------------------------------------- counting policy
+COUNTING_EDITABLE = ("count_mode", "sandwich", "sandwich_holidays", "working_day_edges", "min_notice_days",
+					 "max_days_per_request", "emergency", "notes")
+
+
+@frappe.whitelist()
+def counting_rules():
+	require_hr()
+	rows = frappe.get_all("AlphaX Leave Counting Rule", fields=["name", "leave_type", *COUNTING_EDITABLE],
+						  order_by="leave_type asc")
+	types = frappe.get_all("Leave Type", fields=["name", "include_holiday", "is_lwp"], order_by="name asc")
+	return {"rules": rows, "leave_types": types,
+			"options": {"count_mode": [leave_engine.lc.CALENDAR, leave_engine.lc.WORKING, leave_engine.lc.SKIP_HOLIDAYS,
+									   leave_engine.lc.SKIP_WEEKENDS],
+						"sandwich": [leave_engine.lc.SANDWICH_OFF, leave_engine.lc.SANDWICH_IN, leave_engine.lc.SANDWICH_ACROSS]},
+			"can_edit": bool(set(frappe.get_roles()) & {"HR Manager", "System Manager"})}
+
+
+@frappe.whitelist(methods=["POST"])
+def save_counting_rule(data):
+	require_hr_manager()
+	data = parse_json(data) or {}
+	leave_type = data.get("leave_type")
+	if not leave_type or not frappe.db.exists("Leave Type", leave_type):
+		frappe.throw(_("Please choose a leave type."))
+	name = frappe.db.get_value("AlphaX Leave Counting Rule", {"leave_type": leave_type})
+	doc = frappe.get_doc("AlphaX Leave Counting Rule", name) if name else frappe.new_doc("AlphaX Leave Counting Rule")
+	doc.leave_type = leave_type
+	for key in COUNTING_EDITABLE:
+		if key in data:
+			doc.set(key, data[key])
+	doc.save()
+	return doc.name
+
+
+@frappe.whitelist(methods=["POST"])
+def delete_counting_rule(name):
+	require_hr_manager()
+	frappe.delete_doc("AlphaX Leave Counting Rule", name)
+	return True
