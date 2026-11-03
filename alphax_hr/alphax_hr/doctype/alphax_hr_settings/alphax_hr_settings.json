@@ -12,6 +12,10 @@
   "general_section",
   "default_company",
   "portal_title",
+  "app_tagline",
+  "app_logo",
+  "app_icon",
+  "brand_login",
   "default_language",
   "gosi_section",
   "gosi_enabled",
@@ -70,6 +74,14 @@
   "salary_other_component",
   "salary_gosi_component",
   "business_line_field",
+  "loans_section",
+  "loan_component",
+  "bonus_component",
+  "hr_deduction_component",
+  "loan_max_months",
+  "loan_max_wages",
+  "advance_max_percent",
+  "cap_includes_gosi",
   "documents_section",
   "document_alert_days"
  ],
@@ -88,8 +100,33 @@
   {
    "fieldname": "portal_title",
    "fieldtype": "Data",
-   "label": "Portal Title",
-   "default": "AlphaX HR"
+   "label": "App name",
+   "default": "AlphaX HR",
+   "description": "Shown in the menu, the browser tab, the phone home screen and e-mails."
+  },
+  {
+   "fieldname": "app_tagline",
+   "fieldtype": "Data",
+   "label": "Tagline",
+   "description": "Small line under the name in the menu, e.g. your company name."
+  },
+  {
+   "fieldname": "app_logo",
+   "fieldtype": "Attach Image",
+   "label": "Logo",
+   "description": "Square or wide logo on a transparent background (PNG or SVG)."
+  },
+  {
+   "fieldname": "app_icon",
+   "fieldtype": "Attach Image",
+   "label": "App icon",
+   "description": "Square image (at least 512×512 PNG) for the browser tab and the phone home screen. Blank: the logo."
+  },
+  {
+   "fieldname": "brand_login",
+   "fieldtype": "Check",
+   "label": "Use the name and logo on the sign-in page too",
+   "default": "1"
   },
   {
    "fieldname": "default_language",
@@ -440,6 +477,55 @@
    "fieldtype": "Data",
    "label": "Business line field (Employee)",
    "description": "Employee field that holds the business line / division, for payroll runs by business line. Blank: found automatically."
+  },
+  {
+   "fieldname": "loans_section",
+   "fieldtype": "Section Break",
+   "label": "Loans, advances and deductions"
+  },
+  {
+   "fieldname": "loan_component",
+   "fieldtype": "Link",
+   "label": "Loan repayment component",
+   "options": "Salary Component",
+   "description": "Deduction component for loan installments and salary advance recovery. Created as 'Loan Repayment' if blank."
+  },
+  {
+   "fieldname": "bonus_component",
+   "fieldtype": "Link",
+   "label": "Bonus component",
+   "options": "Salary Component"
+  },
+  {
+   "fieldname": "hr_deduction_component",
+   "fieldtype": "Link",
+   "label": "HR deduction component",
+   "options": "Salary Component"
+  },
+  {
+   "fieldname": "loan_max_months",
+   "fieldtype": "Int",
+   "label": "Longest loan (months)",
+   "default": "24"
+  },
+  {
+   "fieldname": "loan_max_wages",
+   "fieldtype": "Float",
+   "label": "Largest loan (months of wage)",
+   "default": "3",
+   "description": "0 = no limit."
+  },
+  {
+   "fieldname": "advance_max_percent",
+   "fieldtype": "Percent",
+   "label": "Largest salary advance (% of monthly wage)",
+   "default": "50"
+  },
+  {
+   "fieldname": "cap_includes_gosi",
+   "fieldtype": "Check",
+   "label": "Count GOSI in the half-wage cap (Art. 93)",
+   "default": "1"
   },
   {
    "fieldname": "documents_section",

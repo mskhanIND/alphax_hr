@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import {
-  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History, Network, CalendarCheck, Activity, ChevronDown, Inbox, Gavel, ShieldAlert, Receipt, Star, ArrowRightLeft, LayoutGrid, Folder, Download, Megaphone, MapPin, LocateFixed, LifeBuoy, BookOpen, BellRing, Hourglass } from 'lucide-react'
+  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History, Network, CalendarCheck, Activity, ChevronDown, Inbox, Gavel, ShieldAlert, Receipt, Star, ArrowRightLeft, LayoutGrid, Folder, Download, Megaphone, MapPin, LocateFixed, LifeBuoy, BookOpen, BellRing, Hourglass, HandCoins, BadgePercent } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { NavLink, Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -34,6 +34,7 @@ export function useNav(): { group: string; items: NavItem[] }[] {
       group: t('My pay'),
       items: [
         { to: '/me/payslips', label: t('My Payslips'), icon: <Wallet className="size-5" /> },
+        { to: '/me/loans', label: t('My loans'), icon: <HandCoins className="size-5" /> },
         { to: '/me/expenses', label: t('My expenses'), icon: <Receipt className="size-5" /> },
       ],
     })
@@ -94,6 +95,8 @@ export function useNav(): { group: string; items: NavItem[] }[] {
       group: t('Payroll'),
       items: [
         { to: '/payroll', label: t('Payroll control centre'), icon: <Landmark className="size-5" /> },
+        { to: '/payroll/loans', label: t('Loans & advances'), icon: <HandCoins className="size-5" /> },
+        { to: '/payroll/adjustments', label: t('Bonuses & deductions'), icon: <BadgePercent className="size-5" /> },
         { to: '/payroll/settlements', label: t('Final settlements'), icon: <Receipt className="size-5" /> },
         { to: '/payroll/gosi', label: t('GOSI Register'), icon: <FileText className="size-5" /> },
         { to: '/payroll/eosb', label: t('End of Service'), icon: <Scale className="size-5" /> },
@@ -174,10 +177,10 @@ function Brand() {
   const s = useSession()
   return (
     <Link to="/" className="flex items-center gap-2 px-3">
-      <img src={import.meta.env.BASE_URL + 'logo.svg'} alt="" className="size-9" />
-      <div className="leading-tight">
-        <div className="font-semibold text-white">{s.title}</div>
-        <div className="text-[11px] text-white/60">Frappe HRMS · ERPNext</div>
+      <img src={s.brand?.logo || import.meta.env.BASE_URL + 'logo.svg'} alt="" className={s.brand?.custom ? 'h-9 max-w-[7rem] rounded bg-white/95 object-contain p-0.5' : 'size-9'} data-testid="brand-logo" />
+      <div className="min-w-0 leading-tight">
+        <div className="truncate font-semibold text-white">{s.brand?.title || s.title}</div>
+        <div className="truncate text-[11px] text-white/60">{s.brand?.tagline || 'Frappe HRMS · ERPNext'}</div>
       </div>
     </Link>
   )

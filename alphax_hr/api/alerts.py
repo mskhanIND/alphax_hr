@@ -101,7 +101,7 @@ def _email_html(subject, message, url):
 			f"<p style=\"font-size:16px;font-weight:600;margin:0 0 8px\">{frappe.utils.escape_html(subject)}</p>"
 			f"<p style=\"margin:0 0 16px\">{frappe.utils.escape_html(message)}</p>"
 			f"<a href=\"{link}\" style=\"display:inline-block;background:#0f766e;color:#fff;padding:8px 14px;"
-			f"border-radius:8px;text-decoration:none\">{_('Open in AlphaX HR')}</a></div>")
+			f"border-radius:8px;text-decoration:none\">{_('Open in {0}').format(frappe.utils.escape_html(frappe.get_cached_doc('AlphaX HR Settings').get('portal_title') or 'AlphaX HR'))}</a></div>")
 
 
 def event(name, subject, message="", employee=None, managers=None, url="/alphax", doc=None, users=None, tag=None):

@@ -1,0 +1,260 @@
+{
+ "doctype": "DocType",
+ "name": "AlphaX Loan",
+ "module": "AlphaX HR",
+ "custom": 0,
+ "engine": "InnoDB",
+ "creation": "2026-11-02 00:00:00.000000",
+ "modified": "2026-11-02 00:00:00.000000",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "field_order": [
+  "employee",
+  "employee_name",
+  "company",
+  "loan_type",
+  "purpose",
+  "status",
+  "cb1",
+  "amount",
+  "installments",
+  "installment_amount",
+  "first_month",
+  "monthly_wage",
+  "consent",
+  "consent_file",
+  "pay_section",
+  "paid_by",
+  "payment_account",
+  "disbursed_on",
+  "employee_advance",
+  "payment_entry",
+  "cb2",
+  "repaid",
+  "outstanding",
+  "settled_on",
+  "settlement_entry",
+  "request",
+  "schedule_section",
+  "schedule",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "label": "Employee",
+   "options": "Employee",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "employee_name",
+   "fieldtype": "Data",
+   "label": "Employee Name",
+   "fetch_from": "employee.employee_name",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "fetch_from": "employee.company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "loan_type",
+   "fieldtype": "Select",
+   "label": "Type",
+   "options": "Loan\nSalary advance",
+   "default": "Loan",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "purpose",
+   "fieldtype": "Data",
+   "label": "Purpose"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Approved\nDisbursed\nRepaying\nSettled\nCancelled",
+   "default": "Approved",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "label": "Amount",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "installments",
+   "fieldtype": "Int",
+   "label": "Installments (months)",
+   "default": "1"
+  },
+  {
+   "fieldname": "installment_amount",
+   "fieldtype": "Currency",
+   "label": "Monthly installment",
+   "read_only": 1
+  },
+  {
+   "fieldname": "first_month",
+   "fieldtype": "Date",
+   "label": "First deduction month",
+   "reqd": 1
+  },
+  {
+   "fieldname": "monthly_wage",
+   "fieldtype": "Currency",
+   "label": "Monthly wage (at approval)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "consent",
+   "fieldtype": "Check",
+   "label": "Employee gave written consent to installments above 10% of the wage",
+   "description": "Art. 92: without written consent, loan recovery is limited to 10% of the wage."
+  },
+  {
+   "fieldname": "consent_file",
+   "fieldtype": "Attach",
+   "label": "Consent document"
+  },
+  {
+   "fieldname": "pay_section",
+   "fieldtype": "Section Break",
+   "label": "Payment"
+  },
+  {
+   "fieldname": "paid_by",
+   "fieldtype": "Select",
+   "label": "Paid by",
+   "options": "\nCash\nBank transfer"
+  },
+  {
+   "fieldname": "payment_account",
+   "fieldtype": "Link",
+   "label": "Paid from account",
+   "options": "Account"
+  },
+  {
+   "fieldname": "disbursed_on",
+   "fieldtype": "Date",
+   "label": "Disbursed On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "employee_advance",
+   "fieldtype": "Link",
+   "label": "Employee Advance",
+   "options": "Employee Advance",
+   "read_only": 1
+  },
+  {
+   "fieldname": "payment_entry",
+   "fieldtype": "Link",
+   "label": "Payment Journal Entry",
+   "options": "Journal Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "repaid",
+   "fieldtype": "Currency",
+   "label": "Repaid",
+   "read_only": 1
+  },
+  {
+   "fieldname": "outstanding",
+   "fieldtype": "Currency",
+   "label": "Outstanding",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "settled_on",
+   "fieldtype": "Date",
+   "label": "Settled On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "settlement_entry",
+   "fieldtype": "Link",
+   "label": "Settlement Journal Entry",
+   "options": "Journal Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "request",
+   "fieldtype": "Link",
+   "label": "From Request",
+   "options": "AlphaX Request",
+   "read_only": 1
+  },
+  {
+   "fieldname": "schedule_section",
+   "fieldtype": "Section Break",
+   "label": "Repayment schedule"
+  },
+  {
+   "fieldname": "schedule",
+   "fieldtype": "Table",
+   "label": "Schedule",
+   "options": "AlphaX Loan Installment"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "HR Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "HR User",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "report": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1,
+ "states": [],
+ "autoname": "format:LOAN-{YYYY}-{#####}",
+ "title_field": "employee_name"
+}

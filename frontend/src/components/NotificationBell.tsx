@@ -42,13 +42,13 @@ export default function NotificationBell() {
         {unread > 0 && <span className="absolute -end-0.5 -top-0.5 min-w-4 rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-4 text-white">{unread > 99 ? '99+' : unread}</span>}
       </button>
       {open && (
-        <div className="absolute end-0 top-11 z-40 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-line bg-white shadow-xl">
+        <div className="fixed inset-x-2 top-16 z-40 overflow-hidden rounded-2xl border border-line bg-white shadow-xl sm:absolute sm:inset-x-auto sm:end-0 sm:top-11 sm:w-[22rem]">
           <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
             <span className="text-sm font-semibold">{t('Notifications')}</span>
             {unread > 0 && <button className="flex items-center gap-1 text-xs text-brand-700 hover:underline" onClick={() => read.mutate(undefined)}>
               <CheckCheck className="size-3.5" />{t('Mark all read')}</button>}
           </div>
-          <div className="max-h-96 overflow-y-auto">
+          <div className="max-h-[70vh] overflow-y-auto sm:max-h-96" data-testid="bell-list">
             {(q.data?.items ?? []).length === 0 && <p className="p-4 text-sm text-muted">{t('No notifications yet.')}</p>}
             {(q.data?.items ?? []).map((n: any) => (
               <button key={n.name} onClick={() => go(n)}

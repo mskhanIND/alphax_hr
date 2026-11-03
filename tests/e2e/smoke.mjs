@@ -228,6 +228,18 @@ try {
       await page.getByText('طلباتي').waitFor()
       await page.screenshot({ path: `${OUT}/06-arabic-phone-leave.png`, fullPage: true })
     })
+    await step('phone: notification list fits the screen', async () => {
+      await page.getByTestId('bell').click()
+      const box = await page.getByTestId('bell-list').boundingBox()
+      const width = page.viewportSize().width
+      if (!box || box.x < 0 || box.x + box.width > width + 1) throw new Error(`notification list off screen: ${JSON.stringify(box)} / ${width}`)
+      await page.screenshot({ path: `${OUT}/06b-phone-bell.png` })
+      await page.getByTestId('bell').click()
+    })
+    await step('phone: my loans', async () => {
+      await page.goto(`${BASE}/alphax/me/loans`)
+      await page.getByRole('heading', { name: 'قروضي' }).waitFor()
+    })
     if (errors.length) fail('arabic: no console errors', errors.join(' | ')); else ok('arabic: no console errors')
     await ctx.close()
   }
@@ -448,6 +460,22 @@ try {
       await dialog.getByText('One employee = single salary processing.').waitFor()
       await page.screenshot({ path: `${OUT}/23b-payroll-new-run.png` })
       await dialog.getByRole('button', { name: 'Cancel' }).click()
+    })
+    await step('loans, bonuses & deductions', async () => {
+      await page.goto(`${BASE}/alphax/payroll/loans`)
+      await page.getByText('Being repaid').waitFor()
+      await page.getByRole('button', { name: 'New loan or advance' }).click()
+      await page.getByRole('dialog').filter({ hasText: 'New loan or salary advance' }).getByRole('button', { name: 'Cancel' }).click()
+      await page.screenshot({ path: `${OUT}/23d-loans.png`, fullPage: true })
+      await page.goto(`${BASE}/alphax/payroll/adjustments`)
+      await page.getByText('Deduction limits for one employee').waitFor()
+      await page.getByRole('button', { name: 'Bonus or deduction' }).click()
+      const dlg = page.getByRole('dialog').filter({ hasText: 'Category' })
+      await dlg.getByRole('button', { name: 'Deduction', exact: true }).click()
+      await dlg.locator('select').first().selectOption('Damage or loss (Art. 91)')
+      await dlg.getByText('five days', { exact: false }).waitFor()
+      await page.screenshot({ path: `${OUT}/23e-adjustment.png` })
+      await dlg.getByRole('button', { name: 'Cancel' }).click()
     })
     await step('appraisals: cycles, templates, management approvers', async () => {
       await page.goto(`${BASE}/alphax/appraisals`)

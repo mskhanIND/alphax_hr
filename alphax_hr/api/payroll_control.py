@@ -201,6 +201,32 @@ def checklist(company, month, scope=None):
 							   fields=["name", "applicant as employee", "applicant_name as employee_name", "loan_amount"])
 		checks.append(_check("loans", _("Loans repaid from salary"), [_emp_item(r, str(r.loan_amount), "Loan", r.name) for r in loans], "info"))
 
+	# loans and the Saudi deduction limits (Art. 91/92/93)
+	if frappe.db.exists("DocType", "AlphaX Loan"):
+		from alphax_hr.api import loans
+
+		due = frappe.db.sql("""select l.name, l.employee, l.employee_name, l.loan_type, i.amount, i.status from `tabAlphaX Loan Installment` i
+			join `tabAlphaX Loan` l on l.name = i.parent where i.due_month=%s and l.status in ('Disbursed','Repaying')
+			and i.status in ('Scheduled','In payroll')""", (start,), as_dict=True)
+		due = [d for d in due if d.employee in by_id]
+		checks.append(_check("loan_installments", _("Loan and advance installments this month"),
+							 [_emp_item(d, f"{_(d.loan_type)} {d.amount} · {_(d.status)}", "AlphaX Loan", d.name) for d in due], "info",
+							 _("Scheduled ones are added to payroll automatically when it is processed."), "/payroll/loans"))
+		waiting = frappe.get_all("AlphaX Loan", filters={"employee": ["in", ids], "status": "Approved"},
+								 fields=["name", "employee", "employee_name", "amount", "loan_type"])
+		checks.append(_check("loans_to_pay", _("Approved loans / advances not paid out yet"),
+							 [_emp_item(r, f"{_(r.loan_type)} {r.amount}", "AlphaX Loan", r.name) for r in waiting], "warning", None, "/payroll/loans"))
+		over = []
+		for e in emps:
+			try:
+				res = loans.check(e.name, start, [])
+			except Exception:  # noqa: BLE001 - one broken salary must not hide the checklist
+				continue
+			if res.problems:
+				over.append(_emp_item(e, " ".join(loans.describe(res.problems))))
+		checks.append(_check("deduction_limits", _("Deductions above the Saudi Labor Law limits"), over, "blocker",
+							 _("Postpone an installment or move a deduction to a later month (Art. 91, 92, 93)."), "/payroll/adjustments"))
+
 	# joiners / leavers
 	joiners = [e for e in emps if e.date_of_joining and start <= getdate(e.date_of_joining) <= end]
 	leavers = [e for e in emps if e.relieving_date and start <= getdate(e.relieving_date) <= end]
@@ -530,6 +556,10 @@ def _process(doc):
 	if not payable:
 		frappe.throw(_("Set a Default Payroll Payable Account on company {0} first.").format(doc.company))
 	scope_type = doc.get("scope_type") or "Company"
+	if frappe.db.exists("DocType", "AlphaX Loan"):
+		from alphax_hr.api import loans
+
+		loans.post_due(start, doc.company)  # this month's installments go into the slips
 	# Reuse this run's draft left by an earlier failed attempt, otherwise create the entry.
 	draft = doc.payroll_entry if doc.payroll_entry and frappe.db.get_value("Payroll Entry", doc.payroll_entry, "docstatus") == 0 else None
 	if not draft and scope_type == "Company":

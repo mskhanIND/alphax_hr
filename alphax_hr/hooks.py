@@ -49,6 +49,7 @@ scheduler_events = {
 		"alphax_hr.tasks.notify_expiring_documents",
 		"alphax_hr.leave_engine.daily_annual_allocation",
 		"alphax_hr.api.notify.daily_announcements",
+		"alphax_hr.api.loans.daily_post_due",
 	],
 	"hourly": ["alphax_hr.api.delays.escalate_pending_approvals"],
 	"cron": {"*/15 * * * *": ["alphax_hr.api.alerts.missing_checkins"]},

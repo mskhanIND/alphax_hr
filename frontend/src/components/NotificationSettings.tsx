@@ -17,7 +17,7 @@ export function NotificationSettings() {
   return (
     <Card title={t('Notifications on this device')} subtitle={t('Approvals, decisions on your requests, messages from HR and announcements')}>
       {!pushSupported() || iosNeedsInstall ? (
-        <p className="text-sm text-muted">{iosNeedsInstall ? t('On iPhone, add AlphaX HR to the home screen (Share → Add to Home Screen), open it from there, then turn notifications on.') : t('This browser cannot show notifications.')}</p>
+        <p className="text-sm text-muted">{iosNeedsInstall ? t('On iPhone, add this app to the home screen (Share → Add to Home Screen), open it from there, then turn notifications on.') : t('This browser cannot show notifications.')}</p>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
           {q.data ? (

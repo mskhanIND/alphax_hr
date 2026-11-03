@@ -66,8 +66,21 @@ DEFAULT_TYPES = [
 	{"request_type_name": "Iqama Renewal", "title_ar": "تجديد الإقامة", "category": "Government", "non_saudi_only": 1, "needs_manager": 0,
 	 "sla_days": 5, "fields": []},
 	{"request_type_name": "Salary Advance", "title_ar": "سلفة على الراتب", "category": "Finance", "sla_days": 3,
+	 "effect": "Create salary advance",
+	 "description": "Part of your salary paid early; recovered from your next salary (or over the months you choose).",
 	 "fields": [{"fieldname": "amount", "label": "Amount", "label_ar": "المبلغ", "type": "Currency", "reqd": 1},
 				{"fieldname": "months", "label": "Repay over (months)", "label_ar": "السداد خلال (أشهر)", "type": "Int", "reqd": 1}]},
+	{"request_type_name": "Loan Request", "title_ar": "طلب قرض", "category": "Finance", "sla_days": 5, "effect": "Create loan",
+	 "description": "A loan from the company repaid monthly from your salary. Without your written consent an installment "
+					"is at most 10% of your wage (Saudi Labor Law, Art. 92).",
+	 "fields": [{"fieldname": "amount", "label": "Amount", "label_ar": "المبلغ", "type": "Currency", "reqd": 1},
+				{"fieldname": "months", "label": "Repay over (months)", "label_ar": "السداد خلال (أشهر)", "type": "Int", "reqd": 1},
+				{"fieldname": "purpose", "label": "Purpose", "label_ar": "الغرض", "type": "Data", "reqd": 1}]},
+	{"request_type_name": "Loan Postponement", "title_ar": "تأجيل قسط", "category": "Finance", "sla_days": 3,
+	 "effect": "Postpone loan installment",
+	 "description": "Ask to skip your next loan installment; it moves to the end of your repayment schedule.",
+	 "fields": [{"fieldname": "loan", "label": "Loan number (optional)", "label_ar": "رقم القرض (اختياري)", "type": "Data"},
+				{"fieldname": "months", "label": "Postpone by (months)", "label_ar": "التأجيل (أشهر)", "type": "Int", "reqd": 1}]},
 	{"request_type_name": "Business Trip", "title_ar": "انتداب / رحلة عمل", "category": "Travel", "sla_days": 2,
 	 "fields": [{"fieldname": "destination", "label": "Destination", "label_ar": "الوجهة", "type": "Data", "reqd": 1},
 				{"fieldname": "from_date", "label": "From", "label_ar": "من", "type": "Date", "reqd": 1},
@@ -113,6 +126,9 @@ DEFAULT_TYPES = [
 def seed_types():
 	if not frappe.db.exists("DocType", "AlphaX Request Type"):
 		return
+	# Salary advances requested before v0.17 had no effect; approving one now creates the advance to pay out.
+	if frappe.db.exists("AlphaX Request Type", "Salary Advance") and not frappe.db.get_value("AlphaX Request Type", "Salary Advance", "effect"):
+		frappe.db.set_value("AlphaX Request Type", "Salary Advance", "effect", "Create salary advance")
 	for t in DEFAULT_TYPES:
 		if frappe.db.exists("AlphaX Request Type", t["request_type_name"]):
 			continue
@@ -344,6 +360,10 @@ def decide(name, action, comment=None):
 		if cint(t.requires_attachment) and not frappe.db.exists("File", {"attached_to_doctype": "AlphaX Request", "attached_to_name": name}):
 			frappe.throw(_("{0} needs a supporting document before approval.").format(t.request_type_name))
 		doc.status = next_status(t, doc.status)
+		if doc.status == "Approved" and t.get("effect") in ("Create loan", "Create salary advance"):
+			from alphax_hr.api import loans
+
+			loans.check_request(doc, "Salary advance" if t.effect == "Create salary advance" else "Loan")  # before anything is saved
 	if action != "Cancel":
 		doc.decided_by, doc.decided_on = user, now_datetime()
 	doc.flags.alphax_engine = True
@@ -359,6 +379,21 @@ def decide(name, action, comment=None):
 
 def _on_approved(doc, t):
 	details = parse_json(doc.details, {}) or {}
+	if t.get("effect") in ("Create loan", "Create salary advance"):
+		from alphax_hr.api import loans
+
+		loans.from_request(doc, "Salary advance" if t.effect == "Create salary advance" else "Loan")
+		doc.flags.alphax_engine = True
+		doc.save(ignore_permissions=True)  # stays Approved until HR pays it out
+		return
+	if t.get("effect") == "Postpone loan installment":
+		from alphax_hr.api import loans
+
+		loans.postpone_from_request(doc)
+		doc.status = "Completed"
+		doc.flags.alphax_engine = True
+		doc.save(ignore_permissions=True)
+		return
 	if t.get("effect") == "Update employee record":
 		_apply_profile_changes(doc, details)
 		return

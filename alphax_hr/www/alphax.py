@@ -31,12 +31,15 @@ def get_context(context):
 		raise frappe.Redirect(302)  # not 301: browsers cache permanent redirects
 
 	settings = frappe.get_cached_doc("AlphaX HR Settings")
+	from alphax_hr.api.branding import brand
+
+	b = brand()
 	lang = frappe.db.get_value("User", frappe.session.user, "language") or settings.default_language or "en"
 	boot = {
 		"user": frappe.session.user,
 		"csrf_token": get_csrf_token(),
 		"lang": "ar" if str(lang).startswith("ar") else "en",
-		"title": settings.portal_title or "AlphaX HR",
+		"title": b["title"],
 		"version": alphax_hr.__version__,
 		"site": frappe.local.site,
 	}
@@ -47,6 +50,7 @@ def get_context(context):
 	context.entry_js, context.entry_css = frontend_entry()
 	context.version = alphax_hr.__version__
 	context.title = boot["title"]
+	context.brand = b
 	context.lang = boot["lang"]
 	context.no_cache = 1
 	return context

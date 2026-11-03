@@ -2172,6 +2172,159 @@ def run(site):
             ap.set_management(boss, 0)
         check("appraisal request: employee or manager raises, manager -> HR -> management (role, not reporting line) approve", appraisal_request_management)
 
+        print("\n== Loans, bonuses and deductions, Saudi labour law articles")
+        def _accounts():
+            abbr = frappe.get_cached_value("Company", COMPANY, "abbr")
+            parent = frappe.db.get_value("Account", {"company": COMPANY, "is_group": 1, "root_type": "Asset", "account_type": ["in", ["", None]],
+                                                     "account_name": ["like", "%Current Assets%"]}) or \
+                frappe.db.get_value("Account", {"company": COMPANY, "is_group": 1, "root_type": "Asset"})
+            def acc(name, kind):
+                full = f"{name} - {abbr}"
+                if not frappe.db.exists("Account", full):
+                    frappe.get_doc({"doctype": "Account", "account_name": name, "company": COMPANY, "parent_account": parent,
+                                    "account_type": kind, "is_group": 0}).insert(ignore_permissions=True)
+                return full
+            adv = acc("AXT Employee Advances", "Receivable")
+            bank = acc("AXT Bank", "Bank")
+            frappe.db.set_value("Company", COMPANY, "default_employee_advance_account", adv)
+            if not frappe.db.get_value("Company", COMPANY, "default_cash_account"):
+                frappe.db.set_value("Company", COMPANY, "default_cash_account", acc("AXT Cash", "Cash"))
+            return bank
+
+        def loans_flow():
+            from alphax_hr.api import loans, requests as rq, approvals
+            frappe.set_user("Administrator")
+            bank = _accounts()
+            frappe.db.set_value("Employee", f["e_emp"], "reports_to", f["e_mgr"])
+            for n in frappe.get_all("AlphaX Loan", filters={"employee": f["e_emp"]}, pluck="name"):
+                doc = frappe.get_doc("AlphaX Loan", n)
+                for r in doc.schedule:
+                    if r.additional_salary and frappe.db.get_value("Additional Salary", r.additional_salary, "docstatus") == 1:
+                        frappe.get_doc("Additional Salary", r.additional_salary).cancel()
+                frappe.db.set_value("AlphaX Loan", n, "status", "Cancelled")
+            wage = loans.monthly_wage(f["e_emp"])
+            assert wage > 0, wage
+            frappe.set_user(f["emp"])
+            mine = loans.mine()
+            assert round(mine["loan_cap"], 2) == round(wage * 0.1, 2)
+            big = rq.create("Loan Request", {"amount": round(wage * 0.3 * 2, 2), "months": 2, "purpose": "Car repair"})
+            frappe.set_user(f["mgr"]); approvals.act("AlphaX Request", big["name"], "Approve")
+            frappe.set_user(f["hr"])
+            expect_error(lambda: approvals.act("AlphaX Request", big["name"], "Approve"), frappe.ValidationError)  # 30% > 10% (Art. 92)
+            approvals.act("AlphaX Request", big["name"], "Reject", "Above 10% of wage")
+            frappe.set_user(f["emp"])
+            amount = round(wage * 0.4, 2)
+            r = rq.create("Loan Request", {"amount": amount, "months": 4, "purpose": "School fees"})
+            frappe.set_user(f["mgr"]); approvals.act("AlphaX Request", r["name"], "Approve")
+            frappe.set_user(f["hr"]); assert approvals.act("AlphaX Request", r["name"], "Approve")["status"] == "Approved"
+            name = frappe.db.get_value("AlphaX Loan", {"request": r["name"]})
+            loan = loans.detail(name)
+            assert loan["status"] == "Approved" and len(loan["schedule"]) == 4 and loan["outstanding"] == amount, loan
+            loan = loans.disburse(name, "Cash")
+            assert loan["status"] == "Disbursed" and loan["employee_advance"] and loan["payment_entry"]
+            assert frappe.db.get_value("Employee Advance", loan["employee_advance"], "paid_amount") == amount
+            assert frappe.db.get_value("AlphaX Request", r["name"], "status") == "Completed"
+            first = loan["first_month"]
+            loans.post_due(first)
+            loan = loans.detail(name)
+            row0 = loan["schedule"][0]
+            assert row0["status"] == "In payroll" and frappe.db.get_value("Additional Salary", row0["additional_salary"], "ref_docname") == loan["employee_advance"]
+            loan = loans.postpone(name, row0["name"], 1, "Family event")
+            assert loan["schedule"][0]["status"] == "Postponed" and len(loan["schedule"]) == 5
+            assert frappe.db.get_value("Additional Salary", row0["additional_salary"], "docstatus") == 2  # taken out of payroll
+            # employee asks to postpone through a request
+            frappe.set_user(f["emp"])
+            pr = rq.create("Loan Postponement", {"loan": name, "months": 1}, reason="Medical bills")
+            frappe.set_user(f["mgr"]); approvals.act("AlphaX Request", pr["name"], "Approve")
+            frappe.set_user(f["hr"]); approvals.act("AlphaX Request", pr["name"], "Approve")
+            assert sum(1 for x in loans.detail(name)["schedule"] if x["status"] == "Postponed") == 2
+            loan = loans.settle(name, "Bank transfer", bank)
+            assert loan["status"] == "Settled" and loan["outstanding"] == 0 and loan["settlement_entry"], loan
+            # salary advance limit (50% of wage by default)
+            expect_error(lambda: loans.create({"employee": f["e_emp"], "loan_type": "Salary advance", "amount": wage * 0.8}), frappe.ValidationError)
+            adv = loans.create({"employee": f["e_emp"], "loan_type": "Salary advance", "amount": round(wage * 0.3, 2)})
+            assert adv["installments"] == 1 and adv["status"] == "Approved"
+            loans.cancel(adv["name"], "Not needed")
+            frappe.set_user(f["emp"])
+            expect_error(lambda: loans.loans(), frappe.PermissionError)
+            assert any(x["name"] == name for x in loans.mine()["loans"])
+        check("loans: request within 10% (Art. 92), pay by cash, installments into payroll, postpone, settle by bank; salary advance", loans_flow)
+
+        def pay_adjustments_flow():
+            from alphax_hr.api import pay_adjustments as pa, loans
+            frappe.set_user("Administrator")
+            month = str(frappe.utils.get_first_day(add_days(get_last_day(nowdate()), 40)))
+            for n in frappe.get_all("AlphaX Pay Adjustment", filters={"status": "Posted", "payroll_month": [">=", month]}, pluck="name"):
+                frappe.set_user(f["hr"]); pa.cancel(n); frappe.set_user("Administrator")
+            frappe.set_user(f["emp"])
+            expect_error(lambda: pa.preview({}), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            bonus = pa.create({"category": "Bonus", "amount": 1000, "payroll_month": month, "employees": [f["e_emp"], f["e_emp2"]],
+                               "reason": "Project delivery"})
+            assert len(bonus["created"]) == 2 and bonus["batch"]
+            wage = loans.monthly_wage(f["e_emp"])
+            dmg = pa.preview({"category": "Damage or loss (Art. 91)", "amount": round(wage / 30 * 12, 2), "payroll_month": month,
+                              "employees": [f["e_emp"]], "reason": "Broken laptop"})
+            assert len(dmg["rows"][0]["lines"]) == 3, dmg  # five days' wage a month: 5 + 5 + 2
+            expect_error(lambda: pa.create({"category": "Other recovery", "amount": 300, "payroll_month": month, "employees": [f["e_emp"]],
+                                            "reason": "Overpaid allowance"}), frappe.ValidationError)  # needs written consent
+            pa.create({"category": "Other recovery", "amount": 300, "payroll_month": month, "employees": [f["e_emp"]],
+                       "reason": "Overpaid allowance", "consent": 1})
+            expect_error(lambda: pa.create({"category": "Deduction with written consent (Art. 92)", "amount": wage * 0.6, "consent": 1,
+                                            "payroll_month": month, "employees": [f["e_emp"]], "reason": "Too much"}), frappe.ValidationError)
+            st = pa.deduction_status(f["e_emp"], month)
+            assert st["half_wage"] == round(wage / 2, 2) and any(i["kind"] == "consent" for i in st["items"]), st
+            inc = pa.increment({"mode": "percent_all", "value": 10, "from_date": month, "employees": [f["e_emp"]]})
+            row = inc["rows"][0]
+            assert row["skipped"] or round(row["after"], 0) == round(row["before"] * 1.1, 0), row
+            data = pa.adjustments(month)
+            assert sum(1 for x in data["rows"] if x["category"] == "Bonus") >= 2
+        check("bonuses and deductions: bulk bonus, damage spread at 5 days' wage (Art. 91), consent (Art. 92), half-wage cap (Art. 93), increment", pay_adjustments_flow)
+
+        def labour_law_articles():
+            from alphax_hr.saudi import articles
+            from alphax_hr.api import knowledge
+            frappe.set_user("Administrator")
+            articles.seed()
+            frappe.set_user(f["emp"])
+            res = knowledge.articles(category="Saudi Labor Law")
+            assert len(res["articles"]) >= len(articles.ARTICLES), len(res["articles"])
+            assert knowledge.articles("10%")["articles"]
+            frappe.set_user(f["hr"])
+            expect_error(lambda: knowledge.restore_standard(), frappe.PermissionError) if "HR Manager" not in frappe.get_roles() else knowledge.restore_standard()
+        check("help centre ships standard Saudi Labor Law articles (English and Arabic)", labour_law_articles)
+
+        def branding():
+            from alphax_hr.api import branding as br, session
+            frappe.set_user("Administrator")
+            png = frappe.get_doc({"doctype": "File", "file_name": "axt-logo.png", "is_private": 1, "content": b"\x89PNG\r\n\x1a\nAXT",
+                                  "attached_to_doctype": "AlphaX HR Settings", "attached_to_name": "AlphaX HR Settings"}).insert(ignore_permissions=True)
+            conf = frappe.get_single("AlphaX HR Settings")
+            old = (conf.portal_title, conf.get("app_logo"), conf.get("app_tagline"))
+            try:
+                conf.portal_title, conf.app_logo, conf.app_tagline, conf.brand_login = "Irsaa People", png.file_url, "IRSAA", 1
+                conf.save()
+                conf.reload()
+                assert conf.app_logo.startswith("/files/"), conf.app_logo  # moved to public so the sign-in page can show it
+                frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
+                frappe.set_user(f["emp"])
+                b = session.boot()["brand"]
+                assert b["title"] == "Irsaa People" and b["logo"] == conf.app_logo and b["tagline"] == "IRSAA" and b["custom"], b
+                frappe.set_user("Guest")
+                br.manifest()
+                data = __import__("json").loads(frappe.response["filecontent"])
+                assert data["name"] == "Irsaa People" and data["icons"][0]["src"] == conf.app_logo, data
+                frappe.response.pop("filecontent", None); frappe.response.pop("type", None)
+                assert frappe.db.get_single_value("Website Settings", "app_name") == "Irsaa People"
+            finally:
+                frappe.set_user("Administrator")
+                conf = frappe.get_single("AlphaX HR Settings")
+                conf.portal_title, conf.app_logo, conf.app_tagline = old[0] or "AlphaX HR", old[1], old[2]
+                conf.save()
+                frappe.db.set_single_value("Website Settings", {"app_name": "AlphaX HR", "app_logo": None, "favicon": None})
+                frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
+        check("white-label: app name, tagline and logo from settings (menu, manifest, sign-in page)", branding)
+
         print("\n== /alphax page")
         def www_page():
             from alphax_hr.www import alphax as page

@@ -2,6 +2,7 @@
 import frappe
 
 import alphax_hr
+from alphax_hr.api.branding import brand
 from alphax_hr.api._common import (
 	APPROVER_ROLES,
 	current_employee,
@@ -51,6 +52,7 @@ def boot():
 		"employee": emp,
 		"company": conf.default_company,
 		"title": conf.portal_title or "AlphaX HR",
+		"brand": brand(),
 		"version": alphax_hr.__version__,
 		"gosi_enabled": bool(conf.gosi_enabled),
 	}

@@ -66,6 +66,11 @@ def service_worker():
 
 def after_request(response=None, request=None):
 	"""Turn the service-worker download into a script the browser accepts for the /alphax scope."""
+	if request is not None and response is not None and request.path == "/api/method/alphax_hr.api.branding.manifest":
+		response.headers.pop("Content-Disposition", None)
+		response.mimetype = "application/manifest+json"
+		response.headers["Cache-Control"] = "no-cache"
+		return
 	if request is not None and response is not None and request.path == "/api/method/alphax_hr.api.pwa.service_worker":
 		response.headers.pop("Content-Disposition", None)
 		response.mimetype = "application/javascript"

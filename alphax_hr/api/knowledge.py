@@ -81,3 +81,13 @@ def delete(name):
 	require_hr()
 	frappe.delete_doc("AlphaX Knowledge Article", name)
 	return {"ok": True}
+
+
+@frappe.whitelist(methods=["POST"])
+def restore_standard():
+	"""Add back any of the standard Saudi Labor Law articles that are missing (edited ones are kept)."""
+	from alphax_hr.api._common import require_hr_manager
+	from alphax_hr.saudi.articles import seed
+
+	require_hr_manager()
+	return {"added": seed()}

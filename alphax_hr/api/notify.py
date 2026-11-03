@@ -60,7 +60,7 @@ def unsubscribe(endpoint):
 @frappe.whitelist(methods=["POST"])
 def test():
 	user = login_required()
-	n = send([user], _("AlphaX HR"), _("Notifications are working on this device."), "/alphax", now=True)
+	n = send([user], _app_name(), _("Notifications are working on this device."), "/alphax", now=True)
 	return {"sent": n}
 
 
@@ -102,6 +102,10 @@ def deliver(users, payload):
 
 
 # ------------------------------------------------------------------ hooks
+def _app_name():
+	return frappe.get_cached_doc("AlphaX HR Settings").get("portal_title") or "AlphaX HR"
+
+
 def _safe(fn):
 	"""A notification problem must never block saving the record that triggered it."""
 	import functools
@@ -127,7 +131,7 @@ def on_notification_log(doc, method=None):
 			url = "/alphax/me/requests"
 		elif doc.document_type == "AlphaX Penalty":
 			url = "/alphax/me/warnings"
-		send([doc.for_user], _("AlphaX HR"), frappe.utils.strip_html(doc.subject or ""), url)
+		send([doc.for_user], _app_name(), frappe.utils.strip_html(doc.subject or ""), url)
 
 
 def _dates(doc):

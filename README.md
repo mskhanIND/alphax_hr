@@ -16,7 +16,7 @@ React SPA (/alphax)  ──►  alphax_hr API (permission-checked)  ──►  F
 |---|---|---|
 | ![HR home](docs/screenshots/09-hr-home.png) | ![Compliance](docs/screenshots/ar-compliance.png) | ![Phone](docs/screenshots/05-arabic-phone-home.png) |
 
-## Modules (v0.16)
+## Modules (v0.17)
 
 | Area | Who | What |
 |---|---|---|
@@ -43,6 +43,9 @@ React SPA (/alphax)  ──►  alphax_hr API (permission-checked)  ──►  F
 | Record view | Everyone (per permissions) | Any HR record opens inside AlphaX (/alphax/r/DocType/name) with every field, tables, attachments, workflow actions and activity — no Frappe desk needed |
 | Employee requests | Every employee, managers, HR | One engine for letters (salary certificate, employment, experience — bilingual PDF issued on approval), exit & re-entry / final exit visas, Iqama renewal, salary advance, business trip, assets, passport release, resignation (sets the relieving date) and general requests; each type has its own fields, manager and/or HR approval, target days and attachment rule; HR can raise requests for employees; requests flow through the Approvals inbox |
 | Warnings & penalties | HR, every employee | Violations schedule (MHRSD model regulations as a starting point) with the penalty growing on each repeat within 180 days; 5 days' wage per violation and per month caps; no penalty for violations discovered more than 30 days earlier; deductions go to payroll as Additional Salary; suggestions from the attendance register; employees acknowledge or object within 15 days; cancelling reverses the deduction |
+| Loans & salary advances | Employees, HR (pay out / settle: HR Manager) | Loan and salary-advance requests (manager → HR), or entered by HR; repayment schedule with Saudi limits checked month by month (installment at most 10% of the wage without written consent, Art. 92; total deductions at most half the wage, Art. 93); paid by cash or bank transfer through an HRMS Employee Advance and Journal Entry; installments go into payroll automatically as Additional Salary against the advance; postpone an installment (also by employee request); one-time settlement by cash, bank transfer or one salary; balances flow into the final settlement |
+| Bonuses, deductions & increments | HR | Bonus / one-time payment / arrears for one employee, many or a department (amount or % of wage); HR deductions by legal basis — damage or loss spread at five days' wage a month (Art. 91), deductions needing written consent, court orders (a quarter of the wage) — refused when a limit would be broken; deduction meter per employee and month; bulk salary increments (% of salary, % of basic or amount) from a date |
+| Saudi Labor Law library | Every employee | 16 standard help-centre articles in English and Arabic (working hours, overtime, all leave types, holidays, probation, notice, end of service, penalties, salary deductions, loans, wages, Art. 80, GOSI), reflecting the 2025 amendments; HR can edit them or restore missing ones |
 | Payroll control centre | HR (approval: HR Manager) | Payroll runs per month for the whole company, or one department, branch, business line (Employee field set in Settings or found automatically), cost center (salary expense booked to it) or chosen employees — one employee is single-salary processing, several is bulk; an employee can be in only one run per month. Each run: Prepare → Review → Approve → Process (HRMS Payroll Entry + salary slips) → Close, with who/when and a checklist behind every step — pending leave/attendance/shift/advance requests, attendance gaps, absences, unpaid and reduced sick pay, penalties, overtime (add Art. 107 pay in one click), bonuses/deductions, advances and loans, joiners and leavers, missing salary/bank/GOSI data, appraisals; blocking items need fixing or an HR Manager override with a note |
 | Payroll corrections | HR (remove / redo: HR Manager) | Salary slips table in the control centre with GOSI, loans, deductions and net per employee and totals for the month; fix one employee without re-running payroll: add an earning/deduction this month (slip recalculated) or next month, recalculate after fixing attendance/leave/salary, remove from the run (salary on hold) and add back, add employees missing from the run, redo a submitted slip while its accounting entry is not posted; every change is logged |
 | Final settlement | HR (approval: HR Manager) | End-of-service award (Art. 84/85/87/80), unused-leave encashment, final salary, advances and other items; paid with the final payroll (Additional Salary) or separately; bilingual statement PDF |
@@ -57,12 +60,22 @@ React SPA (/alphax)  ──►  alphax_hr API (permission-checked)  ──►  F
 
 Requirements: Frappe/ERPNext/HRMS v15 (v16 targeted), Node 18+ only if you rebuild the frontend.
 
+**Standalone.** AlphaX HR needs only Frappe, ERPNext and Frappe HRMS (HRMS itself requires ERPNext). It does not use
+CentralHRMS, the Lending app or any other custom app; CI installs exactly these four apps on a fresh site.
+
 ```bash
 cd frappe-bench
+bench get-app --branch version-15 erpnext
+bench get-app --branch version-15 hrms
 bench get-app https://github.com/mskhanIND/alphax_hr
+bench new-site YOUR_SITE --install-app erpnext
+bench --site YOUR_SITE install-app hrms
 bench --site YOUR_SITE install-app alphax_hr
-bench --site YOUR_SITE migrate
 ```
+
+**Your own name and logo.** HR status & setup → Settings → General: *App name*, *Tagline*, *Logo*, *App icon* and
+*Use the name and logo on the sign-in page too*. They are used in the menu, browser tab, installed phone app,
+notification e-mails and the sign-in page (uploads are made public automatically).
 
 The built frontend is committed under `alphax_hr/public/frontend`, so no Node build is needed on servers. Open `https://YOUR_SITE/alphax`.
 

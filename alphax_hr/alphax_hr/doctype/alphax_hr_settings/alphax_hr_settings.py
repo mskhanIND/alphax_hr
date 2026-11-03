@@ -18,3 +18,8 @@ class AlphaXHRSettings(Document):
 
 	def components(self, purpose):
 		return [r.salary_component for r in self.component_map if r.purpose == purpose]
+
+	def on_update(self):
+		from alphax_hr.api.branding import apply
+
+		apply(self)

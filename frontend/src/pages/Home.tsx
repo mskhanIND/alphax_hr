@@ -114,7 +114,7 @@ function InstallHint() {
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-brand/20 bg-brand/5 p-3 text-sm lg:hidden">
       <Smartphone className="size-5 shrink-0 text-brand" />
-      <div className="flex-1">{canPrompt ? t('Install AlphaX HR on your phone for one-tap check-in.') : t('Install on iPhone: tap Share, then “Add to Home Screen”.')}</div>
+      <div className="flex-1">{canPrompt ? t('Install the app on your phone for one-tap check-in.') : t('Install on iPhone: tap Share, then “Add to Home Screen”.')}</div>
       {canPrompt && <button className="rounded-lg bg-brand px-3 py-1.5 font-medium text-white" onClick={install}>{t('Install')}</button>}
       <button className="p-1 text-muted" onClick={close} aria-label={t('Close')}><X className="size-4" /></button>
     </div>
