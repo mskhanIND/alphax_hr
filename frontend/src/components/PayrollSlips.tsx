@@ -7,10 +7,10 @@ import { useI18n } from '../lib/i18n'
 import { Button, Card, ErrorBox, Field, Input, Modal, Select, Spinner, StatusBadge, Textarea } from './ui'
 
 /** Every slip of the month, with per-employee corrections — no need to cancel and re-run the whole payroll. */
-export function PayrollSlips({ company, month, closed, canManage }: { company: string; month: string; closed: boolean; canManage: boolean }) {
+export function PayrollSlips({ company, month, closed, canManage, run }: { company: string; month: string; closed: boolean; canManage: boolean; run?: string }) {
   const { t, lang } = useI18n()
   const qc = useQueryClient()
-  const q = useQuery({ queryKey: ['payroll-slips', company, month], queryFn: () => api.payrollSlips(company, month) })
+  const q = useQuery({ queryKey: ['payroll-slips', company, month, run], queryFn: () => api.payrollSlips(company, month, run) })
   const comps = useQuery({ queryKey: ['salary-components'], queryFn: api.salaryComponents, staleTime: 300_000 })
   const [search, setSearch] = useState('')
   const [view, setView] = useState<string | null>(null)
@@ -20,7 +20,7 @@ export function PayrollSlips({ company, month, closed, canManage }: { company: s
   const refresh = () => { qc.invalidateQueries({ queryKey: ['payroll-slips'] }); qc.invalidateQueries({ queryKey: ['payroll-period'] }) }
   const preview = useQuery({ queryKey: ['payslip-preview', view], queryFn: () => api.payslipPreview(view!), enabled: !!view })
   const recalc = useMutation({ mutationFn: api.recalcSlip, onSuccess: refresh })
-  const add = useMutation({ mutationFn: (e: string) => api.addSlipEmployee(company, month, e), onSuccess: refresh })
+  const add = useMutation({ mutationFn: (e: string) => api.addSlipEmployee(company, month, e, run), onSuccess: refresh })
   const act = useMutation({
     mutationFn: () => reasonFor!.kind === 'remove' ? api.removeSlip(reasonFor!.row.name, reason) : api.redoSlip(reasonFor!.row.name, reason),
     onSuccess: () => { setReasonFor(null); setReason(''); refresh() },

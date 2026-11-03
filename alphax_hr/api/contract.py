@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import frappe
 from frappe import _
-from frappe.utils import add_days, cint, flt, formatdate, getdate, nowdate
+from frappe.utils import cint, flt, formatdate, getdate, nowdate
 
 from alphax_hr.api._common import require_hr, settings
 

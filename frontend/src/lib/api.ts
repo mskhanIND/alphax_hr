@@ -213,11 +213,31 @@ export const api = {
   respondPenalty: (name: string, action: string, reply?: string) => call<any>(A + 'penalties.respond', { name, action, reply }),
   // payroll control & final settlement
   payrollCompanies: () => call<string[]>(A + 'payroll_control.companies'),
-  payrollPeriod: (company: string, month: string) => call<any>(A + 'payroll_control.period', { company, month }),
-  payrollAdvance: (company: string, month: string, step: string, note?: string, override = 0) =>
-    call<any>(A + 'payroll_control.advance', { company, month, step, note, override }),
-  payrollSubmitSlips: (company: string, month: string) => call<any>(A + 'payroll_control.submit_slips', { company, month }),
-  payrollAddOvertime: (company: string, month: string) => call<any>(A + 'payroll_control.add_overtime', { company, month }),
+  payrollPeriod: (company: string, month: string, run?: string) => call<any>(A + 'payroll_control.period', { company, month, run }),
+  payrollAdvance: (company: string, month: string, step: string, note?: string, override = 0, run?: string) =>
+    call<any>(A + 'payroll_control.advance', { company, month, step, note, override, run }),
+  payrollSubmitSlips: (company: string, month: string, run?: string) => call<any>(A + 'payroll_control.submit_slips', { company, month, run }),
+  payrollAddOvertime: (company: string, month: string, run?: string) => call<any>(A + 'payroll_control.add_overtime', { company, month, run }),
+  payrollRunsOf: (company: string, month: string) => call<any>(A + 'payroll_control.runs', { company, month }),
+  payrollScopeOptions: (company: string) => call<any>(A + 'payroll_control.scope_options', { company }),
+  payrollCreateRun: (company: string, month: string, scope_type: string, scope_value?: string) =>
+    call<any>(A + 'payroll_control.create_run', { company, month, scope_type, scope_value }),
+  payrollDeleteRun: (name: string) => call<any>(A + 'payroll_control.delete_run', { name }),
+  appraisalSetup: () => call<any>(A + 'appraisals.setup'),
+  saveAppraisalTemplate: (data: Record<string, unknown>) => call<any>(A + 'appraisals.save_template', { data }),
+  previewAppraisalCycle: (data: Record<string, unknown>) => call<any>(A + 'appraisals.preview_cycle', { data }),
+  startAppraisalCycle: (data: Record<string, unknown>) => call<any>(A + 'appraisals.start_cycle', { data }),
+  appraisalCycle: (name: string) => call<any>(A + 'appraisals.cycle_detail', { name }),
+  appraisal: (name: string) => call<any>(A + 'appraisals.appraisal', { name }),
+  saveSelfAppraisal: (name: string, ratings: Record<string, number>, reflections: string) => call<any>(A + 'appraisals.save_self', { name, ratings, reflections }),
+  saveAppraisalReview: (name: string, goals: Record<string, number>, ratings: Record<string, number>, feedback: string) =>
+    call<any>(A + 'appraisals.save_review', { name, goals, ratings, feedback }),
+  finaliseAppraisal: (name: string, remarks?: string) => call<any>(A + 'appraisals.finalise', { name, remarks }),
+  finaliseReviewed: (cycle: string) => call<any>(A + 'appraisals.finalise_reviewed', { cycle }),
+  completeAppraisalCycle: (name: string) => call<any>(A + 'appraisals.complete_cycle', { name }),
+  teamAppraisals: () => call<any>(A + 'appraisals.team'),
+  managementUsers: () => call<any[]>(A + 'appraisals.management'),
+  setManagementUser: (user: string, enabled: number) => call<any[]>(A + 'appraisals.set_management', { user, enabled }),
   settlements: (status?: string) => call<any[]>(A + 'settlements.settlements', { status }),
   prepareSettlement: (args: Record<string, unknown>) => call<any>(A + 'settlements.prepare', args),
   approveSettlement: (name: string) => call<any>(A + 'settlements.approve', { name }),
@@ -261,10 +281,10 @@ export const api = {
   allHelpArticles: () => call<any[]>(A + 'knowledge.all_articles'),
   saveHelpArticle: (data: Record<string, unknown>, name?: string) => call(A + 'knowledge.save', { data, name }),
   deleteHelpArticle: (name: string) => call(A + 'knowledge.delete', { name }),
-  payrollSlips: (company: string, month: string) => call<any>(A + 'payroll_control.slips', { company, month }),
+  payrollSlips: (company: string, month: string, run?: string) => call<any>(A + 'payroll_control.slips', { company, month, run }),
   recalcSlip: (name: string) => call(A + 'payroll_control.recalculate_slip', { name }),
   removeSlip: (name: string, reason: string) => call(A + 'payroll_control.remove_slip', { name, reason }),
-  addSlipEmployee: (company: string, month: string, employee: string) => call(A + 'payroll_control.add_employee', { company, month, employee }),
+  addSlipEmployee: (company: string, month: string, employee: string, run?: string) => call(A + 'payroll_control.add_employee', { company, month, employee, run }),
   adjustPay: (args: Record<string, unknown>) => call(A + 'payroll_control.adjust', args),
   redoSlip: (name: string, reason: string) => call(A + 'payroll_control.redo_slip', { name, reason }),
   salaryComponents: () => call<any[]>(A + 'payroll_control.components'),
@@ -279,7 +299,7 @@ export const api = {
 
 export interface RequestField { fieldname: string; label: string; label_ar?: string; type: string; reqd?: number; options?: string[] }
 export interface RequestType {
-  name: string; title: string; title_ar?: string; category: string; description?: string; needs_manager: number; needs_hr: number
+  name: string; title: string; title_ar?: string; category: string; description?: string; needs_manager: number; needs_hr: number; needs_management?: number; manager_can_raise?: number
   requires_attachment: number; non_saudi_only: number; sla_days: number; output?: string; enabled: number; fields: RequestField[]; special?: boolean
 }
 

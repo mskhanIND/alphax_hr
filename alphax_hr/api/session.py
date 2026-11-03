@@ -31,7 +31,9 @@ def boot():
 			as_dict=True,
 		)
 	conf = settings()
-	approver = bool(user_roles & APPROVER_ROLES) or _is_named_approver(user)
+	management = "AlphaX Management" in user_roles
+	reports = bool(employee and frappe.db.exists("Employee", {"reports_to": employee, "status": "Active"}))
+	approver = bool(user_roles & APPROVER_ROLES) or management or reports or _is_named_approver(user)
 	return {
 		"user": user,
 		"full_name": frappe.utils.get_fullname(user),
@@ -40,6 +42,8 @@ def boot():
 		"persona": {
 			"employee": bool(employee),
 			"approver": approver,
+			"management": management,
+			"manager": reports,
 			"hr": is_hr(),
 			"hr_manager": is_hr_manager(),
 			"system_manager": "System Manager" in user_roles,

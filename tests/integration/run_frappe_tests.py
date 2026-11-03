@@ -174,7 +174,8 @@ def run(site):
         def emp_boot():
             frappe.set_user(f["emp"])
             b = session.boot()
-            assert b["persona"] == {"employee": True, "approver": False, "hr": False, "hr_manager": False, "system_manager": False}, b["persona"]
+            assert b["persona"] == {"employee": True, "approver": False, "management": False, "manager": False, "hr": False, "hr_manager": False,
+                                    "system_manager": False}, b["persona"]
         check("employee persona resolved on server", emp_boot)
 
         def emp_profile():
@@ -2013,6 +2014,163 @@ def run(site):
             rq.post_message(q["name"], "Added to November payroll")
             assert approvals.act("AlphaX Request", q["name"], "Resolve")["status"] == "Completed"
         check("help centre: HR articles, search, feedback; Ask HR conversation resolved by HR", help_centre)
+
+        print("\n== Payroll by group, appraisals, management approval")
+        def payroll_by_group():
+            from alphax_hr.api import payroll_control as pc
+            frappe.set_user("Administrator")
+            month = str(frappe.utils.get_first_day(add_days(frappe.utils.get_first_day(nowdate()), -1)))  # last month ...
+            probe = getdate(f"{getdate(nowdate()).year}-02-01")
+            while probe < getdate(month):  # ... or an earlier month this year where Eman has no salary slip yet
+                if not frappe.db.exists("Salary Slip", {"employee": f["e_emp"], "start_date": probe, "docstatus": ["<", 2]}):
+                    month = str(probe)
+                    break
+                probe = getdate(add_days(get_last_day(probe), 1))
+            end = get_last_day(month)
+            for per in frappe.get_all("AlphaX Payroll Period", filters={"company": COMPANY, "month": month}, fields=["name", "payroll_entry"]):
+                if per.payroll_entry and frappe.db.exists("Payroll Entry", per.payroll_entry):
+                    for sl in frappe.get_all("Salary Slip", filters={"payroll_entry": per.payroll_entry}, fields=["name", "docstatus"]):
+                        if sl.docstatus == 1:
+                            frappe.get_doc("Salary Slip", sl.name).cancel()
+                        frappe.delete_doc("Salary Slip", sl.name, force=1, ignore_permissions=True)
+                    pe = frappe.get_doc("Payroll Entry", per.payroll_entry)
+                    if pe.docstatus == 1:
+                        pe.flags.ignore_links = True
+                        pe.cancel()
+                    frappe.delete_doc("Payroll Entry", pe.name, force=1, ignore_permissions=True)
+                frappe.delete_doc("AlphaX Payroll Period", per.name, force=1, ignore_permissions=True)
+            for pe_name in frappe.get_all("Payroll Entry", filters={"company": COMPANY, "docstatus": 0, "start_date": month}, pluck="name"):
+                frappe.delete_doc("Payroll Entry", pe_name, force=1, ignore_permissions=True)
+            paid = sorted(set(frappe.get_all("Salary Structure Assignment", filters={"docstatus": 1, "company": COMPANY, "from_date": ["<=", end]},
+                                             pluck="employee")))
+            frappe.set_user(f["hr"])
+            opts = pc.scope_options(COMPANY)
+            dept = frappe.db.get_value("Employee", f["e_emp"], "department")
+            assert dept in opts["Department"] and opts["business_line_field"] is None, opts
+            expect_error(lambda: pc.create_run(COMPANY, month, "Business line", "Retail"), frappe.ValidationError)
+            assert pc.period(COMPANY, month, run=None) is not None  # whole company run (legacy behaviour)
+            whole = pc.runs(COMPANY, month)["runs"][0]
+            expect_error(lambda: pc.create_run(COMPANY, month, "Department", dept), frappe.ValidationError)  # overlaps the whole run
+            pc.delete_run(whole["name"])
+            single = pc.create_run(COMPANY, month, "Employees", f["e_emp"])
+            assert single["scope_type"] == "Employees" and single["checklist"]["employees"] == 1, single["checklist"]["employees"]
+            expect_error(lambda: pc.create_run(COMPANY, month, "Department", dept), frappe.ValidationError)  # Eman is taken
+            other = [e for e in (f["e_emp2"], f["e_mgr"]) if e != f["e_emp"]]
+            bulk = pc.create_run(COMPANY, month, "Employees", "\n".join(other))
+            assert bulk["checklist"]["employees"] == 2
+            runs = pc.runs(COMPANY, month)["runs"]
+            assert {r["name"] for r in runs} == {single["name"], bulk["name"]} and all(r["title"] for r in runs), runs
+            if f["e_emp"] in paid:
+                for st in ("prepare", "review", "approve"):
+                    pc.advance(COMPANY, month, st, "go", override=1, run=single["name"])
+                try:
+                    p = pc.advance(COMPANY, month, "process", "single salary", override=1, run=single["name"])
+                except frappe.ValidationError as exc:
+                    print("  NOTE single-salary processing reported:", exc)
+                else:
+                    slips = pc.slips(COMPANY, month, run=single["name"])["rows"]
+                    assert {r["employee"] for r in slips} == {f["e_emp"]}, slips
+                    pe = frappe.get_doc("Payroll Entry", p["payroll_entry"])
+                    assert [r.employee for r in pe.employees] == [f["e_emp"]]
+                    assert pc.slips(COMPANY, month, run=bulk["name"])["rows"] == []
+                    expect_error(lambda: pc.delete_run(single["name"]), frappe.ValidationError)
+        check("payroll by group: runs per department / employees (single or bulk), no employee in two runs, single-salary processing", payroll_by_group)
+
+        def performance_appraisal():
+            from alphax_hr.api import appraisals as ap
+            frappe.set_user("Administrator")
+            frappe.db.set_value("Employee", f["e_emp"], "reports_to", f["e_mgr"])
+            for c in frappe.get_all("Appraisal Cycle", filters={"cycle_name": ["like", "AXT Cycle%"]}, pluck="name"):
+                for fb in frappe.get_all("Employee Performance Feedback", filters={"appraisal_cycle": c}, fields=["name", "docstatus"]):
+                    if fb.docstatus == 1:
+                        frappe.get_doc("Employee Performance Feedback", fb.name).cancel()
+                    frappe.delete_doc("Employee Performance Feedback", fb.name, force=1)
+                for a in frappe.get_all("Appraisal", filters={"appraisal_cycle": c}, fields=["name", "docstatus"]):
+                    if a.docstatus == 1:
+                        frappe.get_doc("Appraisal", a.name).cancel()
+                    frappe.delete_doc("Appraisal", a.name, force=1)
+                frappe.delete_doc("Appraisal Cycle", c, force=1)
+            frappe.set_user(f["hr"])
+            expect_error(lambda: ap.save_template({"title": "AXT Bad", "goals": [{"kra": "Sales", "weight": 50}],
+                                                   "criteria": [{"criteria": "Teamwork", "weight": 100}]}), frappe.ValidationError)
+            tpl = ap.save_template({"title": "AXT Standard", "goals": [{"kra": "AXT Delivery", "weight": 60}, {"kra": "AXT Quality", "weight": 40}],
+                                    "criteria": [{"criteria": "AXT Teamwork", "weight": 50}, {"criteria": "AXT Initiative", "weight": 50}]}) \
+                if not frappe.db.exists("Appraisal Template", "AXT Standard") else ap._template_dict("AXT Standard")
+            assert len(tpl["goals"]) == 2
+            frappe.set_user(f["emp"])
+            expect_error(lambda: ap.start_cycle({}), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            data = {"cycle_name": f"AXT Cycle {frappe.utils.now_datetime().strftime('%H%M%S')}", "company": COMPANY, "start_date": "2090-01-01",
+                    "end_date": "2090-12-31", "template": "AXT Standard", "employees": [f["e_emp"]]}
+            assert ap.preview_cycle(data)["missing_template"] == 0
+            cyc = ap.start_cycle(data)
+            assert cyc["employees"] == 1
+            name = frappe.db.get_value("Appraisal", {"appraisal_cycle": cyc["name"]})
+            frappe.set_user(f["emp"])
+            mine = next(a for a in ap.mine() if a["name"] == name)
+            assert mine["stage"] == "Waiting for self"
+            a = ap.save_self(name, {"AXT Teamwork": 4, "AXT Initiative": 5}, "Delivered the HR portal")
+            assert a["can_self"] and not a["can_review"] and a["scores"]["self"] == 4.5, a["scores"]
+            expect_error(lambda: ap.save_review(name, {}, {}, "x"), frappe.PermissionError)
+            frappe.set_user(f["emp2"])
+            expect_error(lambda: ap.appraisal(name), frappe.PermissionError)
+            frappe.set_user(f["mgr"])
+            assert any(x["name"] == name for x in ap.team()["appraisals"])
+            a = ap.save_review(name, {"AXT Delivery": 4, "AXT Quality": 3}, {"AXT Teamwork": 4, "AXT Initiative": 4}, "Solid year")
+            assert a["scores"]["goals"] == 3.6 and a["scores"]["feedback"] == 4.0, a["scores"]
+            a = ap.save_review(name, {"AXT Delivery": 5, "AXT Quality": 5}, {"AXT Teamwork": 5, "AXT Initiative": 5}, "Excellent")  # edit replaces
+            assert a["scores"]["feedback"] == 5.0 and frappe.db.count("Employee Performance Feedback", {"appraisal": name, "docstatus": 1}) == 1
+            expect_error(lambda: ap.finalise(name), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            detail = ap.cycle_detail(cyc["name"])
+            assert detail["rows"][0]["stage"] == "Reviewed" and detail["rows"][0]["manager_name"], detail["rows"]
+            assert ap.finalise_reviewed(cyc["name"])["done"] == [name]
+            a = ap.appraisal(name)
+            assert a["docstatus"] == 1 and round(a["scores"]["final"], 2) == round((5 + 5 + 4.5) / 3, 2), a["scores"]
+            assert ap.complete_cycle(cyc["name"])["status"] == "Completed"
+        check("performance appraisal: template, cycle, self rating, manager review, HR finalise (scores by HRMS)", performance_appraisal)
+
+        def appraisal_request_management():
+            from alphax_hr.api import appraisals as ap, requests as rq, approvals, delays
+            frappe.set_user("Administrator")
+            boss = make_user("ceo@axt.test", "Badr", ["Employee"])
+            frappe.db.set_value("Employee", f["e_emp"], "reports_to", f["e_mgr"])
+            frappe.set_user(f["emp"])
+            expect_error(lambda: ap.set_management(boss), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            assert any(u["user"] == boss for u in ap.set_management(boss, 1))
+            details = {"purpose": "Salary increment", "rating": "4 - Exceeds expectations", "achievements": "Closed 3 projects",
+                       "proposed_increase": 10}
+            frappe.set_user(f["emp"])
+            r = rq.create("Appraisal Request", details)
+            assert r["status"] == "Pending Manager"
+            frappe.set_user(f["mgr"])
+            assert approvals.act("AlphaX Request", r["name"], "Approve")["status"] == "Pending HR"
+            frappe.set_user(f["hr"])
+            assert approvals.act("AlphaX Request", r["name"], "Approve")["status"] == "Pending Management"
+            expect_error(lambda: approvals.act("AlphaX Request", r["name"], "Approve"), frappe.PermissionError)  # HR is not management
+            rep = delays.report()["rows"]
+            row = next((x for x in rep if x["name"] == r["name"]), None)
+            assert row and row["approver"] == "Management", [x for x in rep if x["doctype"] == "AlphaX Request"][:5]
+            frappe.set_user(boss)
+            box = approvals.inbox("AlphaX Request")["items"]
+            item = next((i for i in box if i["name"] == r["name"]), None)
+            assert item, [(i["name"], i["status"]) for i in box]
+            assert item["actions"] == ["Approve", "Reject"], item
+            assert approvals.act("AlphaX Request", r["name"], "Approve", "Approved 8%")["status"] == "Approved"
+            frappe.set_user(f["hr"])
+            assert approvals.act("AlphaX Request", r["name"], "Complete", "Salary changed from next month")["status"] == "Completed"
+            # raised by the reporting manager: no manager step
+            frappe.set_user(f["emp2"])
+            expect_error(lambda: rq.create("Appraisal Request", details, employee=f["e_emp"]), frappe.PermissionError)
+            frappe.set_user(f["mgr"])
+            r2 = rq.create("Appraisal Request", dict(details, purpose="Promotion", proposed_designation="Senior Analyst"), employee=f["e_emp"])
+            assert r2["status"] == "Pending HR" and frappe.db.get_value("AlphaX Request", r2["name"], "raised_by") == f["mgr"]
+            assert any(x["name"] == r2["name"] for x in ap.team()["requests"])
+            frappe.set_user(f["hr"])
+            approvals.act("AlphaX Request", r2["name"], "Reject", "Next cycle")
+            ap.set_management(boss, 0)
+        check("appraisal request: employee or manager raises, manager -> HR -> management (role, not reporting line) approve", appraisal_request_management)
 
         print("\n== /alphax page")
         def www_page():

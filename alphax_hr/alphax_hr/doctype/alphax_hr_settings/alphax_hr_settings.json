@@ -69,6 +69,7 @@
   "salary_transport_percent",
   "salary_other_component",
   "salary_gosi_component",
+  "business_line_field",
   "documents_section",
   "document_alert_days"
  ],
@@ -433,6 +434,12 @@
    "label": "GOSI Deduction Component (Saudis)",
    "options": "Salary Component",
    "description": "Employee GOSI share is added as a deduction for Saudi employees, at the rate in force on the start date."
+  },
+  {
+   "fieldname": "business_line_field",
+   "fieldtype": "Data",
+   "label": "Business line field (Employee)",
+   "description": "Employee field that holds the business line / division, for payroll runs by business line. Blank: found automatically."
   },
   {
    "fieldname": "documents_section",

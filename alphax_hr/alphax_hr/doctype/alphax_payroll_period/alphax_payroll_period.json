@@ -11,6 +11,9 @@
  "field_order": [
   "company",
   "month",
+  "scope_type",
+  "scope_value",
+  "title",
   "status",
   "payroll_entry",
   "cb1",
@@ -49,6 +52,27 @@
    "reqd": 1,
    "in_list_view": 1,
    "description": "First day of the payroll month"
+  },
+  {
+   "fieldname": "scope_type",
+   "fieldtype": "Select",
+   "label": "Run for",
+   "options": "Company\nDepartment\nBranch\nBusiness line\nCost center\nEmployees",
+   "default": "Company",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "scope_value",
+   "fieldtype": "Small Text",
+   "label": "Scope",
+   "description": "Department / branch / business line / cost center, or the employee IDs (one per line)"
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "read_only": 1,
+   "in_list_view": 1
   },
   {
    "fieldname": "status",
@@ -204,5 +228,5 @@
  "track_changes": 1,
  "states": [],
  "autoname": "hash",
- "title_field": "company"
+ "title_field": "title"
 }

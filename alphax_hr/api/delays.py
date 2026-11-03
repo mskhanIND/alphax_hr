@@ -12,6 +12,7 @@ from alphax_hr.api._common import is_hr, login_required
 from alphax_hr.api.approvals import SOURCES
 
 HR = "HR"
+MANAGEMENT = "Management"
 LINKS = {"Leave Application": "/alphax/approvals", "AlphaX Request": "/alphax/approvals", "AlphaX Leave Plan": "/alphax/approvals",
 		 "Expense Claim": "/alphax/approvals", "Attendance Request": "/alphax/approvals", "Shift Request": "/alphax/approvals",
 		 "Compensatory Leave Request": "/alphax/approvals"}
@@ -49,7 +50,7 @@ def pending_items():
 			waiting_since = row.creation
 			if conf.get("engine"):
 				if status != conf["approver_open"]:
-					approver = HR  # with HR (after the manager, or HR-only types)
+					approver = MANAGEMENT if status == conf.get("management_open") else HR  # after the manager, or HR-only types
 					waiting_since = row.get("decided_on") or row.creation
 			if not approver:
 				approver = HR
@@ -60,11 +61,19 @@ def pending_items():
 
 
 def _approver_users(approver):
+	if approver == MANAGEMENT:
+		from alphax_hr.api.requests import management_users
+
+		return management_users()
 	return list(alerts.hr_users()) if approver == HR else [approver]
 
 
+def _group_name(approver):
+	return {HR: _("HR team"), MANAGEMENT: _("Management")}.get(approver) or frappe.utils.get_fullname(approver)
+
+
 def _approver_manager(approver):
-	if approver == HR:
+	if approver in (HR, MANAGEMENT):
 		return []
 	emp = frappe.db.get_value("Employee", {"user_id": approver, "status": "Active"}, "name")
 	boss = alerts.manager_user(emp) if emp else None
@@ -90,7 +99,7 @@ def escalate_pending_approvals():
 		ref = (item.doctype, item.name)
 		if escalate and age >= escalate and not _already(item, "Escalation"):
 			to = alerts.event("Approval escalation", _("Waiting {0} hours: {1}").format(int(age), subject_bits),
-							  _("Pending with {0} since {1}.").format(_("HR") if item.approver == HR else frappe.utils.get_fullname(item.approver),
+							  _("Pending with {0} since {1}.").format(_group_name(item.approver),
 																  frappe.utils.format_datetime(item.since, "dd-MM-yyyy HH:mm")),
 							  employee=item.employee, managers=_approver_manager(item.approver) + _approver_users(item.approver),
 							  url=LINKS.get(item.doctype, "/alphax/approvals"), doc=ref, tag=f"esc-{item.name}")
@@ -130,7 +139,10 @@ def report():
 	now = now_datetime()
 	items = pending_items()
 	if not hr:
-		items = [i for i in items if i.approver == user]
+		from alphax_hr.api.requests import is_management
+
+		mgmt = is_management(user)
+		items = [i for i in items if i.approver == user or (mgmt and i.approver == MANAGEMENT)]
 	marks = {(r.reference_doctype, r.reference_name, r.stage) for r in frappe.get_all(
 		"AlphaX Approval Reminder", filters={"reference_name": ["in", [i.name for i in items] or ["-"]]},
 		fields=["reference_doctype", "reference_name", "stage"])} if frappe.db.exists("DocType", "AlphaX Approval Reminder") else set()
@@ -147,7 +159,7 @@ def report():
 			stage = "On time"
 		rows.append({"doctype": i.doctype, "name": i.name, "kind": _(LABELS.get(i.doctype, i.doctype)), "what": i.what,
 					 "employee": i.employee, "employee_name": i.employee_name, "status": i.status,
-					 "approver": i.approver, "approver_name": _("HR team") if i.approver == HR else frappe.utils.get_fullname(i.approver),
+					 "approver": i.approver, "approver_name": _group_name(i.approver),
 					 "since": str(i.since), "age_hours": age, "stage": stage})
 	rows.sort(key=lambda r: -r["age_hours"])
 	turn = _turnaround() if hr else {}

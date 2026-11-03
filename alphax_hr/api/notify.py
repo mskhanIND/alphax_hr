@@ -172,10 +172,14 @@ def request_created(doc):
 		managers = [doc.approver]
 	elif doc.status == "Pending HR":
 		managers = list(alerts.hr_users())
+	elif doc.status == "Pending Management":
+		from alphax_hr.api.requests import management_users
+
+		managers = management_users()
 	else:
 		return
 	alerts.event("Request submitted", _("New request: {0}").format(_(doc.request_type)), doc.employee_name or "",
-				 employee=doc.employee, managers=managers, url="/alphax/approvals" if doc.status == "Pending Manager" else "/alphax/requests",
+				 employee=doc.employee, managers=managers, url="/alphax/requests" if doc.status == "Pending HR" else "/alphax/approvals",
 				 doc=("AlphaX Request", doc.name), tag=doc.name)
 
 
@@ -187,7 +191,7 @@ def request_decided(doc):
 	if user and user != frappe.session.user:
 		alerts.event("Request decision", _(doc.request_type), _("Your request is now: {0}").format(_(doc.status)),
 					 employee=doc.employee, url="/alphax/me/requests", doc=("AlphaX Request", doc.name), tag=doc.name)
-	if doc.status in ("Pending Manager", "Pending HR"):
+	if doc.status in ("Pending Manager", "Pending HR", "Pending Management"):
 		request_created(doc)
 
 

@@ -1,4 +1,5 @@
-"""Payroll control centre: one month, one company, one tracked run.
+"""Payroll control centre: tracked payroll runs per month — the whole company, or one department, branch,
+business line, cost center, or chosen employees (one employee = single salary processing).
 
 Open -> Prepared -> Reviewed -> Approved -> Processed (HRMS Payroll Entry + slips) -> Closed.
 Every step records who and when, and keeps a snapshot of the checklist it was taken on.
@@ -36,23 +37,61 @@ def _emp_item(e, note=None, doctype="Employee", name=None):
 			"doctype": doctype, "name": name or e.get("name"), "note": note}
 
 
-def _active(company, start, end):
-	"""Employees on the payroll for the month: active, or left during it."""
+SCOPES = ("Company", "Department", "Branch", "Business line", "Cost center", "Employees")
+
+
+def business_line_field():
+	"""Employee field holding the business line (set in settings, else the first field that looks like one)."""
+	from alphax_hr.api._common import settings as _settings
+
+	meta = frappe.get_meta("Employee")
+	chosen = (_settings().get("business_line_field") or "").strip()
+	if chosen and meta.has_field(chosen):
+		return chosen
+	for df in meta.fields:
+		label = (df.label or "").lower()
+		if df.fieldtype in ("Link", "Select", "Data") and (df.fieldname in ("business_line", "alphax_business_line", "division", "business_unit")
+																   or any(w in label for w in ("business line", "business unit", "division"))):
+			return df.fieldname
+	return None
+
+
+def _scope_ids(value):
+	return [x.strip() for x in str(value or "").replace(",", "\n").splitlines() if x.strip()]
+
+
+def _scope_filters(scope_type, scope_value):
+	scope_type = scope_type or "Company"
+	if scope_type == "Company":
+		return {}
+	if scope_type == "Employees":
+		return {"name": ["in", _scope_ids(scope_value) or [""]]}
+	field = {"Department": "department", "Branch": "branch", "Cost center": "payroll_cost_center",
+			 "Business line": business_line_field()}.get(scope_type)
+	if not field:
+		frappe.throw(_("No business line field on Employee. Set it in HR status & setup → Settings → Salary."))
+	return {field: scope_value}
+
+
+def _active(company, start, end, scope=None):
+	"""Employees on the payroll for the month: active, or left during it (within the run's scope)."""
 	meta = frappe.get_meta("Employee")
 	fields = ["name", "employee_name", "date_of_joining", "relieving_date", "status", "salary_mode", "bank_ac_no"] + [
 		f for f in ("iban", "alphax_is_saudi") if meta.has_field(f)]
-	return frappe.get_all("Employee", filters={"company": company, "date_of_joining": ["<=", end]},
-						  or_filters={"status": "Active", "relieving_date": [">=", start]}, fields=fields)
+	filters = {"company": company, "date_of_joining": ["<=", end]}
+	if scope is not None:
+		filters.update(_scope_filters(scope.get("scope_type"), scope.get("scope_value")))
+	return frappe.get_all("Employee", filters=filters, or_filters={"status": "Active", "relieving_date": [">=", start]}, fields=fields)
 
 
 def _overlap(start, end, a="from_date", b="to_date"):
 	return {a: ["<=", end], b: [">=", start]}
 
 
-def checklist(company, month):
-	"""Everything payroll depends on for the month, with the records behind each number."""
+def checklist(company, month, scope=None):
+	"""Everything payroll depends on for the month (and run scope), with the records behind each number."""
 	start, end = _bounds(month)
-	emps = _active(company, start, end)
+	emps = _active(company, start, end, scope)
 	ids = [e.name for e in emps]
 	by_id = {e.name: e for e in emps}
 	checks = []
@@ -93,6 +132,8 @@ def checklist(company, month):
 		data = month_data(str(start), None, company)
 		att_items, absent_items, ot_hours = [], [], 0.0
 		for r in data["rows"]:
+			if r.get("employee", r.get("name")) not in by_id:
+				continue
 			t = r["totals"]
 			gaps = int(t.get(MISSING_PUNCH, 0) + t.get(NOT_MARKED, 0))
 			if gaps:
@@ -221,16 +262,114 @@ def _overtime_added(ids, start, end):
 															"payroll_date": ["between", [start, end]], "docstatus": 1}, pluck="employee"))
 
 
-def _get_period(company, month, create=True):
+def _scope(doc):
+	return {"scope_type": doc.get("scope_type") or "Company", "scope_value": doc.get("scope_value")}
+
+
+def _title(scope_type, scope_value):
+	if (scope_type or "Company") == "Company":
+		return _("Whole company")
+	if scope_type == "Employees":
+		ids = _scope_ids(scope_value)
+		names = [frappe.db.get_value("Employee", i, "employee_name") or i for i in ids[:3]]
+		return _("Employees: {0}").format(", ".join(names) + (f" +{len(ids) - 3}" if len(ids) > 3 else ""))
+	return f"{_(scope_type)}: {scope_value}"
+
+
+def _get_period(company, month, create=True, run=None):
+	if run:
+		doc = frappe.get_doc("AlphaX Payroll Period", run)
+		if doc.company != company or getdate(doc.month) != _bounds(month)[0]:
+			frappe.throw(_("This payroll run belongs to another company or month."))
+		return doc
 	start, _end = _bounds(month)
-	name = frappe.db.get_value("AlphaX Payroll Period", {"company": company, "month": start})
+	name = frappe.db.get_value("AlphaX Payroll Period", {"company": company, "month": start, "scope_type": ["in", ["Company", "", None]]})
 	if name:
 		return frappe.get_doc("AlphaX Payroll Period", name)
 	if not create:
 		return None
-	doc = frappe.get_doc({"doctype": "AlphaX Payroll Period", "company": company, "month": start, "status": "Open"})
+	if frappe.db.exists("AlphaX Payroll Period", {"company": company, "month": start}):
+		return None  # the month runs by group; open one of the runs
+	doc = frappe.get_doc({"doctype": "AlphaX Payroll Period", "company": company, "month": start, "status": "Open",
+						  "scope_type": "Company", "title": _title("Company", None)})
 	doc.insert()
 	return doc
+
+
+def _run_ids(doc):
+	start, end = _bounds(doc.month)
+	return {e.name for e in _active(doc.company, start, end, _scope(doc))}
+
+
+@frappe.whitelist()
+def scope_options(company):
+	"""Values HR can run payroll for: departments, branches, business lines, cost centers."""
+	require_hr()
+	field = business_line_field()
+	lines = []
+	if field:
+		lines = sorted({v for v in frappe.get_all("Employee", filters={"company": company, "status": "Active", field: ["is", "set"]},
+													   pluck=field) if v})
+	return {"Department": frappe.get_all("Department", filters={"company": ["in", [company, "", None]], "is_group": 0}, pluck="name", order_by="name"),
+			"Branch": frappe.get_all("Branch", pluck="name", order_by="name"),
+			"Business line": lines, "business_line_field": field,
+			"Cost center": frappe.get_all("Cost Center", filters={"company": company, "is_group": 0, "disabled": 0}, pluck="name", order_by="name")}
+
+
+@frappe.whitelist()
+def runs(company, month):
+	"""Payroll runs of the month for the company."""
+	require_hr()
+	start, end = _bounds(month)
+	out = []
+	for r in frappe.get_all("AlphaX Payroll Period", filters={"company": company, "month": start},
+							fields=["name", "title", "scope_type", "scope_value", "status", "employees", "gross", "net", "payroll_entry"],
+							order_by="creation asc"):
+		r.scope_type = r.scope_type or "Company"
+		r.title = r.title or _title(r.scope_type, r.scope_value)
+		out.append(r)
+	return {"runs": out, "whole_company": any(r.scope_type == "Company" for r in out)}
+
+
+@frappe.whitelist(methods=["POST"])
+def create_run(company, month, scope_type, scope_value=None):
+	"""Open a payroll run for part of the company. An employee can be in only one run per month."""
+	require_hr()
+	if scope_type not in SCOPES:
+		frappe.throw(_("Unknown payroll scope."))
+	if scope_type == "Employees":
+		scope_value = "\n".join(dict.fromkeys(_scope_ids(scope_value)))
+	if scope_type != "Company" and not (scope_value or "").strip():
+		frappe.throw(_("Choose what to run payroll for."))
+	start, end = _bounds(month)
+	scope = {"scope_type": scope_type, "scope_value": scope_value}
+	ids = {e.name for e in _active(company, start, end, scope)}
+	if not ids:
+		frappe.throw(_("No employees on the payroll for this choice."))
+	clashes = []
+	for other in frappe.get_all("AlphaX Payroll Period", filters={"company": company, "month": start},
+								fields=["name", "title", "scope_type", "scope_value"]):
+		taken = ids & {e.name for e in _active(company, start, end, _scope(other))}
+		if taken:
+			clashes.append(_("{0} employee(s) already in run '{1}'").format(len(taken), other.title or _title(other.scope_type, other.scope_value)))
+	if clashes:
+		frappe.throw("<br>".join(clashes), title=_("Already in another payroll run"))
+	doc = frappe.get_doc({"doctype": "AlphaX Payroll Period", "company": company, "month": start, "status": "Open",
+						  "scope_type": scope_type, "scope_value": scope_value, "title": _title(scope_type, scope_value),
+						  "employees": len(ids)})
+	doc.insert()
+	return _out(doc)
+
+
+@frappe.whitelist(methods=["POST"])
+def delete_run(name):
+	"""Remove a run that has not been processed yet."""
+	require_hr_manager()
+	doc = frappe.get_doc("AlphaX Payroll Period", name)
+	if doc.status in ("Processed", "Closed") or doc.payroll_entry:
+		frappe.throw(_("A processed run cannot be removed. Cancel its Payroll Entry in ERPNext first."))
+	frappe.delete_doc("AlphaX Payroll Period", name, ignore_permissions=True)  # HR Manager checked above
+	return {"ok": True}
 
 
 def _gosi_components():
@@ -246,13 +385,20 @@ def _slip_fields(*names):
 	return [n for n in names if n in ("name", "docstatus", "modified") or meta.has_field(n)]
 
 
-def _slip_filters(company, month):
+def _slip_filters(company, month, ids=None):
 	start, end = _bounds(month)
-	return {"company": company, "start_date": [">=", start], "end_date": ["<=", end], "docstatus": ["<", 2]}
+	out = {"company": company, "start_date": [">=", start], "end_date": ["<=", end], "docstatus": ["<", 2]}
+	if ids is not None:
+		out["employee"] = ["in", list(ids) or [""]]
+	return out
+
+
+def _doc_ids(doc):
+	return None if (doc.get("scope_type") or "Company") == "Company" else _run_ids(doc)
 
 
 def _totals(doc):
-	rows = frappe.get_all("Salary Slip", filters=_slip_filters(doc.company, doc.month),
+	rows = frappe.get_all("Salary Slip", filters=_slip_filters(doc.company, doc.month, _doc_ids(doc)),
 						  fields=_slip_fields("name", "docstatus", "gross_pay", "total_deduction", "net_pay", "total_loan_repayment"))
 	names = [r.name for r in rows]
 	gosi = penalties = 0.0
@@ -276,6 +422,7 @@ def _out(doc, with_checklist=True):
 
 	out = {k: (str(doc.get(k)) if doc.get(k) is not None and k.endswith(("_on", "month")) else doc.get(k)) for k in
 		   ("name", "company", "month", "status", "payroll_entry", "employees", "gross", "deductions", "net", "prepared_by", "prepared_on",
+			"scope_type", "scope_value", "title",
 			"reviewed_by", "reviewed_on", "approved_by", "approved_on", "processed_by", "processed_on", "notes")}
 	for k in ("prepared_by", "reviewed_by", "approved_by", "processed_by"):
 		out[k + "_name"] = frappe.utils.get_fullname(doc.get(k)) if doc.get(k) else None
@@ -283,7 +430,9 @@ def _out(doc, with_checklist=True):
 	if doc.payroll_entry:
 		out["payroll_entry_status"] = frappe.db.get_value("Payroll Entry", doc.payroll_entry, "status")
 	if with_checklist:
-		out["checklist"] = checklist(doc.company, doc.month)
+		out["checklist"] = checklist(doc.company, doc.month, _scope(doc))
+	out["scope_type"] = doc.get("scope_type") or "Company"
+	out["title"] = doc.get("title") or _title(out["scope_type"], doc.get("scope_value"))
 	out["trail"] = trail("AlphaX Payroll Period", doc.name)["events"] if not doc.is_new() else []
 	out["can_approve"] = is_hr_manager()
 	return out
@@ -296,17 +445,27 @@ def companies():
 
 
 @frappe.whitelist()
-def period(company, month):
+def period(company, month, run=None):
 	require_hr()
 	frappe.has_permission("Company", "read", company, throw=True)
-	return _out(_get_period(company, month))
+	doc = _get_period(company, month, run=run)
+	if not doc:
+		return None  # the month is run by group: pick a run
+	return _out(doc)
+
+
+def _need(company, month, run, create=True):
+	doc = _get_period(company, month, create=create, run=run)
+	if not doc:
+		frappe.throw(_("Choose the payroll run first."))
+	return doc
 
 
 @frappe.whitelist(methods=["POST"])
-def advance(company, month, step, note=None, override=0):
-	"""Move the month one step forward (prepare, review, approve, process, close) or back (reopen)."""
+def advance(company, month, step, note=None, override=0, run=None):
+	"""Move the run one step forward (prepare, review, approve, process, close) or back (reopen)."""
 	require_hr()
-	doc = _get_period(company, month)
+	doc = _need(company, month, run)
 	user = frappe.session.user
 	if step == "reopen":
 		require_hr_manager()
@@ -323,7 +482,7 @@ def advance(company, month, step, note=None, override=0):
 	before, after = STEPS[step]
 	if doc.status != before:
 		frappe.throw(_("This month is '{0}'; it must be '{1}' to {2}.").format(_(doc.status), _(before), _(step)))
-	cl = checklist(company, month)
+	cl = checklist(company, month, _scope(doc))
 	if step in ("prepare", "approve", "process") and cl["blockers"]:
 		if not (cint(override) and is_hr_manager() and (note or "").strip()):
 			frappe.throw(_("{0} blocking item(s) are still open. Resolve them, or an HR Manager can continue with a note.").format(cl["blockers"]),
@@ -353,7 +512,7 @@ def advance(company, month, step, note=None, override=0):
 
 def _save(doc, step, note):
 	start, end = _bounds(doc.month)
-	doc.employees = len(_active(doc.company, start, end))
+	doc.employees = len(_active(doc.company, start, end, _scope(doc)))
 	t = _totals(doc)
 	doc.gross, doc.deductions, doc.net = t["gross"], t["deductions"], t["net"]
 	doc.save()
@@ -370,20 +529,40 @@ def _process(doc):
 	payable = company.get("default_payroll_payable_account")
 	if not payable:
 		frappe.throw(_("Set a Default Payroll Payable Account on company {0} first.").format(doc.company))
-	# Reuse a draft left by an earlier failed attempt, otherwise create the entry.
-	draft = frappe.db.get_value("Payroll Entry", {"company": doc.company, "start_date": start, "end_date": end, "docstatus": 0})
+	scope_type = doc.get("scope_type") or "Company"
+	# Reuse this run's draft left by an earlier failed attempt, otherwise create the entry.
+	draft = doc.payroll_entry if doc.payroll_entry and frappe.db.get_value("Payroll Entry", doc.payroll_entry, "docstatus") == 0 else None
+	if not draft and scope_type == "Company":
+		draft = frappe.db.get_value("Payroll Entry", {"company": doc.company, "start_date": start, "end_date": end, "docstatus": 0})
 	if draft:
 		pe = frappe.get_doc("Payroll Entry", draft)
 	else:
-		pe = frappe.get_doc({"doctype": "Payroll Entry", "company": doc.company, "posting_date": end, "start_date": start, "end_date": end,
-							 "payroll_frequency": "Monthly", "currency": company.default_currency, "exchange_rate": 1,
-							 "payroll_payable_account": payable, "cost_center": company.cost_center,
-							 "payment_account": company.get("default_bank_account")})
+		values = {"doctype": "Payroll Entry", "company": doc.company, "posting_date": end, "start_date": start, "end_date": end,
+				  "payroll_frequency": "Monthly", "currency": company.default_currency, "exchange_rate": 1,
+				  "payroll_payable_account": payable, "cost_center": company.cost_center,
+				  "payment_account": company.get("default_bank_account")}
+		if scope_type == "Department":
+			values["department"] = doc.scope_value
+		elif scope_type == "Branch":
+			values["branch"] = doc.scope_value
+		elif scope_type == "Cost center":
+			values["cost_center"] = doc.scope_value  # salary expense is booked to this cost center
+		pe = frappe.get_doc(values)
 		pe.insert()
 	pe.fill_employee_details()
+	if scope_type != "Company":
+		ids = _run_ids(doc)
+		keep = [r for r in pe.employees if r.employee in ids]
+		pe.set("employees", [])
+		for r in keep:
+			pe.append("employees", {k: r.get(k) for k in ("employee", "employee_name", "department", "designation", "is_salary_withheld")
+									if r.get(k) is not None})
+		pe.number_of_employees = len(pe.employees)
 	if not pe.employees:
-		frappe.throw(_("No employees with a salary structure for this month."))
+		frappe.throw(_("No employees with a salary structure in this run for this month."))
 	pe.save()
+	doc.payroll_entry = pe.name
+	doc.db_set("payroll_entry", pe.name, update_modified=False)
 	# HRMS rolls the whole transaction back when a salary slip fails; keep the entry so the error is visible.
 	frappe.db.commit()  # nosemgrep
 	try:
@@ -398,10 +577,10 @@ def _process(doc):
 
 
 @frappe.whitelist(methods=["POST"])
-def submit_slips(company, month):
-	"""Submit the draft salary slips of the processed month (HR Manager)."""
+def submit_slips(company, month, run=None):
+	"""Submit the draft salary slips of the processed run (HR Manager)."""
 	require_hr_manager()
-	doc = _get_period(company, month, create=False)
+	doc = _get_period(company, month, create=False, run=run)
 	if not doc or doc.status != "Processed" or not doc.payroll_entry:
 		frappe.throw(_("Process the payroll first."))
 	pe = frappe.get_doc("Payroll Entry", doc.payroll_entry)
@@ -411,9 +590,11 @@ def submit_slips(company, month):
 
 
 @frappe.whitelist(methods=["POST"])
-def add_overtime(company, month):
-	"""Add the month's Art. 107 overtime pay to payroll as Additional Salary (once per employee)."""
+def add_overtime(company, month, run=None):
+	"""Add the month's Art. 107 overtime pay to payroll as Additional Salary (once per employee, within the run)."""
 	require_hr()
+	doc = _get_period(company, month, create=False, run=run) if run else None
+	only = _doc_ids(doc) if doc else None
 	from alphax_hr.api.attendance import overtime
 
 	start, end = _bounds(month)
@@ -425,6 +606,8 @@ def add_overtime(company, month):
 	done = _overtime_added([r["employee"] for r in data["rows"]], start, end)
 	created, skipped = [], []
 	for r in data["rows"]:
+		if only is not None and r["employee"] not in only:
+			continue
 		if r["employee"] in done or not r["amount"]:
 			skipped.append({"employee": r["employee"], "employee_name": r["employee_name"],
 							"reason": _("already added") if r["employee"] in done else r["warning"]})
@@ -442,8 +625,13 @@ def add_overtime(company, month):
 
 # ------------------------------------------------------------------ per-employee corrections
 def _period_for_slip(slip):
+	if slip.get("payroll_entry"):
+		hit = frappe.db.get_value("AlphaX Payroll Period", {"payroll_entry": slip.payroll_entry}, ["name", "status"], as_dict=True)
+		if hit:
+			return hit
 	start, _end = _bounds(slip.start_date)
-	return frappe.db.get_value("AlphaX Payroll Period", {"company": slip.company, "month": start}, ["name", "status"], as_dict=True)
+	return frappe.db.get_value("AlphaX Payroll Period", {"company": slip.company, "month": start, "scope_type": ["in", ["Company", "", None]]},
+							   ["name", "status"], as_dict=True)
 
 
 def _guard_open(slip):
@@ -453,10 +641,12 @@ def _guard_open(slip):
 
 
 @frappe.whitelist()
-def slips(company, month):
-	"""Every salary slip of the month with the figures HR checks before submitting."""
+def slips(company, month, run=None):
+	"""Every salary slip of the run with the figures HR checks before submitting."""
 	require_hr()
-	rows = frappe.get_all("Salary Slip", filters=_slip_filters(company, month),
+	doc = _get_period(company, month, create=False, run=run)
+	ids = _doc_ids(doc) if doc else None
+	rows = frappe.get_all("Salary Slip", filters=_slip_filters(company, month, ids),
 						  fields=_slip_fields("name", "employee", "employee_name", "department", "docstatus", "status", "gross_pay",
 											  "total_deduction", "net_pay", "payment_days", "total_working_days", "absent_days", "leave_without_pay",
 											  "total_loan_repayment", "journal_entry", "payroll_entry", "modified"), order_by="employee_name asc")
@@ -469,7 +659,7 @@ def slips(company, month):
 			gosi[d.parent] = gosi.get(d.parent, 0) + flt(d.amount)
 	start, end = _bounds(month)
 	with_slip = {r.employee for r in rows}
-	missing = [e for e in _active(company, start, end) if e.name not in with_slip and frappe.db.exists(
+	missing = [e for e in _active(company, start, end, _scope(doc) if doc else None) if e.name not in with_slip and frappe.db.exists(
 		"Salary Structure Assignment", {"employee": e.name, "docstatus": 1, "from_date": ["<=", end]})]
 	return {"rows": [{**r, "gosi": flt(gosi.get(r.name), 2), "modified": str(r.modified),
 					  "total_loan_repayment": flt(r.get("total_loan_repayment")),
@@ -512,10 +702,10 @@ def remove_slip(name, reason):
 
 
 @frappe.whitelist(methods=["POST"])
-def add_employee(company, month, employee):
+def add_employee(company, month, employee, run=None):
 	"""Create the slip for an employee missing from the run (e.g. salary assigned after processing)."""
 	require_hr()
-	doc = _get_period(company, month, create=False)
+	doc = _get_period(company, month, create=False, run=run)
 	if not doc or not doc.payroll_entry:
 		frappe.throw(_("Process the payroll first."))
 	if doc.status == "Closed":

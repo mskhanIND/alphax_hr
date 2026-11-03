@@ -17,6 +17,8 @@
   "cb1",
   "needs_manager",
   "needs_hr",
+  "needs_management",
+  "manager_can_raise",
   "requires_attachment",
   "non_saudi_only",
   "sla_days",
@@ -47,7 +49,7 @@
    "fieldname": "category",
    "fieldtype": "Select",
    "label": "Category",
-   "options": "Letter\nAttendance\nDocument\nGovernment\nFinance\nTravel\nAsset\nSeparation\nHelp\nOther",
+   "options": "Letter\nAttendance\nDocument\nGovernment\nFinance\nTravel\nAsset\nSeparation\nPerformance\nHelp\nOther",
    "default": "Other",
    "in_list_view": 1
   },
@@ -78,6 +80,18 @@
    "fieldtype": "Check",
    "label": "HR Approval",
    "default": "1"
+  },
+  {
+   "fieldname": "needs_management",
+   "fieldtype": "Check",
+   "label": "Management Approval",
+   "description": "After HR, users with the AlphaX Management role approve (not the reporting manager chain)."
+  },
+  {
+   "fieldname": "manager_can_raise",
+   "fieldtype": "Check",
+   "label": "Managers can raise it for their team",
+   "description": "A reporting manager can raise this request for a direct report; the manager step is then skipped."
   },
   {
    "fieldname": "requires_attachment",
@@ -164,6 +178,10 @@
   },
   {
    "role": "Employee",
+   "read": 1
+  },
+  {
+   "role": "AlphaX Management",
    "read": 1
   }
  ],

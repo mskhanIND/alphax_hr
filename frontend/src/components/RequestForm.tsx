@@ -72,7 +72,7 @@ export function RequestForm({ open, onClose, employee, initialType, category }: 
           {rt?.description && <p className="text-sm text-muted">{rt.description}</p>}
           {rt && (
             <p className="text-xs text-muted">
-              {[rt.needs_manager ? t('Manager approval') : null, rt.needs_hr ? t('HR approval') : null,
+              {[rt.needs_manager ? t('Manager approval') : null, rt.needs_hr ? t('HR approval') : null, rt.needs_management ? t('Management approval') : null,
                 rt.output === 'Letter' ? t('Letter issued as PDF') : null, `${t('Target')}: ${rt.sla_days} ${t('days')}`].filter(Boolean).join(' · ')}
             </p>
           )}

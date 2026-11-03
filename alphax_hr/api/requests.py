@@ -13,7 +13,8 @@ from frappe.utils import add_days, cint, flt, getdate, now_datetime, nowdate
 
 from alphax_hr.api._common import current_employee, is_hr, login_required, parse_json, require_hr, require_hr_manager
 
-OPEN = ("Pending Manager", "Pending HR")
+OPEN = ("Pending Manager", "Pending HR", "Pending Management")
+MANAGEMENT_ROLE = "AlphaX Management"
 FIELD_TYPES = {"Data", "Date", "Time", "Int", "Currency", "Select", "Text", "Check"}
 EFFECTS = ("Excuse late arrival", "Excuse early exit")
 
@@ -91,6 +92,20 @@ DEFAULT_TYPES = [
 	 "fields": [{"fieldname": "topic", "label": "Topic", "label_ar": "الموضوع", "type": "Select", "reqd": 1,
 				 "options": ["Leave", "Attendance", "Payroll", "Benefits", "Documents", "Policies", "Other"]},
 				{"fieldname": "subject", "label": "Subject", "label_ar": "العنوان", "type": "Data", "reqd": 1}]},
+	{"request_type_name": "Appraisal Request", "title_ar": "طلب تقييم / ترقية", "category": "Performance", "needs_manager": 1,
+	 "needs_hr": 1, "needs_management": 1, "manager_can_raise": 1, "sla_days": 7,
+	 "description": "Ask for a salary increment, promotion, confirmation or bonus based on performance. The reporting manager "
+					"(when the employee asks), HR and management approve.",
+	 "fields": [{"fieldname": "purpose", "label": "Purpose", "label_ar": "الغرض", "type": "Select", "reqd": 1,
+				 "options": ["Salary increment", "Promotion", "Confirmation after probation", "Performance bonus", "Performance review"]},
+				{"fieldname": "rating", "label": "Performance rating", "label_ar": "تقييم الأداء", "type": "Select", "reqd": 1,
+				 "options": ["5 - Outstanding", "4 - Exceeds expectations", "3 - Meets expectations", "2 - Needs improvement",
+							 "1 - Unsatisfactory"]},
+				{"fieldname": "achievements", "label": "Achievements and reasons", "label_ar": "الإنجازات والأسباب", "type": "Text", "reqd": 1},
+				{"fieldname": "proposed_designation", "label": "Proposed designation", "label_ar": "المسمى المقترح", "type": "Data"},
+				{"fieldname": "proposed_increase", "label": "Proposed increase (%)", "label_ar": "الزيادة المقترحة (%)", "type": "Int"},
+				{"fieldname": "proposed_amount", "label": "Proposed amount", "label_ar": "المبلغ المقترح", "type": "Currency"},
+				{"fieldname": "effective_date", "label": "Effective from", "label_ar": "تاريخ السريان", "type": "Date"}]},
 	{"request_type_name": "General Request", "title_ar": "طلب عام", "category": "Other", "sla_days": 3, "fields": []},
 ]
 
@@ -109,6 +124,7 @@ def seed_types():
 def _type_dict(t):
 	return {"name": t.name, "title": t.request_type_name, "title_ar": t.title_ar, "category": t.category,
 			"description": t.description, "needs_manager": cint(t.needs_manager), "needs_hr": cint(t.needs_hr),
+			"needs_management": cint(t.get("needs_management")), "manager_can_raise": cint(t.get("manager_can_raise")),
 			"requires_attachment": cint(t.requires_attachment), "non_saudi_only": cint(t.non_saudi_only),
 			"sla_days": cint(t.sla_days), "output": t.output, "enabled": cint(t.enabled), "effect": t.get("effect"),
 			"fields": parse_json(t.fields_json, []) or [],
@@ -170,10 +186,11 @@ def _manager(employee):
 def create(request_type, details=None, reason=None, employee=None):
 	"""Raise a request (for yourself; HR may raise one for any employee)."""
 	user = login_required()
-	if employee and employee != current_employee(required=False):
-		require_hr()
-	employee = employee or current_employee()
 	t = frappe.get_doc("AlphaX Request Type", request_type)
+	if employee and employee != current_employee(required=False):
+		if not (cint(t.get("manager_can_raise")) and _manager(employee) == user):
+			require_hr()
+	employee = employee or current_employee()
 	if not cint(t.enabled):
 		frappe.throw(_("This request type is not available."))
 	if t.get("effect") == "Update employee record":
@@ -187,10 +204,10 @@ def create(request_type, details=None, reason=None, employee=None):
 		_check_permission(employee, t, data)
 	approver = _manager(employee) if cint(t.needs_manager) else None
 	if approver == user:
-		approver = None  # a manager's own request skips their own approval
-	status = "Pending Manager" if approver else ("Pending HR" if cint(t.needs_hr) else "Approved")
+		approver = None  # raised by the reporting manager (or their own request): no manager step
+	status = "Pending Manager" if approver else next_status(t, "Pending Manager")
 	doc = frappe.get_doc({"doctype": "AlphaX Request", "employee": employee, "request_type": request_type, "status": status,
-						  "approver": approver, "details": json.dumps(data, ensure_ascii=False), "reason": (reason or "")[:2000],
+						  "approver": approver, "raised_by": user, "details": json.dumps(data, ensure_ascii=False), "reason": (reason or "")[:2000],
 						  "due_on": add_days(nowdate(), cint(t.sla_days) or 3)})
 	doc.flags.alphax_engine = True
 	doc.insert()
@@ -200,6 +217,25 @@ def create(request_type, details=None, reason=None, employee=None):
 
 	notify.request_created(doc)
 	return {"name": doc.name, "status": doc.status}
+
+
+def next_status(t, current):
+	"""The stage after ``current`` once it is approved: manager -> HR -> management -> approved."""
+	chain = ["Pending Manager"] + (["Pending HR"] if cint(t.needs_hr) else []) + \
+		(["Pending Management"] if cint(t.get("needs_management")) else []) + ["Approved"]
+	if current not in chain:
+		return "Approved"
+	return chain[chain.index(current) + 1]
+
+
+def is_management(user=None):
+	user = user or frappe.session.user
+	return user == "Administrator" or MANAGEMENT_ROLE in frappe.get_roles(user)
+
+
+def management_users():
+	users = frappe.get_all("Has Role", filters={"role": MANAGEMENT_ROLE, "parenttype": "User"}, pluck="parent")
+	return [u for u in users if u not in ("Administrator", "Guest") and frappe.db.get_value("User", u, "enabled")]
 
 
 def _check_resignation(employee, data):
@@ -275,6 +311,8 @@ def actions_for(doc, user):
 		acts = ["Approve", "Reject"]
 	elif doc.status == "Pending HR" and hr:
 		acts = ["Approve", "Reject"]
+	elif doc.status == "Pending Management" and is_management(user):
+		acts = ["Approve", "Reject"]
 	elif doc.status == "Approved" and hr:
 		acts = ["Complete"]
 	own = frappe.db.get_value("Employee", {"user_id": user}, "name")
@@ -305,7 +343,7 @@ def decide(name, action, comment=None):
 			frappe.throw(_("Ask the employee to attach a copy of the new document first."))
 		if cint(t.requires_attachment) and not frappe.db.exists("File", {"attached_to_doctype": "AlphaX Request", "attached_to_name": name}):
 			frappe.throw(_("{0} needs a supporting document before approval.").format(t.request_type_name))
-		doc.status = "Pending HR" if doc.status == "Pending Manager" and cint(t.needs_hr) else "Approved"
+		doc.status = next_status(t, doc.status)
 	if action != "Cancel":
 		doc.decided_by, doc.decided_on = user, now_datetime()
 	doc.flags.alphax_engine = True
@@ -422,7 +460,7 @@ def update_type(name, data):
 	require_hr_manager()
 	payload = parse_json(data, {})
 	t = frappe.get_doc("AlphaX Request Type", name)
-	for k in ("enabled", "needs_manager", "needs_hr", "requires_attachment", "non_saudi_only", "sla_days", "description",
+	for k in ("enabled", "needs_manager", "needs_hr", "needs_management", "manager_can_raise", "requires_attachment", "non_saudi_only", "sla_days", "description",
 			  "title_ar", "letter_body", "letter_body_ar", "letter_title"):
 		if k in payload:
 			t.set(k, payload[k])
@@ -442,8 +480,13 @@ def query_conditions(user=None):
 	if user == "Administrator" or is_hr(user):
 		return ""
 	emp = frappe.db.get_value("Employee", {"user_id": user}, "name") or ""
-	return "(`tabAlphaX Request`.employee = {0} or `tabAlphaX Request`.approver = {1})".format(
+	cond = "(`tabAlphaX Request`.employee = {0} or `tabAlphaX Request`.approver = {1} or `tabAlphaX Request`.raised_by = {1}".format(
 		frappe.db.escape(emp), frappe.db.escape(user))
+	if is_management(user):
+		types = frappe.get_all("AlphaX Request Type", filters={"needs_management": 1}, pluck="name")
+		if types:
+			cond += " or `tabAlphaX Request`.request_type in ({0})".format(", ".join(frappe.db.escape(x) for x in types))
+	return cond + ")"
 
 
 def has_permission(doc, ptype=None, user=None):
@@ -451,7 +494,9 @@ def has_permission(doc, ptype=None, user=None):
 	if user == "Administrator" or is_hr(user):
 		return True
 	emp = frappe.db.get_value("Employee", {"user_id": user}, "name")
-	return bool((emp and doc.employee == emp) or doc.approver == user)
+	if (emp and doc.employee == emp) or doc.approver == user or doc.get("raised_by") == user:
+		return True
+	return is_management(user) and cint(frappe.db.get_value("AlphaX Request Type", doc.request_type, "needs_management"))
 
 
 @frappe.whitelist(methods=["POST"])

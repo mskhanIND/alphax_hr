@@ -54,6 +54,7 @@ export function useNav(): { group: string; items: NavItem[] }[] {
         { to: '/approvals', label: t('Approvals'), icon: <BadgeCheck className="size-5" />, badge: (inbox.data as any)?.total },
         { to: '/approval-delays', label: t('Approval delays'), icon: <Hourglass className="size-5" /> },
         { to: '/my-team', label: t('My team'), icon: <Users className="size-5" /> },
+        ...(s.persona.manager || s.persona.hr ? [{ to: '/team-appraisals', label: t('Team appraisals'), icon: <Star className="size-5" /> }] : []),
         ...(!s.persona.hr ? [{ to: '/checkins', label: t('Check-ins & movements'), icon: <MapPin className="size-5" /> }] : []),
         { to: '/vacation-planner', label: t('Vacation planner'), icon: <CalendarRange className="size-5" /> },
         { to: '/team', label: t('Team Calendar'), icon: <CalendarRange className="size-5" /> },

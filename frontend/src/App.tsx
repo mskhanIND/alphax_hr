@@ -41,6 +41,7 @@ const MyPerformance = lazy(() => import('./pages/MyPerformance'))
 const AttendancePolicies = lazy(() => import('./pages/AttendancePolicies'))
 const NotificationsAdmin = lazy(() => import('./pages/NotificationsAdmin'))
 const ApprovalDelays = lazy(() => import('./pages/ApprovalDelays'))
+const TeamAppraisals = lazy(() => import('./pages/TeamAppraisals'))
 const VacationPlan = lazy(() => import('./pages/VacationPlan'))
 const VacationPlanner = lazy(() => import('./pages/VacationPlanner'))
 const AnnouncementsAdmin = lazy(() => import('./pages/AnnouncementsAdmin'))
@@ -90,6 +91,7 @@ export default function App() {
             <Route path="/me/profile" element={<Guard when={emp}><MyProfile /></Guard>} />
             <Route path="/approvals" element={<Guard when={mgr}><Approvals /></Guard>} />
             <Route path="/approval-delays" element={<Guard when={mgr}><ApprovalDelays /></Guard>} />
+            <Route path="/team-appraisals" element={<Guard when={mgr}><TeamAppraisals /></Guard>} />
             <Route path="/notifications-setup" element={<Guard when={hr}><NotificationsAdmin /></Guard>} />
             <Route path="/team" element={<Guard when={mgr}><TeamCalendar /></Guard>} />
             <Route path="/people" element={<Guard when={hr}><People /></Guard>} />

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import frappe
-from frappe import _
 from frappe.utils import add_days, cint, flt, get_first_day, get_last_day, getdate, nowdate
 
 from alphax_hr.api._common import require_hr, require_hr_manager, settings

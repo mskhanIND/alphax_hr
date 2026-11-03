@@ -11,7 +11,7 @@ import { fmtDate } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 import { detailsText } from './MyRequests'
 
-const STATUSES = ['open', 'Pending Manager', 'Pending HR', 'Approved', 'Completed', 'Rejected', 'Cancelled']
+const STATUSES = ['open', 'Pending Manager', 'Pending HR', 'Pending Management', 'Approved', 'Completed', 'Rejected', 'Cancelled']
 
 function TypeSettings() {
   const { t, lang } = useI18n()
@@ -28,12 +28,12 @@ function TypeSettings() {
   if (q.error) return <ErrorBox error={q.error} />
   return (
     <Card title={t('Request types')} subtitle={t('Choose who approves each request, the target time and the details asked for.')}>
-      <Table head={[t('Request type'), t('Category'), t('Enabled'), t('Manager approval'), t('HR approval'), t('Attachment required'), t('Target (days)'), '']}>
+      <Table head={[t('Request type'), t('Category'), t('Enabled'), t('Manager approval'), t('HR approval'), t('Management approval'), t('Managers can raise'), t('Attachment required'), t('Target (days)'), '']}>
         {q.data!.map((rt) => (
           <tr key={rt.name}>
             <td className="py-2 font-medium">{typeTitle(rt, lang)}</td>
             <td>{t(rt.category)}</td>
-            {(['enabled', 'needs_manager', 'needs_hr', 'requires_attachment'] as const).map((k) => (
+            {(['enabled', 'needs_manager', 'needs_hr', 'needs_management', 'manager_can_raise', 'requires_attachment'] as const).map((k) => (
               <td key={k}><input type="checkbox" className="size-4" checked={!!rt[k]} onChange={() => toggle(rt, k)} aria-label={k} /></td>
             ))}
             <td><Input type="number" className="w-20" defaultValue={rt.sla_days} onBlur={(e) => Number(e.target.value) !== rt.sla_days && m.mutate({ name: rt.name, data: { sla_days: Number(e.target.value) } })} /></td>

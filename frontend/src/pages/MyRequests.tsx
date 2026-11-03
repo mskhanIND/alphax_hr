@@ -46,7 +46,7 @@ export default function MyRequests() {
                 </button>
                 <Button size="sm" variant="secondary" onClick={() => setThread(r)}><MessageCircle className="size-4" />{r.messages ? r.messages : t('Message HR')}</Button>
                 {r.letter && <a className="text-sm font-medium text-brand underline" href={r.letter} target="_blank" rel="noreferrer">{t('Download letter')}</a>}
-                {['Pending Manager', 'Pending HR'].includes(r.status) && (
+                {['Pending Manager', 'Pending HR', 'Pending Management'].includes(r.status) && (
                   <Button size="sm" variant="secondary" loading={cancel.isPending && cancel.variables === r.name} onClick={() => cancel.mutate(r.name)}>{t('Withdraw')}</Button>
                 )}
               </li>

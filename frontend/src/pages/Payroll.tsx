@@ -9,6 +9,7 @@ import { fmtDate, fmtMoney, fmtMonth, fmtNumber, monthStart, shiftMonth, todayIS
 import { useI18n } from '../lib/i18n'
 import { recordPath } from '../lib/links'
 import { PayrollSlips } from '../components/PayrollSlips'
+import { PayrollRuns } from '../components/PayrollRuns'
 
 const FLOW = [
   { step: 'prepare', status: 'Open', done: 'Prepared', by: 'prepared' },
@@ -60,14 +61,20 @@ export default function Payroll() {
   const companies = useQuery({ queryKey: ['payroll-companies'], queryFn: api.payrollCompanies })
   const [company, setCompany] = useState('')
   useEffect(() => { if (!company && companies.data?.length) setCompany(companies.data[0]) }, [companies.data, company])
-  const q = useQuery({ queryKey: ['payroll-period', company, month], queryFn: () => api.payrollPeriod(company, month), enabled: !!company })
+  const [run, setRun] = useState('')
+  const runs = useQuery({ queryKey: ['payroll-runs', company, month], queryFn: () => api.payrollRunsOf(company, month), enabled: !!company })
+  const q = useQuery({ queryKey: ['payroll-period', company, month, run], queryFn: () => api.payrollPeriod(company, month, run || undefined),
+    enabled: !!company && !!run })
   const [act, setAct] = useState<{ step: string; label: string } | null>(null)
   const [note, setNote] = useState('')
   const [override, setOverride] = useState(false)
-  const done = (data: any) => { qc.setQueryData(['payroll-period', company, month], data); setAct(null); setNote(''); setOverride(false) }
-  const m = useMutation({ mutationFn: () => act!.step === 'submit_slips' ? api.payrollSubmitSlips(company, month)
-    : api.payrollAdvance(company, month, act!.step, note || undefined, override ? 1 : 0), onSuccess: done })
-  const ot = useMutation({ mutationFn: () => api.payrollAddOvertime(company, month), onSuccess: () => qc.invalidateQueries({ queryKey: ['payroll-period'] }) })
+  const done = (data: any) => {
+    qc.setQueryData(['payroll-period', company, month, run], data); setAct(null); setNote(''); setOverride(false)
+    qc.invalidateQueries({ queryKey: ['payroll-runs'] })
+  }
+  const m = useMutation({ mutationFn: () => act!.step === 'submit_slips' ? api.payrollSubmitSlips(company, month, run || undefined)
+    : api.payrollAdvance(company, month, act!.step, note || undefined, override ? 1 : 0, run || undefined), onSuccess: done })
+  const ot = useMutation({ mutationFn: () => api.payrollAddOvertime(company, month, run || undefined), onSuccess: () => qc.invalidateQueries({ queryKey: ['payroll-period'] }) })
   const p = q.data
   const cl = p?.checklist
   const idx = p ? ORDER.indexOf(p.status) : 0
@@ -80,7 +87,7 @@ export default function Payroll() {
   ].filter((g) => g.items.length) : []
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title={t('Payroll control centre')} subtitle={t('Checks, approvals and processing for one month')} actions={
+      <PageHeader title={t('Payroll control centre')} subtitle={t('Checks, approvals and processing — for the whole company, a group or single employees')} actions={
         <div className="flex flex-wrap items-center gap-2">
           {(companies.data?.length ?? 0) > 1 && (
             <Select className="w-56" value={company} onChange={(e) => setCompany(e.target.value)}>
@@ -91,7 +98,12 @@ export default function Payroll() {
           <span className="min-w-32 text-center text-sm font-medium">{fmtMonth(month, lang)}</span>
           <Button variant="secondary" size="sm" onClick={() => setMonth(shiftMonth(month, 1))}><ChevronRight className="size-4 flip-rtl" /></Button>
         </div>} />
-      {q.isLoading || companies.isLoading ? <Spinner /> : q.error ? <ErrorBox error={q.error} onRetry={() => q.refetch()} /> : p && (
+      {company && <Card><PayrollRuns company={company} month={month} run={run} onRun={setRun} canManage={!!p?.can_approve || !!q.data?.can_approve} />
+        {p?.title && <p className="mt-2 text-sm text-muted">{t('This run')}: <span className="font-medium text-ink">{p.title}</span> · {fmtNumber(p.employees ?? p.checklist?.employees ?? 0, lang)} {t('employees')}</p>}</Card>}
+      {runs.isSuccess && !runs.data?.runs?.length && (
+        <Card><p className="text-sm text-muted">{t('No payroll run for this month yet. Create one for the whole company, or for a department, branch, business line, cost center or chosen employees.')}</p></Card>
+      )}
+      {(q.isLoading && !!run) || companies.isLoading ? <Spinner /> : q.error ? <ErrorBox error={q.error} onRetry={() => q.refetch()} /> : p && (
         <>
           <Card>
             <ol className="grid gap-3 sm:grid-cols-5">
@@ -136,7 +148,7 @@ export default function Payroll() {
             <Stat label={t('Penalties')} value={fmtMoney(p.slips.penalties, lang)} tone="red" />
           </div>
           {p.payroll_entry_status === 'Queued' && <p className="rounded-xl bg-blue-50 p-3 text-sm text-blue-900">{t('Salary slips are being created in the background. Refresh in a minute.')}</p>}
-          {p.payroll_entry && <PayrollSlips company={company} month={month} closed={p.status === 'Closed'} canManage={p.can_approve} />}
+          {p.payroll_entry && <PayrollSlips company={company} month={month} run={run || undefined} closed={p.status === 'Closed'} canManage={p.can_approve} />}
           <div className="grid gap-5 lg:grid-cols-3">
             <Card className="lg:col-span-2" title={t('Payroll checklist')}
               subtitle={`${cl.blockers} ${t('blocking')} · ${cl.warnings} ${t('to check')}`}

@@ -9,7 +9,7 @@ from __future__ import annotations
 import frappe
 from frappe import _
 from frappe.model.workflow import apply_workflow, get_transitions, get_workflow_name
-from frappe.utils import cint, flt
+from frappe.utils import cint
 
 from alphax_hr.api._common import is_hr, login_required
 
@@ -62,7 +62,8 @@ SOURCES = {
 		"approver_open": "Pending Manager",
 		"closed": ["Completed", "Rejected", "Cancelled"],
 		"approver_field": "approver",
-		"open": {"status": ["in", ["Pending Manager", "Pending HR", "Approved"]]},
+		"open": {"status": ["in", ["Pending Manager", "Pending HR", "Pending Management", "Approved"]]},
+		"management_open": "Pending Management",
 		"status_field": "status",
 		"values": {"Approve": None, "Reject": None},
 		"fields": ["employee", "employee_name", "request_type", "status", "due_on", "reason", "details"],
@@ -120,18 +121,24 @@ def inbox(doctype=None, limit=100):
 			continue
 		workflow = get_workflow_name(dt)
 		filters = {"docstatus": 0}
+		or_filters = None
 		conf = SOURCES[dt]
 		if conf.get("engine"):
 			workflow = None
 			filters.update(conf["open"])
 			if not is_hr(user):
-				filters["approver"] = user
-				filters["status"] = conf["approver_open"]
+				extra = conf.get("management_open")
+				if extra and frappe.get_attr(conf["engine"] + ".is_management")(user):
+					filters["status"] = ["in", [conf["approver_open"], extra]]
+					or_filters = [[dt, "approver", "=", user], [dt, "status", "=", extra]]
+				else:
+					filters["approver"] = user
+					filters["status"] = conf["approver_open"]
 		elif not workflow:
 			filters.update(conf["open"])
 			if conf["approver_field"] and not is_hr(user):
 				filters[conf["approver_field"]] = user
-		rows = frappe.get_list(dt, filters=filters, fields=list(dict.fromkeys(_row_fields(dt))),
+		rows = frappe.get_list(dt, filters=filters, or_filters=or_filters, fields=list(dict.fromkeys(_row_fields(dt))),
 							   order_by="modified desc", page_length=min(cint(limit) or 100, 200))
 		for row in rows:
 			doc = frappe.get_doc(dt, row.name)
@@ -224,9 +231,12 @@ def decided(doctype=None, limit=50):
 			continue
 		conf = SOURCES[dt]
 		filters = {"status": ["in", conf["closed"]]} if conf.get("engine") else {"docstatus": ["in", [1, 2]]}
-		if conf["approver_field"] and not is_hr(user):
+		or_filters = None
+		if conf.get("engine") and not is_hr(user):
+			or_filters = [[dt, "approver", "=", user], [dt, "decided_by", "=", user]]  # includes management decisions
+		elif conf["approver_field"] and not is_hr(user):
 			filters[conf["approver_field"]] = user
-		rows = frappe.get_list(dt, filters=filters, fields=list(dict.fromkeys(_row_fields(dt))),
+		rows = frappe.get_list(dt, filters=filters, or_filters=or_filters, fields=list(dict.fromkeys(_row_fields(dt))),
 							   order_by="modified desc", page_length=min(cint(limit) or 50, 200))
 		for r in rows:
 			r["doctype"] = dt

@@ -9,7 +9,7 @@ import frappe
 from frappe import _
 from frappe.utils import add_days, cint, flt, getdate, now_datetime, nowdate
 
-from alphax_hr.api._common import current_employee, is_hr, login_required, parse_json, require_hr, settings
+from alphax_hr.api._common import current_employee, is_hr, login_required, parse_json, settings
 
 LIVE = ("Submitted", "Approved")
 EDITABLE = ("Draft", "Changes requested")

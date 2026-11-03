@@ -22,8 +22,14 @@ def after_migrate():
 	seed_catalogues()
 
 
+def seed_roles():
+	if not frappe.db.exists("Role", "AlphaX Management"):
+		frappe.get_doc({"doctype": "Role", "role_name": "AlphaX Management", "desk_access": 0}).insert(ignore_permissions=True)
+
+
 def seed_catalogues():
 	"""Default request types and violations schedule (only missing ones; HR edits are kept)."""
+	seed_roles()
 	from alphax_hr.api.penalties import seed_violations
 	from alphax_hr.api.requests import seed_types
 
@@ -44,6 +50,7 @@ ROW_LIMIT = 65535
 
 
 def before_migrate():
+	seed_roles()  # doctype permissions refer to it
 	shrink_own_columns()
 
 
