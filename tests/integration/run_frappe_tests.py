@@ -1704,7 +1704,8 @@ def run(site):
             if not frappe.db.exists("Salary Structure Assignment", {"employee": f["e_emp"], "docstatus": 1}):
                 salary.assign(f["e_emp"], {"mode": "total", "total": 12000}, "2021-01-10")
             png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
-            stamp = frappe.get_doc({"doctype": "File", "file_name": "axt-stamp.png", "content": png, "is_private": 1}).insert(ignore_permissions=True)
+            stamp = frappe.get_doc({"doctype": "File", "file_name": "axt-stamp.png", "content": png, "is_private": 1,
+                                    "attached_to_doctype": "AlphaX HR Settings", "attached_to_name": "AlphaX HR Settings"}).insert(ignore_permissions=True)
             frappe.db.set_single_value("AlphaX HR Settings", {"payslip_stamp": stamp.file_url, "payslip_show_stamp": 1,
                                                               "payslip_signatory": "Hana Test", "payslip_signatory_title": "HR Manager"})
             frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")

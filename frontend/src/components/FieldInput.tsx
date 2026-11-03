@@ -5,7 +5,7 @@ import { useI18n } from '../lib/i18n'
 import { Input, Select, Textarea } from './ui'
 
 /** Upload a file and keep its URL (private by default); shows the current file with a preview for images. */
-function AttachInput({ value, onChange, image }: { value: any; onChange: (v: any) => void; image?: boolean }) {
+function AttachInput({ value, onChange, image, attachTo }: { value: any; onChange: (v: any) => void; image?: boolean; attachTo?: [string, string] }) {
   const { t } = useI18n()
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -16,7 +16,7 @@ function AttachInput({ value, onChange, image }: { value: any; onChange: (v: any
       <input type="file" accept={image ? 'image/*' : undefined} className="text-sm" disabled={busy} onChange={async (e) => {
         const f = e.target.files?.[0]; if (!f) return
         setBusy(true); setErr('')
-        try { onChange((await uploadFile('', '', f))?.file_url ?? null) } catch (x: any) { setErr(x?.message ?? String(x)) } finally { setBusy(false) }
+        try { onChange((await uploadFile(attachTo?.[0] ?? '', attachTo?.[1] ?? '', f))?.file_url ?? null) } catch (x: any) { setErr(x?.message ?? String(x)) } finally { setBusy(false) }
       }} />
       {value && <button type="button" className="text-xs text-muted underline" onClick={() => onChange(null)}>{t('Remove')}</button>}
       {err && <span className="text-xs text-red-600">{err}</span>}
@@ -35,7 +35,7 @@ export interface FieldSpec {
 }
 
 /** Renders an input for any Frappe field type the site defines on Employee. */
-export function FieldInput({ spec, value, onChange, invalid, lookupSource }: { spec: FieldSpec; value: any; onChange: (v: any) => void; invalid?: boolean; lookupSource?: 'hr' | 'ess' }) {
+export function FieldInput({ spec, value, onChange, invalid, lookupSource, attachTo }: { spec: FieldSpec; value: any; onChange: (v: any) => void; invalid?: boolean; lookupSource?: 'hr' | 'ess'; attachTo?: [string, string] }) {
   const cls = invalid ? 'border-red-400 ring-2 ring-red-100' : undefined
   switch (spec.fieldtype) {
     case 'Check':
@@ -62,7 +62,7 @@ export function FieldInput({ spec, value, onChange, invalid, lookupSource }: { s
       return <Input className={cls} type="number" step={spec.fieldtype === 'Int' ? 1 : 'any'} value={value ?? ''} onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))} />
     case 'Attach':
     case 'Attach Image':
-      return <AttachInput value={value} onChange={onChange} image={spec.fieldtype === 'Attach Image'} />
+      return <AttachInput value={value} onChange={onChange} image={spec.fieldtype === 'Attach Image'} attachTo={attachTo} />
     case 'Small Text':
     case 'Text':
     case 'Long Text':

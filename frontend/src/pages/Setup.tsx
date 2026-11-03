@@ -178,7 +178,7 @@ function SettingsForm() {
                 </label>
               ) : (
                 <Field key={f.fieldname} label={f.label} hint={f.description ?? undefined}>
-                  <fieldset disabled={!can}><FieldInput spec={f} value={values[f.fieldname]} onChange={(v) => setValues({ ...values, [f.fieldname]: v })} /></fieldset>
+                  <fieldset disabled={!can}><FieldInput spec={f} value={values[f.fieldname]} attachTo={['AlphaX HR Settings', 'AlphaX HR Settings']} onChange={(v) => setValues({ ...values, [f.fieldname]: v })} /></fieldset>
                 </Field>
               )
             ))}
