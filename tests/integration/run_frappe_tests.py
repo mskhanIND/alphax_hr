@@ -1674,6 +1674,24 @@ def run(site):
             assert acts and {"kind", "title", "at", "link"} <= set(acts[0]), acts[:1]
         check("home: HR announcements by audience and date, recent activity", home_announcements_activity)
 
+        def print_images_check():
+            from alphax_hr.api import setup
+            frappe.set_user("Administrator")
+            name = "AXT Broken Logo"
+            if not frappe.db.exists("Letter Head", name):
+                frappe.get_doc({"doctype": "Letter Head", "letter_head_name": name, "source": "HTML",
+                                "content": '<img src="/files/axt-missing-logo.png">'}).insert(ignore_permissions=True)
+            try:
+                frappe.set_user(f["hr"])
+                b = [x for x in setup.broken_print_images() if x["url"] == "/files/axt-missing-logo.png"]
+                assert b and name in b[0]["where"], setup.broken_print_images()
+                chk = next(c for c in setup.hr_status()["checks"] if c["key"] == "print_images")
+                assert chk["status"] == "warn" and "axt-missing-logo" in chk["detail"]
+            finally:
+                frappe.set_user("Administrator")
+                frappe.delete_doc("Letter Head", name, ignore_permissions=True, force=1)
+        check("HR status finds letter-head / payslip images that point to missing files", print_images_check)
+
         print("\n== /alphax page")
         def www_page():
             from alphax_hr.www import alphax as page

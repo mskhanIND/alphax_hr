@@ -6,6 +6,8 @@ type Lang = 'en' | 'ar'
 // English is the key. Arabic uses Saudi HR terminology.
 const ar: Record<string, string> = {
   'Home': 'الرئيسية',
+  'Images missing from letter heads and payslips': 'صور مفقودة في الترويسة وقسائم الرواتب',
+  'Documents & printing': 'المستندات والطباعة',
   'Self service': 'الخدمة الذاتية',
   'My pay': 'راتبي',
   'My file': 'ملفي',

@@ -345,11 +345,63 @@ def health():
 	return _run([_system_checks])
 
 
+def _file_missing(url):
+	"""True when a /files or /private/files URL has no file on this site (PDFs then fail with 'broken image links')."""
+	import os
+	from urllib.parse import unquote, urlparse
+
+	path = unquote(urlparse(url).path)
+	if path.startswith("/private/files/"):
+		return not os.path.exists(frappe.get_site_path("private", "files", path[len("/private/files/"):]))
+	if path.startswith("/files/"):
+		return not os.path.exists(frappe.get_site_path("public", "files", path[len("/files/"):]))
+	return False
+
+
+def broken_print_images():
+	"""Images used by letter heads, payslip print formats and the site logo that point to missing files."""
+	import re
+
+	found = []
+	urls = re.compile(r"""(?:src|href)=["']([^"']+)["']|url\(["']?([^"')]+)""")
+
+	def scan(where, link, *texts):
+		for text in texts:
+			for m in urls.finditer(text or ""):
+				u = m.group(1) or m.group(2)
+				if u and _file_missing(u):
+					found.append({"where": where, "url": u, "link": link})
+			if text and str(text).startswith(("/files/", "/private/files/")) and _file_missing(text):
+				found.append({"where": where, "url": text, "link": link})
+
+	for lh in frappe.get_all("Letter Head", filters={"disabled": 0}, fields=["name", "image", "content", "footer", "footer_image"]):
+		scan(_("Letter Head {0}").format(lh.name), f"/app/letter-head/{lh.name}", lh.image, lh.content, lh.footer, lh.footer_image)
+	for pf in frappe.get_all("Print Format", filters={"doc_type": "Salary Slip", "disabled": 0}, fields=["name", "html", "css"]):
+		scan(_("Print Format {0}").format(pf.name), f"/app/print-format/{pf.name}", pf.html, pf.css)
+	for field in ("app_logo", "banner_image", "favicon", "splash_image"):
+		v = frappe.db.get_single_value("Website Settings", field) if frappe.get_meta("Website Settings").has_field(field) else None
+		scan(_("Website Settings: {0}").format(field), "/app/website-settings", v)
+	seen, out = set(), []
+	for f in found:
+		if (f["where"], f["url"]) not in seen:
+			seen.add((f["where"], f["url"]))
+			out.append(f)
+	return out
+
+
+def _print_checks(rows):
+	g = _("Documents & printing")
+	broken = broken_print_images()
+	_check(rows, g, "print_images", WARN if broken else OK, len(broken),
+		   "; ".join(f"{b['where']}: {b['url']}" for b in broken[:8]) or None,
+		   broken[0]["link"] if broken and "System Manager" in frappe.get_roles() else None)
+
+
 @frappe.whitelist()
 def hr_status():
 	"""Overall HR status for HR Managers: data gaps, documents, approvals, leave and payroll setup."""
 	_require_hr_lead()
-	return _run([_hr_checks, _hr_operational_checks])
+	return _run([_hr_checks, _hr_operational_checks, _print_checks])
 
 
 def _spec(df):

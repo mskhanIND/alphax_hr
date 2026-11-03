@@ -218,10 +218,10 @@ export default function Home() {
       <Announcements />
       {s.persona.employee && <QuickServices />}
       {s.persona.employee && (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <CheckInCard />
           <LeaveSummary />
-          <div className="lg:col-span-2"><RecentActivity /></div>
+          <div className="min-w-0 lg:col-span-2"><RecentActivity /></div>
         </div>
       )}
       {(s.persona.approver || s.persona.hr) && <ApprovalsSummary />}
