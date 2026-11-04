@@ -1491,9 +1491,13 @@ def run(site):
             r0 = draft[0]
             from alphax_hr.api._wages import component_map
             in_gosi = {x for k in ("GOSI Basic", "GOSI Housing") for x in component_map().get(k, ())}
-            comp = next(n for n in frappe.get_all("Salary Component", filters={"type": "Earning", "statistical_component": 0,
-                                                                                "depends_on_payment_days": 0}, pluck="name", order_by="name")
-                        if n not in in_gosi)  # a GOSI-wage component would also change the GOSI deduction
+            comp = "AXT Correction"  # plain earning: no formula, not prorated, not part of the GOSI wage
+            assert comp not in in_gosi
+            if not frappe.db.exists("Salary Component", comp):
+                frappe.set_user("Administrator")
+                frappe.get_doc({"doctype": "Salary Component", "salary_component": comp, "salary_component_abbr": "AXTC",
+                                "type": "Earning", "depends_on_payment_days": 0}).insert(ignore_permissions=True)
+                frappe.set_user(f["hr"])
             pc.adjust(COMPANY, month, r0["employee"], comp, 500, "this", "Missed allowance")
             after = next(x for x in pc.slips(COMPANY, month)["rows"] if x["name"] == r0["name"])
             assert round(after["net_pay"] - r0["net_pay"], 2) == 500, (r0["net_pay"], after["net_pay"])
@@ -2452,7 +2456,7 @@ def run(site):
             from alphax_hr.www import alphax_login as login_page
             frappe.set_user("Administrator")
             conf = frappe.get_single("AlphaX HR Settings")
-            conf.enforce_portal, conf.desk_roles = 1, "System Manager\nAccounts Manager"
+            conf.enforce_portal, conf.desk_roles, conf.use_alphax_login = 1, "System Manager\nAccounts Manager", 0
             conf.save()
             frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
             try:
@@ -2471,7 +2475,18 @@ def run(site):
                 frappe.set_user("Guest")
                 Req.path = "/login"; r = Resp(); r.headers = {}
                 portal.after_request(r, Req())
-                assert r.headers.get("Location", "").startswith("/alphax-login")
+                assert "Location" not in r.headers, r.headers  # Frappe's /login is kept unless HR opts in
+                frappe.set_user("Administrator")
+                conf.reload(); conf.use_alphax_login = 1; conf.save()
+                frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
+                frappe.set_user("Guest")
+                r = Resp(); r.headers = {}
+                portal.after_request(r, Req())
+                assert r.headers.get("Location", "").startswith("/alphax-login"), r.headers
+                Req.args = {"standard": "1"}; r = Resp(); r.headers = {}
+                portal.after_request(r, Req())
+                assert "Location" not in r.headers, r.headers  # /login?standard=1 always shows Frappe's page
+                Req.args = {}
                 ctx = login_page.get_context(frappe._dict())
                 assert ctx.title and ctx.brand["logo"]
                 # page access
@@ -2492,6 +2507,7 @@ def run(site):
                 frappe.set_user("Administrator")
                 conf = frappe.get_single("AlphaX HR Settings")
                 conf.enforce_portal = 0
+                conf.use_alphax_login = 0
                 conf.set("page_access", [])
                 conf.save()
                 frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
