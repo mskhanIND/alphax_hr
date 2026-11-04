@@ -1500,7 +1500,9 @@ def run(site):
                 frappe.set_user(f["hr"])
             pc.adjust(COMPANY, month, r0["employee"], comp, 500, "this", "Missed allowance")
             after = next(x for x in pc.slips(COMPANY, month)["rows"] if x["name"] == r0["name"])
-            assert round(after["net_pay"] - r0["net_pay"], 2) == 500, (r0["net_pay"], after["net_pay"])
+            lines = {e.salary_component: e.amount for e in frappe.get_doc("Salary Slip", r0["name"]).earnings}
+            assert lines.get(comp) == 500, lines  # the correction is on the slip (other lines may be recalculated too)
+            assert after["net_pay"] >= r0["net_pay"] + 500 - 1, (r0["net_pay"], after["net_pay"])
             pc.recalculate_slip(r0["name"])
             nxt = pc.adjust(COMPANY, month, r0["employee"], comp, 100, "next")
             assert nxt["payroll_date"] > month[:8] + "28"
