@@ -989,10 +989,12 @@ def run(site):
             frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
             frappe.set_user(f["hr"])
             c = salary.config()
-            assert c["ready"] and c["basic"] == "Basic" and c["gosi"] == "GOSI Employee", c
+            # a fresh site maps the seeded catalogue components (Basic Salary, ...); an older one may map "Basic"
+            assert c["ready"] and c["basic"] and c["housing"] and c["gosi"], c
+            assert all(frappe.db.exists("Salary Component", c[k]) for k in ("basic", "housing", "transport", "gosi")), c
             p = salary.preview({"mode": "total", "total": 13500}, is_saudi=1, gosi_registration_date="2025-01-01", start_date="2026-01-01")
             amounts = {r["salary_component"]: r["amount"] for r in p["earnings"]}
-            assert amounts == {"Basic": 10000, "Housing Allowance": 2500, "Transport Allowance": 1000}, amounts
+            assert amounts == {c["basic"]: 10000, c["housing"]: 2500, c["transport"]: 1000}, amounts
             assert p["deductions"] and p["gosi"]["system"] == "New" and p["net"] < p["gross"], p
             assert not salary.preview({"mode": "components", "basic": 8000}, is_saudi=0)["deductions"]  # non-Saudi: no GOSI
             created = hr.create_employee({"first_name": "Salary", "last_name": "Check", "gender": "Female", "date_of_birth": "1991-01-01",
@@ -1487,7 +1489,11 @@ def run(site):
             assert draft and {"gosi", "net_pay", "can_redo"} <= set(draft[0]), data["rows"][:1]
             assert {"gosi", "loans", "deductions", "draft", "submitted_count"} <= set(per["slips"])
             r0 = draft[0]
-            comp = frappe.db.get_value("Salary Component", {"type": "Earning", "statistical_component": 0, "depends_on_payment_days": 0}, "name")
+            from alphax_hr.api._wages import component_map
+            in_gosi = {x for k in ("GOSI Basic", "GOSI Housing") for x in component_map().get(k, ())}
+            comp = next(n for n in frappe.get_all("Salary Component", filters={"type": "Earning", "statistical_component": 0,
+                                                                                "depends_on_payment_days": 0}, pluck="name", order_by="name")
+                        if n not in in_gosi)  # a GOSI-wage component would also change the GOSI deduction
             pc.adjust(COMPANY, month, r0["employee"], comp, 500, "this", "Missed allowance")
             after = next(x for x in pc.slips(COMPANY, month)["rows"] if x["name"] == r0["name"])
             assert round(after["net_pay"] - r0["net_pay"], 2) == 500, (r0["net_pay"], after["net_pay"])

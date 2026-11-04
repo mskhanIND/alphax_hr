@@ -424,7 +424,7 @@ STEP_RULES = [  # first match wins; checked against fieldname + label
 	("contract", r"joining|contract|notice|probation|confirmation"),
 	("employee", r"name|gender|birth|religion|iqama|national|border|passport|saudi|identity|gosi|visa|expir|valid"),
 	("organization", r"company|department|designation|branch|employment|reports|grade|division|cost.?center|shift|"
-					 r"holiday|approver|location|project|payroll"),
+					 + r"holiday|approver|location|project|payroll"),
 ]
 
 
