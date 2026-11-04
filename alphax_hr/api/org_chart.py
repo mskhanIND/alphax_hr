@@ -17,6 +17,10 @@ LAYOUTS = ("chart", "tree", "department")
 FORMATS = ("pdf", "docx", "xlsx", "csv")
 
 
+def _by_name(r):
+	return (r.employee_name or "").lower()
+
+
 class Tree:
 	def __init__(self, rows):
 		self.rows = rows
@@ -26,14 +30,17 @@ class Tree:
 			parent = r.reports_to if r.reports_to in self.by_id and r.reports_to != r.name else None
 			self.children.setdefault(parent, []).append(r)
 		for kids in self.children.values():
-			kids.sort(key=lambda r: (r.employee_name or "").lower())
+			kids.sort(key=_by_name)
 		self._size = {}
-		self.roots = sorted(self.children.get(None, []), key=lambda r: (-self.size(r.name), (r.employee_name or "").lower()))
+		self.roots = sorted(self.children.get(None, []), key=self._root_order)
 		# people caught in a reporting loop are never reached from a root: show them at the top
 		reached = set()
 		for r in self.walk():
 			reached.add(r[0].name)
 		self.roots += [r for r in rows if r.name not in reached]
+
+	def _root_order(self, r):
+		return (-self.size(r.name), _by_name(r))
 
 	def size(self, name, seen=None):
 		if name in self._size:
@@ -196,8 +203,8 @@ def _loose_grid(tree, people, per_row=6):
 def pdf(tree, layout, title, app):
 	from frappe.utils.pdf import get_pdf
 
-	body = [f"<h1>{escape(title)}</h1><div class='sub'>{escape(app)} · {escape(frappe.utils.formatdate(nowdate()))} · "
-			f"{len(tree.rows)} {escape(_('employees'))}</div>"]
+	sub = f"{escape(app)} · {escape(frappe.utils.formatdate(nowdate()))} · {len(tree.rows)} {escape(_('employees'))}"
+	body = [f"<h1>{escape(title)}</h1><div class='sub'>{sub}</div>"]
 	if not tree.rows:
 		body.append(f"<p class='muted'>{escape(_('No employees found'))}</p>")
 	elif layout == "chart":
