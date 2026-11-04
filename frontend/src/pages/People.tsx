@@ -1,13 +1,15 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { AlertTriangle, Download, LayoutList, Network, Search, Table2, UserPlus, X } from 'lucide-react'
+import { AlertTriangle, Download, LayoutList, Network, Search, Table2, Trash2, UserPlus, X } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { DeleteEmployees } from '../components/DeleteEmployees'
 import { OrgChart } from '../components/OrgChart'
 import { Avatar, Badge, Button, Card, Empty, ErrorBox, Input, PageHeader, Select, Spinner, StatusBadge, statusTone } from '../components/ui'
 import { api, downloadUrl } from '../lib/api'
 import { fmtDate, fmtNumber } from '../lib/format'
 import { useI18n } from '../lib/i18n'
+import { useSession } from '../lib/session'
 
 const PAGE = 25
 type View = 'list' | 'table' | 'org'
@@ -34,7 +36,7 @@ function ExportMenu({ args }: { args: Record<string, unknown> }) {
   )
 }
 
-function QuickView({ id, onClose }: { id: string; onClose: () => void }) {
+function QuickView({ id, onClose, onDelete }: { id: string; onClose: () => void; onDelete?: (p: { name: string; employee_name: string }) => void }) {
   const { t, lang } = useI18n()
   const q = useQuery<any>({ queryKey: ['employee', id], queryFn: () => api.employee(id) })
   useEffect(() => {
@@ -93,6 +95,7 @@ function QuickView({ id, onClose }: { id: string; onClose: () => void }) {
             <div className="flex gap-2">
               <Link to={`/people/${encodeURIComponent(e.name)}`} className="flex-1"><Button className="w-full">{t('Open full profile')}</Button></Link>
               <Link to={`/people/${encodeURIComponent(e.name)}?print=1`}><Button variant="secondary">{t('Print / PDF')}</Button></Link>
+              {onDelete && <Button variant="secondary" aria-label={t('Delete')} title={t('Delete')} onClick={() => onDelete({ name: e.name, employee_name: e.employee_name })}><Trash2 className="size-4 text-red-700" /></Button>}
             </div>
           </div>
         )}
@@ -113,6 +116,15 @@ export default function People() {
   const [department, setDepartment] = useState(params.get('department') ?? '')
   const [start, setStart] = useState(0)
   const [quick, setQuick] = useState<string | null>(null)
+  const s = useSession()
+  const canDelete = !!(s.persona.hr_manager || s.persona.system_manager)
+  const [picked, setPicked] = useState<Map<string, string>>(new Map())
+  const [toDelete, setToDelete] = useState<{ name: string; employee_name: string }[] | null>(null)
+  const togglePick = (e: { name: string; employee_name: string }) => setPicked((m) => { const n = new Map(m); if (n.has(e.name)) n.delete(e.name); else n.set(e.name, e.employee_name); return n })
+  const box = (e: any) => canDelete ? (
+    <input type="checkbox" className="size-4 accent-[var(--color-brand)]" aria-label={`${t('Select')} ${e.employee_name}`}
+      checked={picked.has(e.name)} onClick={(ev) => ev.stopPropagation()} onChange={() => togglePick(e)} />
+  ) : null
   useEffect(() => { const h = setTimeout(() => { setDebounced(search); setStart(0) }, 300); return () => clearTimeout(h) }, [search])
   const filters = { search: debounced, status, saudi, department }
   const q = useQuery<any>({
@@ -161,12 +173,28 @@ export default function People() {
           </div>
         </div>
 
+        {canDelete && view !== 'org' && q.data?.rows?.length > 0 && (
+          <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
+            <label className="flex items-center gap-2 text-muted">
+              <input type="checkbox" className="size-4 accent-[var(--color-brand)]"
+                checked={q.data.rows.every((e: any) => picked.has(e.name))}
+                onChange={(ev) => setPicked((m) => { const n = new Map(m); for (const e of q.data.rows) { if (ev.target.checked) n.set(e.name, e.employee_name); else n.delete(e.name) } return n })} />
+              {t('Select this page')}
+            </label>
+            {picked.size > 0 && <>
+              <span className="font-medium">{picked.size} {t('selected')}</span>
+              <Button size="sm" variant="danger" onClick={() => setToDelete([...picked].map(([name, employee_name]) => ({ name, employee_name })))}><Trash2 className="size-4" />{t('Delete selected')}</Button>
+              <button className="text-muted hover:underline" onClick={() => setPicked(new Map())}>{t('Clear')}</button>
+            </>}
+          </div>
+        )}
         {view === 'org' ? <OrgChart department={department || undefined} search={debounced} onOpen={setQuick} />
           : q.isLoading ? <Spinner /> : q.error ? <ErrorBox error={q.error} onRetry={() => q.refetch()} /> : !q.data.rows.length ? <Empty title={t('No employees found')} />
           : view === 'list' ? (
             <ul className="divide-y divide-line">
               {q.data.rows.map((e: any) => (
-                <li key={e.name}>
+                <li key={e.name} className="flex items-center gap-1">
+                  {box(e)}
                   <button onClick={() => setQuick(e.name)} className="flex w-full items-center gap-3 rounded-xl px-2 py-3 text-start hover:bg-surface">
                     <Avatar name={e.employee_name} image={e.image} />
                     <div className="min-w-0 flex-1">
@@ -184,12 +212,14 @@ export default function People() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1000px] whitespace-nowrap text-sm">
                 <thead className="text-xs text-muted"><tr className="border-b border-line">
+                  {canDelete && <th className="w-8 px-2 pb-2" />}
                   {['Employee', 'ID', 'Designation', 'Department', 'Mobile', 'National ID / Iqama', 'Iqama expiry', 'Joined', 'Status', 'Data'].map((h) =>
                     <th key={h} className="px-2 pb-2 text-start font-medium">{t(h)}</th>)}
                 </tr></thead>
                 <tbody className="divide-y divide-line">
                   {q.data.rows.map((e: any) => (
-                    <tr key={e.name} className="cursor-pointer hover:bg-surface" onClick={() => setQuick(e.name)}>
+                    <tr key={e.name} className={clsx('cursor-pointer hover:bg-surface', picked.has(e.name) && 'bg-brand-50')} onClick={() => setQuick(e.name)}>
+                      {canDelete && <td className="px-2 py-2">{box(e)}</td>}
                       <td className="px-2 py-2"><div className="flex items-center gap-2"><Avatar name={e.employee_name} image={e.image} size={28} /><span className="font-medium">{e.employee_name}</span></div></td>
                       <td className="px-2 py-2 text-muted">{e.name}</td>
                       <td className="px-2 py-2">{e.designation ?? '—'}</td>
@@ -217,7 +247,9 @@ export default function People() {
           </div>
         )}
       </Card>
-      {quick && <QuickView id={quick} onClose={() => setQuick(null)} />}
+      {quick && <QuickView id={quick} onClose={() => setQuick(null)} onDelete={canDelete ? (p) => setToDelete([p]) : undefined} />}
+      {toDelete && <DeleteEmployees people={toDelete} onClose={() => setToDelete(null)}
+        onDone={(gone) => { setPicked((m) => { const n = new Map(m); gone.forEach((g) => n.delete(g)); return n }); if (quick && gone.includes(quick)) setQuick(null) }} />}
     </div>
   )
 }

@@ -2515,6 +2515,43 @@ def run(site):
                 frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
         check("HR portal: desk kept for desk roles only, AlphaX sign-in page, pages hidden or limited by role", portal_and_pages)
 
+        def org_chart_and_delete():
+            import io, random, zipfile
+            frappe.set_user(f["hr"])
+            for fmt, layout, magic in (("pdf", "chart", b"%PDF"), ("pdf", "tree", b"%PDF"), ("pdf", "department", b"%PDF"),
+                                       ("docx", "chart", b"PK"), ("docx", "department", b"PK"), ("xlsx", "chart", b"PK")):
+                frappe.local.response = frappe._dict()
+                hr.export_org_chart(file_format=fmt, layout=layout)
+                body = frappe.local.response["filecontent"]
+                assert body[:len(magic)] == magic and frappe.local.response["filename"].endswith(fmt), (fmt, layout, body[:20])
+                if fmt == "docx":
+                    xml = zipfile.ZipFile(io.BytesIO(body)).read("word/document.xml").decode()
+                    assert "Omar" in xml or "Test" in xml, xml[:300]
+            frappe.local.response = frappe._dict()
+            # delete: HR Manager only; history and managers are kept with a reason
+            made = []
+            for first in ("Del One", "Del Two", "Del Kept"):
+                r = hr.create_employee({"first_name": first, "last_name": "AXT", "gender": "Male", "date_of_birth": "1990-01-01",
+                                        "date_of_joining": nowdate(), "company": COMPANY, "alphax_is_saudi": 1,
+                                        "alphax_iqama_number": "1" + "".join(random.choice("0123456789") for _ in range(9))})
+                made.append(r["name"])
+            kept = made.pop()
+            frappe.set_user("Administrator")
+            frappe.get_doc({"doctype": "Employee Checkin", "employee": kept, "log_type": "IN",
+                            "time": frappe.utils.now_datetime()}).insert(ignore_permissions=True)
+            frappe.set_user(f["emp"])
+            expect_error(lambda: hr.delete_employees(made), frappe.PermissionError)
+            frappe.set_user(f["hr"])
+            res = hr.delete_employees(made + [kept, f["e_mgr"], "NO-SUCH-EMP"])
+            assert {d["employee"] for d in res["deleted"]} == set(made), res
+            reasons = {b["employee"]: b["reason"] for b in res["blocked"]}
+            assert {kept, f["e_mgr"], "NO-SUCH-EMP"} <= set(reasons) and "Left" in reasons[kept], reasons
+            assert not any(frappe.db.exists("Employee", n) for n in made)
+            assert frappe.db.exists("Employee", f["e_mgr"]) and frappe.db.exists("Employee", kept)
+            frappe.set_user("Administrator")
+            frappe.db.delete("Employee Checkin", {"employee": kept}); frappe.delete_doc("Employee", kept, force=True)
+        check("org chart as PDF (chart, tree, department), Word and Excel; delete one or many employees safely", org_chart_and_delete)
+
         def accruals_flow():
             from alphax_hr.api import accruals
             frappe.set_user("Administrator")

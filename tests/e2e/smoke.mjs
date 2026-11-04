@@ -323,11 +323,47 @@ try {
       await page.getByRole('columnheader', { name: 'National ID / Iqama' }).waitFor()
       await page.screenshot({ path: `${OUT}/10b-people-table.png` })
       await page.getByRole('tab', { name: 'Org chart' }).click()
-      await page.getByText('Expand all').waitFor()
+      await page.getByRole('tab', { name: 'Chart', exact: true }).click()
+      await page.locator('.oc-tree').first().waitFor()
       await page.screenshot({ path: `${OUT}/10c-org-chart.png`, fullPage: true })
-      await page.getByRole('button', { name: 'Export' }).click()
-      const [download] = await Promise.all([page.waitForEvent('download'), page.getByText('Excel (.xlsx)').click()])
-      if (!download.suggestedFilename().endsWith('.xlsx')) throw new Error('unexpected export ' + download.suggestedFilename())
+      await page.getByRole('tab', { name: 'By department' }).click()
+      await page.locator('span.truncate', { hasText: 'Operations - AXT' }).first().waitFor()  // not the hidden <option>
+      await page.screenshot({ path: `${OUT}/10c2-org-departments.png`, fullPage: true })
+      await page.getByRole('tab', { name: 'Tree', exact: true }).click()
+      await page.getByText('Expand all').waitFor()
+      for (const [label, ext] of [['Chart (boxes)', '.pdf'], ['Reporting lines (outline)', '.docx'], ['Excel (.xlsx)', '.xlsx']]) {
+        await page.getByRole('button', { name: 'Export' }).last().click()
+        const [download] = await Promise.all([page.waitForEvent('download'), page.getByText(label, { exact: true }).click()])
+        if (!download.suggestedFilename().endsWith(ext)) throw new Error('unexpected export ' + download.suggestedFilename())
+      }
+    })
+    await step('delete several employees from the people table', async () => {
+      const tag = `Del${Date.now().toString(36)}`
+      const made = await page.evaluate(async (tag) => {
+        const out = []
+        for (const last of ['Alpha', 'Beta']) {
+          const r = await fetch('/api/method/alphax_hr.api.hr.create_employee', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Frappe-CSRF-Token': window.ALPHAX_BOOT.csrf_token },
+            body: JSON.stringify({ data: { first_name: tag, last_name: last, gender: 'Male', date_of_birth: '1990-01-01', date_of_joining: new Date().toISOString().slice(0, 10),
+              company: 'AlphaX Test Co', alphax_is_saudi: 1, alphax_iqama_number: '1' + String(Math.floor(Math.random() * 1e9)).padStart(9, '0') } }) })
+          const j = await r.json(); if (!r.ok) throw new Error(JSON.stringify(j).slice(0, 300)); out.push(j.message.name)
+        }
+        return out
+      }, tag)
+      await page.goto(`${BASE}/alphax/people?view=table`)
+      await page.getByPlaceholder('Search people, ID or Iqama…').fill(tag)
+      await page.getByRole('checkbox', { name: `Select ${tag} Alpha` }).check()
+      await page.getByRole('checkbox', { name: `Select ${tag} Beta` }).check()
+      await page.getByRole('button', { name: 'Delete selected' }).click()
+      await page.getByRole('dialog').getByText(`${tag} Beta`).waitFor()
+      await page.screenshot({ path: `${OUT}/10f-delete-employees.png` })
+      await page.getByRole('button', { name: 'Delete permanently' }).click()
+      await page.getByRole('dialog').getByText('2 deleted').waitFor()
+      await page.getByRole('dialog').getByRole('button', { name: 'Close' }).last().click()
+      const left = await page.evaluate(async ([ids, tag]) => {
+        const r = await fetch('/api/method/alphax_hr.api.hr.employees', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Frappe-CSRF-Token': window.ALPHAX_BOOT.csrf_token }, body: JSON.stringify({ search: tag, status: '' }) })
+        return (await r.json()).message.rows.map((x) => x.name).filter((n) => ids.includes(n))
+      }, [made, tag])
+      if (left.length) throw new Error('employees not deleted: ' + left.join(', '))
     })
 
     await step('new employee wizard checks each step', async () => {
@@ -400,7 +436,7 @@ try {
       await page.goto(`${BASE}/alphax/setup`)
       await page.getByText('Employees missing mandatory data').waitFor()
       await page.screenshot({ path: `${OUT}/18-setup-health.png`, fullPage: true })
-      if (await page.getByRole('tab', { name: 'System' }).count()) throw new Error('System tab must be hidden for HR Managers')
+      if (await page.getByRole('tab', { name: /System|Employee fields/ }).count()) throw new Error('System health and field map live in the Desk only')
       await page.locator('li').filter({ hasText: /Leave approvers|Shift approvers|Reporting managers|Employee user accounts|Employees without salary/ })
         .getByRole('button', { name: 'Fix' }).first().click()
       await page.getByText('Department', { exact: true }).first().waitFor()

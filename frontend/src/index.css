@@ -15,3 +15,18 @@
 html, body, #root { height: 100%; }
 body { background: var(--color-surface); color: var(--color-ink); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
 [dir="rtl"] .flip-rtl { transform: scaleX(-1); }
+
+/* Organisation chart (top-down): connector lines drawn with pseudo-elements; logical properties keep RTL right. */
+.oc-tree ul { display: flex; justify-content: center; padding-top: 18px; position: relative; }
+.oc-tree li { position: relative; padding: 18px 6px 0; display: flex; flex-direction: column; align-items: center; }
+.oc-tree li::before, .oc-tree li::after { content: ""; position: absolute; top: 0; inset-inline-end: 50%; width: 50%; height: 18px; border-top: 1px solid var(--color-brand); }
+.oc-tree li::after { inset-inline-end: auto; inset-inline-start: 50%; border-inline-start: 1px solid var(--color-brand); }
+.oc-tree li:only-child::before, .oc-tree li:only-child::after { display: none; }
+.oc-tree li:only-child { padding-top: 0; }
+.oc-tree li:first-child::before, .oc-tree li:last-child::after { border: 0 none; }
+.oc-tree li:last-child::before { border-inline-end: 1px solid var(--color-brand); border-start-end-radius: 6px; }
+.oc-tree li:first-child::after { border-start-start-radius: 6px; }
+.oc-tree ul ul::before { content: ""; position: absolute; top: 0; inset-inline-start: 50%; height: 18px; border-inline-start: 1px solid var(--color-brand); }
+.oc-tree > ul { padding-top: 0; }
+.oc-tree > ul > li { padding-top: 0; }
+.oc-tree > ul > li::before, .oc-tree > ul > li::after { display: none; }

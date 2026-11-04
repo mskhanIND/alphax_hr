@@ -620,44 +620,74 @@ def set_photo(name: str, file_url: str):
 
 
 @frappe.whitelist()
-def export_org_chart(department: str | None = None, company: str | None = None, file_format: str = "xlsx"):
-	"""Reporting lines as a table: level, manager, team size; people without a manager are flagged."""
+def export_org_chart(department: str | None = None, company: str | None = None, file_format: str = "pdf",
+					 layout: str = "chart"):
+	"""Organisation chart as PDF (chart / tree / by department), Word (.docx), Excel or CSV."""
 	require_hr()
-	rows = org_chart(company, department)["rows"]
-	by_id = {r.name: r for r in rows}
-	children = {}
-	for r in rows:
-		children.setdefault(r.reports_to, []).append(r.name)
+	from alphax_hr.api import org_chart as oc
 
-	def team(n, seen):
-		if n in seen:
-			return 0
-		seen.add(n)
-		return sum(1 + team(c, seen) for c in children.get(n, []))
+	oc.export(department, company, file_format, layout)
 
-	def level(r):
-		lvl, cur, seen = 1, r, set()
-		while cur.reports_to and cur.reports_to in by_id and cur.name not in seen:
-			seen.add(cur.name); cur = by_id[cur.reports_to]; lvl += 1
-		return lvl
 
-	table = [[_("Employee ID"), _("Employee"), _("Designation"), _("Department"), _("Reports to (ID)"), _("Reports to"),
-			  _("Level"), _("Team size"), _("Note")]]
-	for r in sorted(rows, key=lambda r: (level(r), r.employee_name)):
-		mgr = by_id.get(r.reports_to)
-		note = "" if r.reports_to else _("No reporting manager")
-		if r.reports_to and not mgr:
-			note = _("Manager not in this list (inactive or other department)")
-		table.append([r.name, r.employee_name, r.designation or "", r.department or "", r.reports_to or "",
-					  mgr.employee_name if mgr else "", level(r), team(r.name, set()), note])
-	if file_format == "csv":
-		from frappe.utils.csvutils import to_csv
+@frappe.whitelist(methods=["POST"])
+def delete_employees(employees: str | list):
+	"""Delete employee records (HR Manager). Each one is tried on its own: an employee with history (attendance,
+	salary slips, leave, a team reporting to them ...) is not deleted and the reason is returned instead."""
+	require_hr_manager()
+	from frappe.utils import strip_html
 
-		frappe.response["filecontent"] = to_csv(table).encode("utf-8-sig")
-		frappe.response["filename"] = f"org-chart-{nowdate()}.csv"
-	else:
-		from frappe.utils.xlsxutils import make_xlsx
+	names = [n for n in (parse_json(employees) if isinstance(employees, str) and employees.startswith("[") else
+						 (employees if isinstance(employees, list) else [employees])) if n]
+	names = list(dict.fromkeys(names))
+	if not names:
+		frappe.throw(_("Choose the employees to delete."))
+	if len(names) > 200:
+		frappe.throw(_("Delete at most 200 employees at a time."))
+	own = frappe.db.get_value("Employee", {"user_id": frappe.session.user}, "name")
+	deleted, blocked = [], []
+	for name in names:
+		label = frappe.db.get_value("Employee", name, "employee_name")
+		if label is None:
+			blocked.append({"employee": name, "employee_name": name, "reason": _("Not found")})
+			continue
+		if name == own:
+			blocked.append({"employee": name, "employee_name": label, "reason": _("You cannot delete your own employee record.")})
+			continue
+		team = frappe.db.count("Employee", {"reports_to": name})
+		if team:
+			blocked.append({"employee": name, "employee_name": label,
+							"reason": _("{0} employee(s) report to them. Change their reporting manager first.").format(team)})
+			continue
+		frappe.db.savepoint("alphax_delete_employee")
+		try:
+			_remove_unused_salary_setup(name)
+			frappe.delete_doc("Employee", name)
+			deleted.append({"employee": name, "employee_name": label})
+		except Exception as e:
+			frappe.db.rollback(save_point="alphax_delete_employee")
+			frappe.clear_messages()
+			reason = strip_html(str(e)).strip() or e.__class__.__name__
+			if isinstance(e, frappe.LinkExistsError):
+				reason = _("Has records linked to it ({0}). Set the status to Left instead to keep the history.").format(
+					reason[:200])
+			blocked.append({"employee": name, "employee_name": label, "reason": reason})
+	return {"deleted": deleted, "blocked": blocked}
 
-		frappe.response["filecontent"] = make_xlsx(table, "Org chart").getvalue()
-		frappe.response["filename"] = f"org-chart-{nowdate()}.xlsx"
-	frappe.response["type"] = "binary"
+
+def _remove_unused_salary_setup(employee):
+	"""The salary assignment (and the employee's own structure) made when the employee was created block deletion.
+	They are removed only while no salary slip exists for the employee: real payroll history always stays."""
+	if frappe.db.exists("Salary Slip", {"employee": employee}):
+		return
+	for ssa in frappe.get_all("Salary Structure Assignment", filters={"employee": employee}, fields=["name", "docstatus"]):
+		doc = frappe.get_doc("Salary Structure Assignment", ssa.name)
+		if doc.docstatus == 1:
+			doc.cancel()
+		frappe.delete_doc("Salary Structure Assignment", ssa.name)
+	for ss in frappe.get_all("Salary Structure", filters={"name": ["like", f"{employee}-SS-%"]}, fields=["name", "docstatus"]):
+		if frappe.db.exists("Salary Structure Assignment", {"salary_structure": ss.name}):
+			continue
+		doc = frappe.get_doc("Salary Structure", ss.name)
+		if doc.docstatus == 1:
+			doc.cancel()
+		frappe.delete_doc("Salary Structure", ss.name)

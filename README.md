@@ -20,7 +20,7 @@ React SPA (/alphax)  ──►  alphax_hr API (permission-checked)  ──►  F
 |---|---|---|
 | ![Sign-in](docs/screenshots/36-sign-in.png) | ![Accruals](docs/screenshots/35-accruals.png) | ![Payroll](docs/screenshots/23-payroll-control.png) |
 
-## Modules (v0.19)
+## Modules (v0.20)
 
 | Area | Who | What |
 |---|---|---|
@@ -38,7 +38,7 @@ React SPA (/alphax)  ──►  alphax_hr API (permission-checked)  ──►  F
 | Annual vacation planning | Employees, approvers, HR | Employees plan the year's vacation (working days counted on their holiday list, entitlement shown, optional minimum continuous block and deadline); they see colleagues already away; managers approve, request changes or reject from the inbox or the planner with a weekly per-department heatmap (red above the allowed share); approved periods become leave requests in one tap; annual leave outside the approved plan is flagged |
 | Managers | Approvers | My team: who is checked in, not in yet or on leave today, with call buttons; approvals inbox; team leave calendar |
 | Approvals | Leave/expense approvers, HR | One inbox for Leave, Expense, Attendance, Shift and Compensatory requests; follows active Workflows; team leave calendar |
-| HR core | HR User / HR Manager | People as list, table or organisation chart (from *Reports to*); department/status/nationality filters; quick view; Excel/CSV export; full profile with Print/PDF; missing mandatory fields highlighted with a popup; new employee as a step-by-step wizard (one ID field — the site's other ID fields are filled from it; Saudi/non-Saudi read from the ID) |
+| HR core | HR User / HR Manager | People as list, table or organisation chart (from *Reports to*: top-down chart, tree or by department; PDF, Word or Excel export); delete one or many employees (HR Manager; employees with history are kept and the reason shown); department/status/nationality filters; quick view; Excel/CSV export; full profile with Print/PDF; missing mandatory fields highlighted with a popup; new employee as a step-by-step wizard (one ID field — the site's other ID fields are filled from it; Saudi/non-Saudi read from the ID) |
 | Shifts & attendance | HR, every employee | Roster grid with per-employee week-offs (stored in the employee's own holiday list, so leave, attendance and payroll follow them) (week/2/4 weeks) with bulk shift assignment (overlaps refused per employee); monthly attendance register from check-ins, attendance, leave and holidays (present, absent, late with minutes, missing punch, overtime) with Excel export; overtime per Art. 107 (hourly wage + 50% of hourly basic); employees request attendance corrections and shift changes, approved in the AlphaX inbox |
 | Leave balances & ledger | HR, employees, approvers | Balance per leave type for every employee (Excel export); per-employee ledger with running balance; Art. 117 sick-leave year (120 days from the first sick day, tiers full/75%/unpaid) — requests beyond it are refused |
 | Activity trail | HR (and record readers) | Every change to HR records — field old → new, who, when, comments, workflow steps, attachments — per record (profile, any request) and as an HR-wide Activity log with filters |
@@ -92,6 +92,8 @@ The built frontend is committed under `alphax_hr/public/frontend`, so no Node bu
 of the *Roles that may still use the desk* is sent from `/app` to `/alphax`, and *Default App* becomes AlphaX HR. Administrator
 always keeps the Desk. *Use the AlphaX sign-in page for /login* (off by default) sends `/login` to `/alphax-login`;
 `/login?standard=1` always shows Frappe's own page (two-factor and social logins use it automatically).
+
+**Desk tools.** *AlphaX HR Settings* in the Desk → *Tools*: *System health* (scheduler, workers, failed jobs, broken server scripts, leftover mandatory fields) and *Employee field map* (site fields AlphaX fills automatically; link more in *Employee Field Links*).
 
 **Pages.** Settings → *Pages*: hide a page for everyone, or list the roles that may open it.
 

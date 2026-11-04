@@ -169,6 +169,7 @@ export const api = {
   orgSummary: () => call(A + 'hr.org_summary'),
   setPhoto: (name: string, file_url: string) => call(A + 'hr.set_photo', { name, file_url }),
   orgChart: (args: Record<string, unknown> = {}) => call(A + 'hr.org_chart', args),
+  deleteEmployees: (employees: string[]) => call<{ deleted: { employee: string; employee_name: string }[]; blocked: { employee: string; employee_name: string; reason: string }[] }>(A + 'hr.delete_employees', { employees }),
   // payroll & compliance
   payrollRuns: (year: number, month?: string) => call(A + 'payroll.payroll_runs', month ? { month } : { year }),
   slipSummary: (month: string) => call(A + 'payroll.slip_summary', { month }),

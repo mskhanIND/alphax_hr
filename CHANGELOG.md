@@ -2,6 +2,13 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.20.0 — 2026-11-04
+
+- **Organisation chart views**: *Chart* (top-down boxes with reporting lines), *Tree* (indented, expand/collapse) and *By department* (one card per department, managers first). The chosen view is remembered.
+- **Org chart export**: PDF as chart, tree or by department; Word (.docx) as a reporting-lines outline or by department; Excel. No extra Python packages needed.
+- **Delete employees** (HR Manager): from the quick view or several at once from the People list/table. Each employee is checked on its own — anyone with attendance, leave, payroll or a team reporting to them is kept, with the reason; the salary assignment AlphaX made at creation is removed when there is no payroll yet.
+- **System health and the employee field map moved to the Desk**: *AlphaX HR Settings → Tools* (System health for System Managers, Employee field map for HR/System Managers). The AlphaX *HR status & setup* page keeps only *HR status* and *Settings*.
+
 ## 0.19.0 — 2026-11-03
 
 - **Portal mode**: HR and employee-self-service users always land in AlphaX and are redirected away from the Desk; roles that keep the Desk (accounts, system) are set in Settings. Sets *System Settings → Default App* to AlphaX HR while on.
