@@ -153,6 +153,9 @@ table.oc td { padding: 0; vertical-align: top; text-align: center; }
 .box b { display: block; font-size: 12px; } .box i { display: block; font-style: normal; color: #4b5563; font-size: 10px; }
 .box s { display: block; text-decoration: none; color: #9ca3af; font-size: 9px; }
 tr.line td { height: 1px; font-size: 1px; line-height: 1px; } td.h { border-top: 1px solid #0f5132; }
+ table.col { border-collapse: collapse; margin: 0 auto; border-left: 1px solid #0f5132; }
+table.col td.stack { padding: 0 0 6px 10px; text-align: left; position: relative; }
+table.col td.stack .box { margin: 0; min-width: 130px; text-align: left; }
 .loose { font-size: 12px; color: #b45309; margin: 18px 0 6px; text-align: center; }
 table.list { width: 100%; border-collapse: collapse; } table.list th { text-align: left; background: #f3f4f6; padding: 5px 6px; font-size: 9px; color: #374151; }
 table.list td { border-bottom: 1px solid #e5e7eb; padding: 4px 6px; }
@@ -168,6 +171,23 @@ def _box(tree, r):
 			f"<s>{escape(r.department or '')}</s>{extra}</div>")
 
 
+PAGE_WIDTH = 1480  # usable width of A3 landscape at 96 dpi
+
+
+def _leaves(tree, name, seen):
+	"""Boxes on the widest row under this person: decides how much the chart is scaled down to fit the page."""
+	seen.add(name)
+	kids = [k for k in tree.kids(name) if k.name not in seen]
+	if _stacked(tree, kids):
+		return 1
+	return sum(_leaves(tree, k.name, seen) for k in kids) if kids else 1
+
+
+def _stacked(tree, kids):
+	"""More than three direct reports and none of them has a team: list them in one column, not one wide row."""
+	return len(kids) > 3 and not any(tree.kids(k.name) for k in kids)
+
+
 STEM = "<div style='width:1px;height:12px;background:#0f5132;margin:0 auto'></div>"
 
 
@@ -179,6 +199,12 @@ def _chart_html(tree, node, seen):
 	n = len(kids)
 	if not n:
 		return f"<table class='oc'><tr><td>{_box(tree, node)}</td></tr></table>"
+	if _stacked(tree, kids):
+		for k in kids:
+			seen.add(k.name)
+		col = "".join(f"<tr><td class='stack'>{_box(tree, k)}</td></tr>" for k in kids)
+		return (f"<table class='oc'><tr><td>{_box(tree, node)}</td></tr><tr><td>{STEM}</td></tr>"
+				f"<tr><td><table class='col'>{col}</table></td></tr></table>")
 	cols = n * 2
 	html = [f"<table class='oc'><tr><td colspan='{cols}'>{_box(tree, node)}</td></tr>",
 			f"<tr><td colspan='{cols}'>{STEM}</td></tr>"]
@@ -216,7 +242,9 @@ def pdf(tree, layout, title, app):
 				continue
 			if not first:
 				body.append("<div style='page-break-before: always'></div>")
-			body.append(_chart_html(tree, root, seen))
+			width = _leaves(tree, root.name, set()) * 132  # each bottom-row box is about 132 px wide with its margin
+			zoom = min(1.0, PAGE_WIDTH / max(width, 1))
+			body.append(f"<div style='zoom:{zoom:.3f}'>{_chart_html(tree, root, seen)}</div>")
 			first = False
 		if loose:
 			body.append(f"<div class='loose'>{escape(_('Without a reporting manager'))} ({len(loose)})</div>")

@@ -17,7 +17,7 @@ export default function TeamAppraisals() {
   const [recommend, setRecommend] = useState<string | null>(null)
   if (q.isLoading) return <Spinner />
   if (q.error) return <ErrorBox error={q.error} />
-  const d = q.data
+  const d = { appraisals: [], reports: [], requests: [], ...(q.data || {}) }
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title={t('Team appraisals')} subtitle={t('Review your direct reports, and recommend increments or promotions (HR and management approve).')} />

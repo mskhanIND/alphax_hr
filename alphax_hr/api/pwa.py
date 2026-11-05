@@ -43,12 +43,12 @@ self.addEventListener('fetch', (e) => {{
   if (url.origin !== location.origin) return;
   // Built files have hashed names: cache first.
   if (url.pathname.startsWith('/assets/alphax_hr/frontend/')) {{
-    e.respondWith(caches.open(CACHE).then(async (c) => (await c.match(req)) || fetch(req).then((r) => {{ if (r.ok) c.put(req, r.clone()); return r; }})));
+    e.respondWith(caches.open(CACHE).then(async (c) => (await c.match(req)) || fetch(req).then((r) => {{ if (r.ok) {{ const copy = r.clone(); c.put(req, copy); }} return r; }})));
     return;
   }}
   // App pages: network first, last good copy when offline. API calls are never cached.
   if (req.mode === 'navigate' && url.pathname.startsWith('/alphax')) {{
-    e.respondWith(fetch(req).then((r) => {{ if (r.ok && !r.redirected) caches.open(CACHE).then((c) => c.put(SHELL, r.clone())); return r; }})
+    e.respondWith(fetch(req).then((r) => {{ if (r.ok && !r.redirected) {{ const copy = r.clone(); caches.open(CACHE).then((c) => c.put(SHELL, copy)); }} return r; }})
       .catch(() => caches.open(CACHE).then((c) => c.match(SHELL)).then((r) => r || new Response('<h1>Offline</h1><p>Connect to the internet and try again.</p>', {{ headers: {{ 'Content-Type': 'text/html' }} }}))));
   }}
 }});

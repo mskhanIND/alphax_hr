@@ -419,7 +419,7 @@ def team():
 	user = login_required()
 	me = frappe.db.get_value("Employee", {"user_id": user}, "name")
 	if not me:
-		return {"appraisals": [], "requests": []}
+		return {"reports": [], "appraisals": [], "requests": []}
 	reports = frappe.get_all("Employee", filters={"reports_to": me, "status": "Active"}, fields=["name", "employee_name", "designation"],
 							 order_by="employee_name asc")
 	ids = [r.name for r in reports]

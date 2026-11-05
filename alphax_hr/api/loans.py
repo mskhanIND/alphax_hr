@@ -8,7 +8,13 @@ the employee's advance account. AlphaX keeps the schedule and enforces the Saudi
 from __future__ import annotations
 
 import frappe
-from frappe import N_, _
+from frappe import _
+
+try:  # marks a message for translation without translating it (older Frappe v15 releases lack it)
+	from frappe import N_
+except ImportError:
+	def N_(message):
+		return message
 from frappe.utils import add_days, cint, flt, get_first_day, get_last_day, getdate, nowdate
 
 from alphax_hr.api._common import current_employee, login_required, parse_json, require_hr, require_hr_manager, settings
