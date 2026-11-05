@@ -2,6 +2,11 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.22.0 — 2026-11-05
+
+- **Settings, easier:** sections in a side menu (Company & branding, Portal & pages, Employees & salary, Attendance, Leave, Payroll/GOSI/loans, Accruals, Payslips, Notifications, More setup), a short guide on each, *Find a setting*, changed fields highlighted, a sticky bar listing every unsaved change with Save / Discard, and a warning before leaving with unsaved changes.
+- **My Attendance calendar** is compact (date-picker size) with the chosen day's status, hours, shift and late/early flags beside it.
+
 ## 0.21.1 — 2026-11-05
 
 - **Data issues on the employee profile are fixable in place:** set the suggested holiday list (company default or the current one) or leave approver (the reporting manager) in one click, create the employee's login from their e-mail (Employee role, welcome e-mail to set a password), or jump to the right section.

@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { FieldInput } from '../components/FieldInput'
 import { LinkInput } from '../components/LinkInput'
-import { Button, Card, ErrorBox, Field, PageHeader, Select, Spinner, Stat, Modal } from '../components/ui'
+import { Button, Card, ErrorBox, Field, Input, PageHeader, Select, Spinner, Stat, Modal } from '../components/ui'
 import { api } from '../lib/api'
 import { useSession } from '../lib/session'
 import { useI18n } from '../lib/i18n'
@@ -159,71 +159,168 @@ function StatusList({ onSettings }: { onSettings: () => void }) {
   )
 }
 
+type Group = { key: string; label: string; guide: string; sections: string[] }
+const GROUPS: Group[] = [
+  { key: 'company', label: 'Company & branding', sections: ['general_section', 'documents_section'],
+    guide: 'App name, logo and colours, default language and company, and which documents AlphaX tracks.' },
+  { key: 'portal', label: 'Portal & pages', sections: ['portal_section', 'pages_section'],
+    guide: 'Keep HR and employees in AlphaX instead of the Desk, the sign-in page, and which pages each role sees.' },
+  { key: 'employees', label: 'Employees & salary', sections: ['employee_section', 'salary_section'],
+    guide: 'Rules checked when an employee is saved (IDs, IBAN, contract) and how new salaries are entered.' },
+  { key: 'attendance', label: 'Attendance & check-in', sections: ['checkin_section'],
+    guide: 'Where and how employees check in, grace minutes and late/early permissions.' },
+  { key: 'leave', label: 'Leave', sections: ['leave_section'],
+    guide: 'Annual leave type and counting rules. Leave types, statutory leave and approval delays are in Leave setup.' },
+  { key: 'payroll', label: 'Payroll, GOSI & loans', sections: ['gosi_section', 'loans_section', 'nitaqat_section'],
+    guide: 'Payroll components, GOSI component mapping, loan and advance limits, and the Nitaqat estimate.' },
+  { key: 'accruals', label: 'Accruals', sections: ['accruals_section'],
+    guide: 'Accounts and basis for the monthly end-of-service and annual-leave accruals.' },
+  { key: 'documents', label: 'Payslips & letters', sections: ['payslip_section'],
+    guide: 'Payslip layout, letter head and signatures on official documents.' },
+  { key: 'notifications', label: 'Notifications', sections: ['push_section', 'notify_section'],
+    guide: 'Phone notifications. Who is told about what is set on the Notifications page.' },
+]
+
 function SettingsForm() {
   const { t } = useI18n()
   const qc = useQueryClient()
   const q = useQuery<any>({ queryKey: ['settings'], queryFn: api.getSettings })
   const [values, setValues] = useState<Record<string, any>>({})
   const [map, setMap] = useState<any[]>([])
+  const [group, setGroup] = useState<string>(() => { try { return sessionStorage.getItem('alphax-settings-group') || 'company' } catch { return 'company' } })
+  const [find, setFind] = useState('')
   useEffect(() => { if (q.data) { setValues(q.data.values); setMap(q.data.component_map) } }, [q.data])
   const save = useMutation({ mutationFn: () => api.saveSettings({ values, component_map: map }), onSuccess: (d) => { qc.setQueryData(['settings'], d); qc.invalidateQueries({ queryKey: ['health'] }) } })
+  const same = (a: any, b: any) => (a ?? '') === (b ?? '') || String(a ?? '') === String(b ?? '')
+  const changed = q.data ? Object.keys(values).filter((k) => !same(values[k], q.data.values[k])) : []
+  const mapChanged = q.data ? JSON.stringify(map) !== JSON.stringify(q.data.component_map) : false
+  const dirty = changed.length > 0 || mapChanged
+  useEffect(() => {
+    if (!dirty) return
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
   if (q.isLoading) return <Spinner />
   if (q.error) return <ErrorBox error={q.error} onRetry={() => q.refetch()} />
   const can = q.data.can_edit
+  const sections: any[] = q.data.sections
+  const known = new Set(GROUPS.flatMap((g) => g.sections))
+  const other = sections.filter((x) => !known.has(x.key)).map((x) => x.key)
+  const groups: Group[] = [...GROUPS.filter((g) => g.sections.some((k) => sections.some((x) => x.key === k)) || g.key === 'payroll'),
+    ...(other.length ? [{ key: 'other', label: 'Other', sections: other, guide: '' }] : []),
+    { key: 'more', label: 'More setup', sections: [], guide: 'Other places where AlphaX is set up.' }]
+  const fieldGroup: Record<string, string> = {}
+  const fieldLabel: Record<string, string> = {}
+  for (const g of groups) for (const sec of sections.filter((x) => g.sections.includes(x.key))) for (const f of sec.fields) { fieldGroup[f.fieldname] = g.key; fieldLabel[f.fieldname] = f.label }
+  const dirtyGroups = new Set([...changed.map((k) => fieldGroup[k]), ...(mapChanged ? ['payroll'] : [])])
+  const pick = (k: string) => { setGroup(k); setFind(''); try { sessionStorage.setItem('alphax-settings-group', k) } catch { /* private mode */ } }
+  const needle = find.trim().toLowerCase()
+  const matches = needle ? sections.flatMap((sec) => sec.fields.filter((f: any) => `${f.label} ${f.description ?? ''}`.toLowerCase().includes(needle)).map((f: any) => ({ ...f, group: fieldGroup[f.fieldname] }))) : []
+  const g = groups.find((x) => x.key === group) ?? groups[0]
+  const renderField = (f: any) => (
+    f.fieldtype === 'Check' ? (
+      <label key={f.fieldname} className={clsx('flex items-start gap-2 text-sm sm:col-span-2', changed.includes(f.fieldname) && 'rounded-lg bg-amber-50 p-1.5')}>
+        <input type="checkbox" className="mt-0.5 size-4 accent-[var(--color-brand)]" disabled={!can} checked={!!Number(values[f.fieldname])}
+          onChange={(e) => setValues({ ...values, [f.fieldname]: e.target.checked ? 1 : 0 })} />
+        <span><span className="font-medium">{f.label}</span>{f.description && <span className="block text-xs text-muted">{f.description}</span>}</span>
+      </label>
+    ) : (
+      <div key={f.fieldname} className={clsx(changed.includes(f.fieldname) && 'rounded-lg bg-amber-50 p-1.5')}>
+        <Field label={f.label} hint={f.description ?? undefined}>
+          <fieldset disabled={!can}><FieldInput spec={f} value={values[f.fieldname]} attachTo={['AlphaX HR Settings', 'AlphaX HR Settings']} onChange={(v) => setValues({ ...values, [f.fieldname]: v })} /></fieldset>
+        </Field>
+      </div>
+    )
+  )
   return (
-    <div className="flex flex-col gap-5">
-      <PayrollComponents />
-      <PageAccess />
-      {q.data.sections.map((sec: any) => (
-        <Card key={sec.key} title={sec.label}>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {sec.fields.map((f: any) => (
-              f.fieldtype === 'Check' ? (
-                <label key={f.fieldname} className="flex items-start gap-2 text-sm sm:col-span-2">
-                  <input type="checkbox" className="mt-0.5 size-4 accent-[var(--color-brand)]" disabled={!can} checked={!!Number(values[f.fieldname])}
-                    onChange={(e) => setValues({ ...values, [f.fieldname]: e.target.checked ? 1 : 0 })} />
-                  <span><span className="font-medium">{f.label}</span>{f.description && <span className="block text-xs text-muted">{f.description}</span>}</span>
-                </label>
-              ) : (
-                <Field key={f.fieldname} label={f.label} hint={f.description ?? undefined}>
-                  <fieldset disabled={!can}><FieldInput spec={f} value={values[f.fieldname]} attachTo={['AlphaX HR Settings', 'AlphaX HR Settings']} onChange={(v) => setValues({ ...values, [f.fieldname]: v })} /></fieldset>
-                </Field>
-              )
-            ))}
-          </div>
-          {sec.key === 'payslip_section' && <PayslipActions can={can} />}
-          {sec.key === 'checkin_section' && <p className="mt-4 text-sm"><Link className="text-brand underline" to="/work-locations">{t('Work locations (check-in areas)')}</Link></p>}
-          {sec.key === 'gosi_section' && (
-            <div className="mt-5 border-t border-line pt-4">
-              <div className="mb-1 text-sm font-medium">{t('Salary component mapping')}</div>
-              <p className="mb-3 text-xs text-muted">{t('Tell AlphaX which salary components are GOSI Basic, GOSI Housing and the EOSB wage.')}</p>
-              <div className="flex flex-col gap-2">
-                {map.map((r, i) => (
-                  <div key={i} className="grid grid-cols-[1fr_12rem_auto] gap-2">
-                    <LinkInput doctype="Salary Component" value={r.salary_component} disabled={!can} onChange={(v) => setMap(map.map((x, j) => j === i ? { ...x, salary_component: v } : x))} />
-                    <Select value={r.purpose} disabled={!can} onChange={(e) => setMap(map.map((x, j) => j === i ? { ...x, purpose: e.target.value } : x))}>
-                      {(q.data.purposes ?? []).map((p: string) => <option key={p} value={p}>{t(p)}</option>)}
-                    </Select>
-                    {can && <Button variant="ghost" size="sm" onClick={() => setMap(map.filter((_, j) => j !== i))} aria-label={t('Remove')}>✕</Button>}
+    <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
+      <nav className="flex shrink-0 flex-col gap-2 lg:sticky lg:top-4 lg:w-60" aria-label={t('Settings sections')}>
+        <Input placeholder={t('Find a setting…')} value={find} onChange={(e) => setFind(e.target.value)} />
+        <div className="flex gap-1 overflow-x-auto lg:flex-col">
+          {groups.map((x) => (
+            <button key={x.key} onClick={() => pick(x.key)} aria-current={x.key === g.key && !needle ? 'page' : undefined}
+              className={clsx('flex items-center justify-between gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-start text-sm',
+                x.key === g.key && !needle ? 'bg-brand text-white' : 'text-ink hover:bg-surface')}>
+              {t(x.label)}{dirtyGroups.has(x.key) && <span className="size-2 rounded-full bg-amber-400" title={t('Unsaved changes')} />}
+            </button>
+          ))}
+        </div>
+      </nav>
+      <div className="flex min-w-0 flex-1 flex-col gap-5 pb-24">
+        {needle ? (
+          <Card title={`${t('Settings matching')} “${find}”`}>
+            {!matches.length ? <p className="text-sm text-muted">{t('No setting matches.')}</p> : (
+              <div className="flex flex-col gap-4">
+                {matches.map((f: any) => (
+                  <div key={f.fieldname}>
+                    <button className="mb-1 text-xs text-brand hover:underline" onClick={() => pick(f.group)}>{t(groups.find((x) => x.key === f.group)?.label ?? '')} →</button>
+                    <div className="grid gap-4 sm:grid-cols-2">{renderField(f)}</div>
                   </div>
                 ))}
-                {can && <Button variant="secondary" size="sm" className="self-start" onClick={() => setMap([...map, { salary_component: '', purpose: 'GOSI Basic' }])}>{t('Add component')}</Button>}
               </div>
-            </div>
+            )}
+          </Card>
+        ) : <>
+          {g.guide && <div className="rounded-xl border border-brand/20 bg-brand-50 p-4 text-sm text-brand"><b>{t(g.label)}.</b> {t(g.guide)}</div>}
+          {g.key === 'payroll' && <PayrollComponents />}
+          {g.key === 'portal' && <PageAccess />}
+          {sections.filter((x) => g.sections.includes(x.key)).map((sec) => (
+            <Card key={sec.key} title={sec.label}>
+              <div className="grid gap-4 sm:grid-cols-2">{sec.fields.map(renderField)}</div>
+              {sec.key === 'payslip_section' && <PayslipActions can={can} />}
+              {sec.key === 'checkin_section' && <p className="mt-4 text-sm"><Link className="text-brand underline" to="/work-locations">{t('Work locations (check-in areas)')}</Link></p>}
+              {sec.key === 'notify_section' && <p className="mt-4 text-sm"><Link className="text-brand underline" to="/notifications-setup">{t('Who is told about what')}</Link></p>}
+              {sec.key === 'gosi_section' && (
+                <div className="mt-5 border-t border-line pt-4">
+                  <div className="mb-1 text-sm font-medium">{t('Salary component mapping')}</div>
+                  <p className="mb-3 text-xs text-muted">{t('Tell AlphaX which salary components are GOSI Basic, GOSI Housing and the EOSB wage.')}</p>
+                  <div className="flex flex-col gap-2">
+                    {map.map((r, i) => (
+                      <div key={i} className="grid grid-cols-[1fr_12rem_auto] gap-2">
+                        <LinkInput doctype="Salary Component" value={r.salary_component} disabled={!can} onChange={(v) => setMap(map.map((x, j) => j === i ? { ...x, salary_component: v } : x))} />
+                        <Select value={r.purpose} disabled={!can} onChange={(e) => setMap(map.map((x, j) => j === i ? { ...x, purpose: e.target.value } : x))}>
+                          {(q.data.purposes ?? []).map((p: string) => <option key={p} value={p}>{t(p)}</option>)}
+                        </Select>
+                        {can && <Button variant="ghost" size="sm" onClick={() => setMap(map.filter((_, j) => j !== i))} aria-label={t('Remove')}>✕</Button>}
+                      </div>
+                    ))}
+                    {can && <Button variant="secondary" size="sm" className="self-start" onClick={() => setMap([...map, { salary_component: '', purpose: 'GOSI Basic' }])}>{t('Add component')}</Button>}
+                  </div>
+                </div>
+              )}
+            </Card>
+          ))}
+          {g.key === 'more' && (
+            <Card title={t('More setup')}>
+              <div className="flex flex-wrap gap-2">
+                <Link to="/leave-setup"><Button variant="secondary">{t('Leave setup')}</Button></Link>
+                <Link to="/roster"><Button variant="secondary">{t('Roster & week-offs')}</Button></Link>
+                <Link to="/notifications-setup"><Button variant="secondary">{t('Notifications')}</Button></Link>
+                <Link to="/compliance"><Button variant="secondary">{t('Data readiness')}</Button></Link>
+                <a href="/app/gosi-contribution-rate" target="_blank" rel="noreferrer"><Button variant="secondary">{t('GOSI rates')}</Button></a>
+                <a href="/app/holiday-list" target="_blank" rel="noreferrer"><Button variant="secondary">{t('Holiday lists')}</Button></a>
+                <a href="/app/alphax-hr-settings" target="_blank" rel="noreferrer"><Button variant="secondary">{t('System health (Desk)')}</Button></a>
+              </div>
+            </Card>
           )}
-        </Card>
-      ))}
-      <Card title={t('More setup')}>
-        <div className="flex flex-wrap gap-2">
-          <Link to="/leave-setup"><Button variant="secondary">{t('Leave setup')}</Button></Link>
-          <Link to="/roster"><Button variant="secondary">{t('Roster & week-offs')}</Button></Link>
-          <Link to="/compliance"><Button variant="secondary">{t('Data readiness')}</Button></Link>
-          <a href="/app/gosi-contribution-rate" target="_blank" rel="noreferrer"><Button variant="secondary">{t('GOSI rates')}</Button></a>
-          <a href="/app/holiday-list" target="_blank" rel="noreferrer"><Button variant="secondary">{t('Holiday lists')}</Button></a>
+        </>}
+        {save.error && <ErrorBox error={save.error} />}
+      </div>
+      {can && (dirty || save.isSuccess) && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 px-4 py-3 shadow-lg backdrop-blur lg:ps-72">
+          <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-3">
+            {dirty ? <>
+              <span className="text-sm font-medium">{changed.length + (mapChanged ? 1 : 0)} {t('unsaved changes')}:</span>
+              <span className="min-w-0 flex-1 truncate text-sm text-muted">
+                {[...changed.map((k) => fieldLabel[k] ?? k), ...(mapChanged ? [t('Salary component mapping')] : [])].join(' · ')}
+              </span>
+              <Button variant="secondary" size="sm" onClick={() => { setValues(q.data.values); setMap(q.data.component_map); save.reset() }}>{t('Discard')}</Button>
+              <Button size="sm" loading={save.isPending} onClick={() => save.mutate()}>{t('Save settings')}</Button>
+            </> : <span className="text-sm text-emerald-700">{t('Saved')}</span>}
+          </div>
         </div>
-      </Card>
-      {save.error && <ErrorBox error={save.error} />}
-      {can && <div className="sticky bottom-4"><Button loading={save.isPending} onClick={() => save.mutate()}>{t('Save settings')}</Button>{save.isSuccess && <span className="ms-3 text-sm text-emerald-700">{t('Saved')}</span>}</div>}
+      )}
     </div>
   )
 }

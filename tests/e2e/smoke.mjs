@@ -444,8 +444,21 @@ try {
       await page.keyboard.press('Escape').catch(() => {})
       await page.goto(`${BASE}/alphax/setup`)
       await page.getByRole('tab', { name: 'Settings' }).click()
+      await page.getByRole('button', { name: 'Payroll, GOSI & loans' }).click()
       await page.getByText('Salary component mapping').waitFor()
       await page.screenshot({ path: `${OUT}/18b-settings.png`, fullPage: true })
+      // finding a setting from any section; an edit shows the unsaved-changes bar until discarded
+      await page.getByPlaceholder('Find a setting…').fill('grace')
+      await page.getByText(/Settings matching/).waitFor()
+      await page.getByPlaceholder('Find a setting…').fill('')
+      await page.getByRole('button', { name: 'Company & branding' }).click()
+      const first = page.locator('main input[type="text"]:not([placeholder])').first()
+      if (await first.count()) {
+        await first.fill(((await first.inputValue()) || '') + ' x')
+        await page.getByText(/unsaved changes/).waitFor()
+        await page.screenshot({ path: `${OUT}/18d-settings-unsaved.png` })
+        await page.getByRole('button', { name: 'Discard' }).click()
+      }
     })
 
     await step('compliance dashboard', async () => {
@@ -571,6 +584,7 @@ try {
       await page.getByRole('heading', { name: 'Work locations' }).waitFor()
       await page.goto(`${BASE}/alphax/setup`)
       await page.getByRole('tab', { name: 'Settings' }).click()
+      await page.getByRole('button', { name: 'Payslips & letters' }).click()
       await page.getByRole('button', { name: 'Preview payslip' }).click()
       await page.getByRole('dialog').getByText('Net pay').first().waitFor()
       await page.screenshot({ path: `${OUT}/35-payslip.png`, fullPage: true })
@@ -582,6 +596,7 @@ try {
       await page.getByText('Posted runs').waitFor()
       await page.screenshot({ path: `${OUT}/35-accruals.png`, fullPage: true })
       await page.goto(`${BASE}/alphax/setup#settings`)
+      await page.getByRole('button', { name: 'Portal & pages' }).click()
       await page.getByText('Hide pages for everyone').waitFor()
     })
     await step('GOSI register', async () => {
