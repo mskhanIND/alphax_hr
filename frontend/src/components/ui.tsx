@@ -210,3 +210,17 @@ export function Table({ head, children }: { head: ReactNode[]; children: ReactNo
     </div>
   )
 }
+
+/** Segmented tabs. */
+export function Tabs({ value, onChange, tabs, className }: { value: string; onChange: (v: string) => void; tabs: { value: string; label: ReactNode; badge?: ReactNode }[]; className?: string }) {
+  return (
+    <div className={clsx('flex gap-1 self-start overflow-x-auto rounded-xl bg-surface p-1 text-sm', className)} role="tablist">
+      {tabs.map((x) => (
+        <button key={x.value} role="tab" aria-selected={value === x.value} onClick={() => onChange(x.value)}
+          className={clsx('flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5', value === x.value ? 'bg-white font-medium text-brand shadow-sm' : 'text-muted hover:text-ink')}>
+          {x.label}{x.badge}
+        </button>
+      ))}
+    </div>
+  )
+}

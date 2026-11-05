@@ -72,6 +72,8 @@
   "push_contact",
   "notify_section",
   "notify_rules",
+  "notify_audience",
+  "bell_all",
   "field_links",
   "salary_section",
   "salary_basic_component",
@@ -484,6 +486,19 @@
    "fieldtype": "Table",
    "label": "Notification Rules",
    "options": "AlphaX Notification Rule"
+  },
+  {
+   "fieldname": "notify_audience",
+   "fieldtype": "Table",
+   "label": "Extra recipients and exceptions",
+   "options": "AlphaX Notification Audience",
+   "description": "Add people to an event (or one service), or make sure they never get it."
+  },
+  {
+   "fieldname": "bell_all",
+   "fieldtype": "Check",
+   "label": "The bell shows every notification",
+   "description": "Off: the AlphaX bell shows only HR notifications (leave, attendance, payroll, requests). Other apps' alerts stay in the Desk."
   },
   {
    "fieldname": "field_links",

@@ -74,7 +74,7 @@ def trail(doctype: str, name: str):
 	meta = doc.meta
 	events = [{"at": str(doc.creation), "kind": "created", **_who(doc.owner)}]
 	for v in frappe.get_all("Version", filters={"ref_doctype": doctype, "docname": name},
-							fields=["owner", "creation", "data"], order_by="creation asc", limit_page_length=1000):
+							fields=["owner", "creation", "data"], order_by="creation desc", limit_page_length=1000):  # newest 1000
 		try:
 			data = frappe.parse_json(v.data) or {}
 		except Exception:

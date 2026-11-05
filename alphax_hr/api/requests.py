@@ -152,7 +152,15 @@ def types(include_disabled: int | str = 0):
 	login_required()
 	filters = {} if cint(include_disabled) and is_hr() else {"enabled": 1}
 	rows = frappe.get_all("AlphaX Request Type", filters=filters, fields=["*"], order_by="category asc, request_type_name asc")
-	return [_type_dict(t) for t in rows]
+	from alphax_hr import request_rules
+
+	me = current_employee(required=False)
+	out = []
+	for t in rows:
+		d = _type_dict(t)
+		d.update(request_rules.type_extras(t, me))
+		out.append(d)
+	return out
 
 
 def _clean_details(spec, details):
@@ -213,7 +221,11 @@ def create(request_type: str, details: str | dict | list | None = None, reason: 
 		frappe.throw(_("Use My Profile → Request a change to update your details."))
 	if cint(t.non_saudi_only) and cint(frappe.db.get_value("Employee", employee, "alphax_is_saudi")):
 		frappe.throw(_("{0} is only for non-Saudi employees.").format(t.request_type_name))
-	data = _clean_details(parse_json(t.fields_json, []) or [], parse_json(details, {}) or {})
+	from alphax_hr import request_rules
+
+	spec = request_rules.type_extras(t, employee).get("fields") or parse_json(t.fields_json, []) or []
+	data = _clean_details(spec, parse_json(details, {}) or {})
+	request_rules.validate(employee, t.request_type_name, data)
 	if t.request_type_name == "Resignation":
 		_check_resignation(employee, data)
 	if t.get("effect") in EFFECTS:

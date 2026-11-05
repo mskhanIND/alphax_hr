@@ -39,6 +39,42 @@ def articles(search: str | None = None, category: str | None = None):
 	return {"articles": [_out(r) for r in rows], "categories": [{"category": c.category, "count": c.n} for c in cats]}
 
 
+STOP = set("""the and for with that this from your you are have has was were can could would should will what when where which
+who how why does did not any all about into over after before than then them they their there here also just only very much
+more most some such use used using need want please help ask request my me our out get got give make like know""".split())
+
+
+def _words(text):
+	import re
+
+	words = re.findall(r"[\w\u0600-\u06FF]{3,}", (text or "").lower())
+	return [w for w in dict.fromkeys(words) if w not in STOP][:12]
+
+
+@frappe.whitelist()
+def suggest(text: str | None = None, limit: int | str = 3):
+	"""Answers that may solve the question before a request is raised: articles ranked by matching words
+	(a match in the title counts three times)."""
+	login_required()
+	words = _words(text)
+	if not words or not frappe.db.exists("DocType", "AlphaX Knowledge Article"):
+		return []
+	or_filters = []
+	for w in words:
+		like = f"%{w}%"
+		or_filters += [["title", "like", like], ["title_ar", "like", like], ["body", "like", like], ["body_ar", "like", like]]
+	rows = frappe.get_all("AlphaX Knowledge Article", filters={"published": 1}, or_filters=or_filters, fields=FIELDS, limit_page_length=60)
+	scored = []
+	for r in rows:
+		title = f"{r.title or ''} {r.title_ar or ''}".lower()
+		body = f"{r.body or ''} {r.body_ar or ''}".lower()
+		score = sum(3 * (w in title) + (w in body) for w in words)
+		if score >= 2:
+			scored.append((score, r))
+	scored.sort(key=lambda x: (-x[0], -(x[1].helpful or 0)))
+	return [_out(r) for _score, r in scored[:max(1, min(cint(limit) or 3, 5))]]
+
+
 @frappe.whitelist()
 def article(name: str):
 	login_required()

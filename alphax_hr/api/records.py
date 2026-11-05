@@ -49,6 +49,36 @@ def _table(df, doc):
 			"columns": [_(c.label or c.fieldname) for c in cols], "rows": rows}
 
 
+def _request_details(doc):
+	"""A request's details as labelled values (from its type's field list) instead of the stored JSON."""
+	from alphax_hr.api._common import parse_json
+
+	data = parse_json(doc.get("details"), {}) or {}
+	spec = parse_json(frappe.db.get_value("AlphaX Request Type", doc.request_type, "fields_json"), []) or []
+	ar = (frappe.local.lang or "").startswith("ar")
+	labels = {f["fieldname"]: (f.get("label_ar") if ar and f.get("label_ar") else f.get("label")) for f in spec}
+	types = {f["fieldname"]: f.get("type") for f in spec}
+	extra = {"short_notice": _("Notice"), "loan": _("Loan"), "first_month": _("First installment")}
+	out = []
+	for key, value in data.items():
+		if value in (None, ""):
+			continue
+		kind = types.get(key)
+		if kind == "Date" or key.endswith("_date") or key == "date":
+			display = frappe.utils.formatdate(value)
+		elif kind == "Currency":
+			display = frappe.utils.fmt_money(value)
+		elif kind == "Check":
+			display = _("Yes") if cint(value) else _("No")
+		elif isinstance(value, (list, dict)):
+			display = ", ".join(f"{k}: {v}" for k, v in value.items()) if isinstance(value, dict) else ", ".join(str(x) for x in value)
+		else:
+			display = str(value)
+		label = labels.get(key) or extra.get(key) or _(key.replace("_", " ").capitalize())
+		out.append({"fieldname": key, "label": _(label) if not ar else label, "fieldtype": kind or "Data", "value": None, "display": display})
+	return out
+
+
 @frappe.whitelist()
 def get(doctype: str, name: str):
 	user = login_required()
@@ -70,6 +100,9 @@ def get(doctype: str, name: str):
 			t = _table(df, doc)
 			if t["rows"]:
 				current["fields"].append(t)
+			continue
+		if doctype == "AlphaX Request" and df.fieldname == "details":
+			current["fields"] += _request_details(doc)
 			continue
 		current["fields"].append(_field(df, doc))
 	if current["fields"]:

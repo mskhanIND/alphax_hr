@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import re
+
 import frappe
 from frappe import _
 from frappe.utils import cint
@@ -23,19 +25,37 @@ POLICY_FIELDS = {
 }
 
 
-def _field_specs():
+BULK_TYPES = {"Select", "Link", "Check", "Date", "Int", "Float", "Currency", "Data", "Small Text"}
+# Changing these for many employees at once breaks payroll and accounting history: use the employee profile or exit flow.
+NEVER = {"company", "employee", "create_user_permission", "prefered_contact_email", "prefered_email", "unsubscribed"}
+# Values that belong to one person only: never set the same value for many employees.
+PERSONAL = re.compile(r"(^|_)(first|middle|last|full)?_?name$|number|(^|_)no$|iban|email|mobile|phone|passport|iqama|national|"
+					  r"birth|joining|gender|user_id|relieving|image|signature|^status$|naming_series|_ar$|cell")
+
+
+def _spec(df, group):
+	spec = {"fieldname": df.fieldname, "label": _(df.label or df.fieldname), "fieldtype": df.fieldtype, "group": group,
+			"reqd": cint(df.reqd)}
+	if df.fieldtype == "Select":
+		spec["options"] = (df.options or "").split("\n")
+	elif df.fieldtype == "Link":
+		spec["options"] = df.options
+	return spec
+
+
+def _bulk_fields():
+	"""Employee fields that may be set for many employees: the common ones first, then required, then all others."""
 	meta = frappe.get_meta("Employee")
-	out = []
-	for f in EMPLOYEE_FIELDS:
-		df = meta.get_field(f)
-		if not df:
-			continue
-		spec = {"fieldname": f, "label": _(df.label), "fieldtype": df.fieldtype, "group": "employee"}
-		if df.fieldtype == "Select":
-			spec["options"] = (df.options or "").split("\n")
-		elif df.fieldtype == "Link":
-			spec["options"] = df.options
-		out.append(spec)
+	common = [meta.get_field(f) for f in EMPLOYEE_FIELDS if meta.get_field(f)]
+	seen = {df.fieldname for df in common}
+	rest = [df for df in meta.fields if df.fieldname not in seen and df.fieldtype in BULK_TYPES and not cint(df.read_only)
+			and not cint(df.hidden) and not df.fetch_from and not PERSONAL.search(df.fieldname) and df.fieldname not in NEVER]
+	return ([_spec(df, "employee") for df in common] + [_spec(df, "required") for df in rest if cint(df.reqd)]
+			+ [_spec(df, "other") for df in sorted(rest, key=lambda d: _(d.label or d.fieldname)) if not cint(df.reqd)])
+
+
+def _field_specs():
+	out = _bulk_fields()
 	for f, (label, kind, options) in POLICY_FIELDS.items():
 		out.append({"fieldname": f, "label": _(label), "fieldtype": kind, "options": options, "group": "attendance"})
 	return out
@@ -79,8 +99,10 @@ def preview(field: str, filters: str | dict | list | None = None, employees: str
 
 
 @frappe.whitelist(methods=["POST"])
-def apply(field: str, value: Any, filters: str | dict | list | None = None, employees: str | dict | list | None = None):
-	"""Set one field for many employees. Each employee is saved on its own; failures are listed, the rest go through."""
+def apply(field: str, value: Any, filters: str | dict | list | None = None, employees: str | dict | list | None = None,
+		  only_empty: int | str = 0):
+	"""Set one field for many employees. Each employee is saved on its own; failures are listed, the rest go through.
+	With ``only_empty`` employees who already have a value keep it."""
 	require_hr_manager()
 	allowed = {s["fieldname"] for s in _field_specs()}
 	if field not in allowed:
@@ -95,6 +117,8 @@ def apply(field: str, value: Any, filters: str | dict | list | None = None, empl
 			if field in POLICY_FIELDS:
 				save_exception(emp, {field: value}, _check=False)
 			else:
+				if cint(only_empty) and frappe.db.get_value("Employee", emp, field) not in (None, "", 0):
+					continue
 				doc = frappe.get_doc("Employee", emp)
 				doc.check_permission("write")
 				doc.set(field, value or None)
@@ -110,6 +134,72 @@ def apply(field: str, value: Any, filters: str | dict | list | None = None, empl
 						"content": _("Bulk update by {0}: {1} = {2} for {3} employee(s)").format(
 							frappe.session.user, field, value, len(done))}).insert(ignore_permissions=True)
 	return {"done": done, "failed": failed}
+
+
+# ------------------------------------------------------------------ fill required fields that are empty
+def _required_fields():
+	meta = frappe.get_meta("Employee")
+	return [df for df in meta.fields if cint(df.reqd) and df.fieldtype not in ("Table", "Table MultiSelect", "Section Break",
+			"Column Break", "Tab Break", "HTML", "Button") and not cint(df.read_only) and not df.fetch_from]
+
+
+def _empty(field):
+	return {field: ["is", "not set"]}
+
+
+@frappe.whitelist()
+def missing(filters: str | dict | list | None = None):
+	"""Required employee fields and how many active employees have them empty. Values that belong to one person
+	(names, ID numbers, dates of birth ...) are counted but must be filled per employee."""
+	require_hr()
+	base = {"status": "Active"}
+	for k, v in (parse_json(filters) or {}).items():
+		if k in ("company", "department", "branch", "designation") and v:
+			base[k] = v
+	rows = []
+	for df in _required_fields():
+		n = frappe.db.count("Employee", {**base, **_empty(df.fieldname)})
+		if n:
+			rows.append({**_spec(df, "required"), "missing": n, "personal": bool(PERSONAL.search(df.fieldname) or df.fieldname in NEVER)})
+	return {"fields": rows, "employees": frappe.db.count("Employee", base)}
+
+
+@frappe.whitelist(methods=["POST"])
+def fill_missing(values: str | dict | list, filters: str | dict | list | None = None, employees: str | dict | list | None = None):
+	"""Fill several required fields at once, only where they are empty, and save each employee once. Employees that
+	still miss something are listed with what is left."""
+	require_hr_manager()
+	values = {k: v for k, v in (parse_json(values) or {}).items() if v not in (None, "")}
+	allowed = {df.fieldname for df in _required_fields() if not PERSONAL.search(df.fieldname) and df.fieldname not in NEVER}
+	bad = [k for k in values if k not in allowed]
+	if bad:
+		frappe.throw(_("These fields cannot be filled in bulk: {0}").format(", ".join(bad)))
+	if not values:
+		frappe.throw(_("Enter at least one value."))
+	ids = _employees(parse_json(filters) or {}, parse_json(employees) or [])
+	done, failed, still = [], [], []
+	required = _required_fields()
+	for emp in ids:
+		current = frappe.db.get_value("Employee", emp, list(values), as_dict=True) or {}
+		todo = {k: v for k, v in values.items() if current.get(k) in (None, "")}
+		if not todo:
+			continue
+		frappe.db.savepoint("alphax_fill")
+		try:
+			doc = frappe.get_doc("Employee", emp)
+			doc.check_permission("write")
+			doc.update(todo)
+			doc.flags.ignore_mandatory = True
+			doc.save()
+			done.append(emp)
+			left = [_(df.label) for df in required if doc.get(df.fieldname) in (None, "")]
+			if left:
+				still.append({"employee": emp, "employee_name": doc.employee_name, "missing": left})
+		except Exception as exc:  # noqa: BLE001
+			frappe.db.rollback(save_point="alphax_fill")
+			failed.append({"employee": emp, "error": frappe.utils.strip_html(str(exc))[:300]})
+			frappe.clear_messages()
+	return {"done": done, "failed": failed, "still_missing": still}
 
 
 # ------------------------------------------------------------------ per-employee attendance / check-in exception

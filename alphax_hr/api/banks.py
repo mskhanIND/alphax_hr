@@ -7,23 +7,38 @@ from alphax_hr.api._common import login_required
 from alphax_hr.saudi.banks import BANKS, by_iban
 
 
+def _existing(name, swift, meta):
+	"""The site's own record for this bank: same name, or another name with the same SWIFT code (e.g. SABB renamed)."""
+	if frappe.db.exists("Bank", name):
+		return name
+	if swift and meta.has_field("swift_number"):
+		return frappe.db.get_value("Bank", {"swift_number": swift}, "name")
+	return None
+
+
 def seed():
+	"""Add the Saudi banks the site does not have yet, and fill the abbreviation / IBAN code / Arabic name on the ones it
+	has. A bank that cannot be added is skipped and logged: seeding never stops a migrate."""
 	if not frappe.db.exists("DocType", "Bank"):
 		return 0
 	meta = frappe.get_meta("Bank")
 	made = 0
 	for name, abbr, code, swift, ar in BANKS:
 		values = {k: v for k, v in (("alphax_abbr", abbr), ("alphax_iban_code", code), ("alphax_name_ar", ar)) if meta.has_field(k)}
-		if frappe.db.exists("Bank", name):
-			for k, v in values.items():
-				if not frappe.db.get_value("Bank", name, k):
-					frappe.db.set_value("Bank", name, k, v, update_modified=False)
-			continue
-		doc = frappe.get_doc({"doctype": "Bank", "bank_name": name, **values})
-		if meta.has_field("swift_number") and swift:
-			doc.swift_number = swift
-		doc.insert(ignore_permissions=True)
-		made += 1
+		try:
+			have = _existing(name, swift, meta)
+			if have:
+				for k, v in values.items():
+					if not frappe.db.get_value("Bank", have, k):
+						frappe.db.set_value("Bank", have, k, v, update_modified=False)
+				continue
+			doc = frappe.get_doc({"doctype": "Bank", "bank_name": name, **values})
+			if meta.has_field("swift_number") and swift:
+				doc.swift_number = swift
+			doc.insert(ignore_permissions=True)
+			made += 1
+		except Exception:  # noqa: BLE001
+			frappe.log_error(title=f"AlphaX: could not add bank {name}")
 	return made
 
 

@@ -41,6 +41,7 @@ doc_events = {
 		"after_insert": "alphax_hr.api.notify.on_leave_insert",
 		"on_submit": "alphax_hr.api.notify.on_leave_decided",
 	},
+	"Attendance Request": {"validate": "alphax_hr.request_rules.validate_attendance_request"},
 	"Notification Log": {"after_insert": "alphax_hr.api.notify.on_notification_log"},
 	"Employee Checkin": {"after_insert": "alphax_hr.api.notify.on_checkin"},
 }

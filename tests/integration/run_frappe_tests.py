@@ -1358,6 +1358,59 @@ def run(site):
             rq.update_type("General Request", {"sla_days": 3, "fields": []})
         check("employee requests: letters with PDF, manager -> HR flow, privacy, resignation, type settings", request_engine)
 
+        def request_rules_overlap():
+            from alphax_hr import request_rules as rr
+            from alphax_hr.api import knowledge, records, requests as rq
+            frappe.set_user("Administrator")
+            frappe.db.delete("AlphaX Request", {"employee": f["e_emp2"]})
+            for n in frappe.get_all("Leave Application", filters={"employee": f["e_emp2"], "description": "AXT overlap"}, pluck="name"):
+                frappe.delete_doc("Leave Application", n, force=True)
+            d1, d2 = str(add_days(nowdate(), 40)), str(add_days(nowdate(), 42))
+            la = frappe.get_doc({"doctype": "Leave Application", "employee": f["e_emp2"], "leave_type": f["lt"], "from_date": d1, "to_date": d2,
+                                 "status": "Open", "description": "AXT overlap", "leave_approver": f["mgr"]})
+            la.flags.ignore_validate = True
+            la.flags.ignore_permissions = True
+            la.insert()
+            frappe.set_user(f["emp2"])
+            trip = {"destination": "Jeddah", "purpose": "Client visit"}
+            # business trip on leave days is refused; a trip after the leave is fine
+            expect_error(lambda: rq.create("Business Trip", {**trip, "from_date": d2, "to_date": add_days(d2, 2)}), frappe.ValidationError)
+            ok = rq.create("Business Trip", {**trip, "from_date": add_days(d2, 5), "to_date": add_days(d2, 7)})
+            # a second trip on the same days, and the very same trip again, are refused
+            expect_error(lambda: rq.create("Business Trip", {**trip, "from_date": add_days(d2, 6), "to_date": add_days(d2, 8)}), frappe.ValidationError)
+            # leave on the trip days is refused by the Leave Application hook
+            probe = frappe._dict(employee=f["e_emp2"], from_date=add_days(d2, 7), to_date=add_days(d2, 9), status="Open")
+            expect_error(lambda: rr.validate_leave_overlap(probe), frappe.ValidationError)
+            # late/early permission on a leave day is refused
+            expect_error(lambda: rr.check_day_is_working(f["e_emp2"], d1, "Late Arrival Permission"), frappe.ValidationError)
+            # absurd dates: trip of 120 days, passport kept until 2037, travel in the past
+            expect_error(lambda: rq.create("Business Trip", {**trip, "from_date": add_days(nowdate(), 100), "to_date": add_days(nowdate(), 220)}),
+                         frappe.ValidationError)
+            if not frappe.db.get_value("Employee", f["e_emp2"], "alphax_is_saudi"):
+                expect_error(lambda: rq.create("Passport Release", {"from_date": add_days(nowdate(), 3), "to_date": "2037-10-13"}),
+                             frappe.ValidationError)
+                expect_error(lambda: rq.create("Exit & Re-entry Visa", {"visa_type": "Single", "from_date": add_days(nowdate(), -3),
+                                                                         "to_date": add_days(nowdate(), 20)}), frappe.ValidationError)
+            # loan postponement: unavailable without a loan being repaid
+            types = {t["name"]: t for t in rq.types()}
+            if not rr.active_loans(f["e_emp2"]):
+                assert types["Loan Postponement"].get("unavailable"), types["Loan Postponement"]
+                expect_error(lambda: rq.create("Loan Postponement", {"months": 1}), frappe.ValidationError)
+            # request details read as labelled values, not JSON
+            frappe.set_user("Administrator")
+            view = records.get("AlphaX Request", ok["name"])
+            shown = {fl["label"]: fl["display"] for sec in view["sections"] for fl in sec["fields"] if "display" in fl}
+            assert "Destination" in shown and shown["Destination"] == "Jeddah" and not any("{" in str(v) for v in shown.values()), shown
+            # help suggestions match words, not the whole phrase
+            frappe.set_user(f["emp2"])
+            sugg = knowledge.suggest("how many days of annual leave do I get")
+            assert isinstance(sugg, list)
+            frappe.set_user("Administrator")
+            frappe.db.delete("AlphaX Request", {"employee": f["e_emp2"]})
+            frappe.delete_doc("Leave Application", la.name, force=True)
+        check("request checks: overlaps of leave / trips / permissions, sensible dates, loan postponement, readable details, help suggestions",
+              request_rules_overlap)
+
         print("\n== Penalties and warnings")
         def penalties_flow():
             from alphax_hr.api import penalties as pen, salary
@@ -2230,12 +2283,9 @@ def run(site):
             frappe.set_user(f["emp"])
             mine = loans.mine()
             assert round(mine["loan_cap"], 2) == round(wage * 0.1, 2)
-            big = rq.create("Loan Request", {"amount": round(wage * 0.3 * 2, 2), "months": 2, "purpose": "Car repair"})
-            frappe.set_user(f["mgr"]); approvals.act("AlphaX Request", big["name"], "Approve")
-            frappe.set_user(f["hr"])
-            expect_error(lambda: approvals.act("AlphaX Request", big["name"], "Approve"), frappe.ValidationError)  # 30% > 10% (Art. 92)
-            approvals.act("AlphaX Request", big["name"], "Reject", "Above 10% of wage")
-            frappe.set_user(f["emp"])
+            # 30% of the wage a month (> 10%, Art. 92) is refused when the employee submits it, with the fewest months that fit
+            expect_error(lambda: rq.create("Loan Request", {"amount": round(wage * 0.3 * 2, 2), "months": 2, "purpose": "Car repair"}),
+                         frappe.ValidationError)
             amount = round(wage * 0.4, 2)
             r = rq.create("Loan Request", {"amount": amount, "months": 4, "purpose": "School fees"})
             frappe.set_user(f["mgr"]); approvals.act("AlphaX Request", r["name"], "Approve")
@@ -2452,6 +2502,78 @@ def run(site):
             assert not bulk.remove_exception(f["e_emp"])["own"]
             bulk.remove_exception(f["e_emp2"])
         check("payroll components catalogue, Saudi banks from IBAN, salary history, bulk update and check-in exception", components_banks_bulk)
+
+        def bulk_fill_required():
+            from alphax_hr.api import bulk
+            frappe.set_user("Administrator")
+            cf = "Employee-axt_division"
+            if not frappe.db.exists("Custom Field", cf):
+                frappe.get_doc({"doctype": "Custom Field", "dt": "Employee", "fieldname": "axt_division", "label": "AXT Division",
+                                "fieldtype": "Select", "options": "\nNorth\nSouth", "reqd": 1, "insert_after": "department"}).insert()
+            frappe.clear_cache(doctype="Employee")
+            try:
+                frappe.db.sql("update tabEmployee set axt_division=NULL where name in %s", ((f["e_emp"], f["e_emp2"]),))
+                frappe.set_user(f["hr"])
+                opts = {x["fieldname"]: x for x in bulk.options()["fields"]}
+                assert opts.get("axt_division", {}).get("group") == "required", opts.get("axt_division")
+                assert "company" not in opts and "first_name" not in opts
+                miss = {x["fieldname"]: x for x in bulk.missing()["fields"]}
+                assert miss["axt_division"]["missing"] >= 2 and not miss["axt_division"]["personal"], miss.get("axt_division")
+                expect_error(lambda: bulk.fill_missing({"first_name": "X"}, employees=[f["e_emp"]]), frappe.ValidationError)
+                frappe.db.set_value("Employee", f["e_emp2"], "axt_division", "South")
+                out = bulk.fill_missing({"axt_division": "North"}, employees=[f["e_emp"], f["e_emp2"]])
+                assert out["done"] == [f["e_emp"]] and not out["failed"], out
+                assert frappe.db.get_value("Employee", f["e_emp"], "axt_division") == "North"
+                assert frappe.db.get_value("Employee", f["e_emp2"], "axt_division") == "South"  # kept
+                out = bulk.apply("axt_division", "South", employees=[f["e_emp"], f["e_emp2"]], only_empty=1)
+                assert frappe.db.get_value("Employee", f["e_emp"], "axt_division") == "North", out
+            finally:
+                frappe.set_user("Administrator")
+                frappe.delete_doc("Custom Field", cf)
+                frappe.clear_cache(doctype="Employee")
+        check("bulk: company-required fields listed, empty ones filled in one go, values already there kept", bulk_fill_required)
+
+        def notification_audience():
+            from alphax_hr.api import alerts
+            frappe.set_user(f["hr"])
+            withdept = frappe.get_all("Employee", filters={"status": "Active", "department": ["is", "set"], "user_id": ["is", "set"],
+                                                          "name": ["not in", [f["e_emp2"]]]}, fields=["department", "user_id"], limit=1)[0]
+            dept, dept_user = withdept.department, withdept.user_id
+            emp2_user = frappe.db.get_value("Employee", f["e_emp2"], "user_id")
+            emp_user = frappe.db.get_value("Employee", f["e_emp"], "user_id")
+            before = alerts.settings()
+            try:
+                out = alerts.save_settings(before["rules"], [
+                    {"event": "Request submitted", "service": "Business Trip", "action": "Also notify", "target_type": "Department", "target": dept},
+                    {"event": "All events", "action": "Never notify", "target_type": "Employee", "target": f["e_emp2"]},
+                    {"event": "Announcement", "action": "Also notify", "target_type": "User", "target": emp_user}], 0)
+                assert len(out["audience"]) == 3 and "Business Trip" in out["services"]
+                expect_error(lambda: alerts.save_settings(before["rules"], [{"event": "Nope", "target_type": "User", "target": "x"}]),
+                             frappe.ValidationError)
+                frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
+                # department added for that service only; the excluded employee never gets anything
+                to = alerts.apply_audience("Request submitted", {f["mgr"]}, "Business Trip")
+                assert f["mgr"] in to and dept_user in to and emp2_user not in to, to
+                assert alerts.apply_audience("Request submitted", {f["mgr"]}, "Salary Certificate") == {f["mgr"]}
+                assert emp2_user not in alerts.apply_audience("Leave decision", {emp2_user}, "Annual Leave")
+                assert emp_user in alerts.apply_audience("Announcement", set())
+                # the bell shows HR notifications only
+                frappe.set_user("Administrator")
+                for subject, dt_ in (("AXT purchase", "Material Request"), ("AXT leave", "Leave Application")):
+                    frappe.get_doc({"doctype": "Notification Log", "for_user": emp_user, "subject": subject, "type": "Alert",
+                                    "document_type": dt_, "document_name": "X"}).insert(ignore_permissions=True)
+                frappe.set_user(emp_user)
+                subjects = {i["subject"] for i in alerts.inbox(100)["items"]}
+                assert "AXT leave" in subjects and "AXT purchase" not in subjects, subjects
+                alerts.mark_read()
+                assert frappe.db.get_value("Notification Log", {"for_user": emp_user, "subject": "AXT purchase"}, "read") == 0
+            finally:
+                frappe.set_user("Administrator")
+                frappe.db.delete("Notification Log", {"subject": ["in", ["AXT purchase", "AXT leave"]]})
+                frappe.set_user(f["hr"])
+                alerts.save_settings(before["rules"], before.get("audience") or [], before.get("bell_all") or 0)
+                frappe.set_user("Administrator")
+        check("notifications: per-service extra recipients and exceptions, HR-only bell", notification_audience)
 
         def portal_and_pages():
             from alphax_hr import portal

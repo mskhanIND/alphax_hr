@@ -151,12 +151,13 @@ def on_leave_insert(doc, method=None):
 	if rule and cint(rule.emergency):
 		alerts.event("Emergency leave", _("Emergency leave: {0}").format(doc.employee_name),
 					 f"{doc.leave_type}, {_dates(doc)}{days}. {doc.description or ''}".strip(), employee=doc.employee,
-					 managers=[doc.leave_approver] if doc.leave_approver else None, url="/alphax/approvals", doc=ref, tag=doc.name)
+					 managers=[doc.leave_approver] if doc.leave_approver else None, url="/alphax/approvals", doc=ref, tag=doc.name,
+					 service=doc.leave_type)
 		return
 	if doc.leave_approver:
 		alerts.event("Leave request", _("Leave request from {0}").format(doc.employee_name),
 					 f"{doc.leave_type}, {_dates(doc)}{days}", employee=doc.employee, managers=[doc.leave_approver],
-					 url="/alphax/approvals", doc=ref, tag=doc.name)
+					 url="/alphax/approvals", doc=ref, tag=doc.name, service=doc.leave_type)
 
 
 @_safe
@@ -165,7 +166,8 @@ def on_leave_decided(doc, method=None):
 
 	if doc.status in ("Approved", "Rejected"):
 		alerts.event("Leave decision", _("Leave {0}").format(_(doc.status).lower()), f"{doc.leave_type}, {_dates(doc)}",
-					 employee=doc.employee, url="/alphax/me/leave", doc=("Leave Application", doc.name), tag=doc.name)
+					 employee=doc.employee, url="/alphax/me/leave", doc=("Leave Application", doc.name), tag=doc.name,
+					 service=doc.leave_type)
 
 
 @_safe
@@ -184,7 +186,7 @@ def request_created(doc):
 		return
 	alerts.event("Request submitted", _("New request: {0}").format(_(doc.request_type)), doc.employee_name or "",
 				 employee=doc.employee, managers=managers, url="/alphax/requests" if doc.status == "Pending HR" else "/alphax/approvals",
-				 doc=("AlphaX Request", doc.name), tag=doc.name)
+				 doc=("AlphaX Request", doc.name), tag=doc.name, service=doc.request_type)
 
 
 @_safe
@@ -194,7 +196,8 @@ def request_decided(doc):
 	user = frappe.db.get_value("Employee", doc.employee, "user_id")
 	if user and user != frappe.session.user:
 		alerts.event("Request decision", _(doc.request_type), _("Your request is now: {0}").format(_(doc.status)),
-					 employee=doc.employee, url="/alphax/me/requests", doc=("AlphaX Request", doc.name), tag=doc.name)
+					 employee=doc.employee, url="/alphax/me/requests", doc=("AlphaX Request", doc.name), tag=doc.name,
+					 service=doc.request_type)
 	if doc.status in ("Pending Manager", "Pending HR", "Pending Management"):
 		request_created(doc)
 

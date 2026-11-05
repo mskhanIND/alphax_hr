@@ -575,6 +575,11 @@ def _claim_attachments(doc, payload):
 def lookup(doctype: str, txt: str = "", filters: str | dict | list | None = None):
 	"""Typeahead for Link fields, limited to HR-relevant doctypes and permissions."""
 	require_hr()
+	if doctype == "Role":
+		require_hr()
+		txt = str(txt or "")[:80]
+		return [{"value": r, "description": ""} for r in frappe.get_all("Role", filters={"disabled": 0, "name": ["like", f"%{txt}%"]},
+																			  pluck="name", order_by="name", limit=20)]
 	if doctype == "Account":
 		# Accrual / payroll accounts in AlphaX settings: HR managers pick ledger accounts without Accounts roles.
 		require_hr_manager()

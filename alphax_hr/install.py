@@ -16,13 +16,15 @@ def after_migrate():
 	seed_settings()
 	seed_leave_rules()
 	apply_field_rules()
+	from alphax_hr.api.banks import seed as seed_banks
 	from alphax_hr.api.salary import seed_components
 
-	seed_components()
-	from alphax_hr.api.banks import seed as seed_banks
-
-	seed_banks()
-	seed_catalogues()
+	# Reference data: a problem with one list is logged and never stops the migrate.
+	for step in (seed_components, seed_banks, seed_catalogues):
+		try:
+			step()
+		except Exception:  # noqa: BLE001
+			frappe.log_error(title=f"AlphaX: {step.__name__} skipped during migrate")
 
 
 def seed_roles():

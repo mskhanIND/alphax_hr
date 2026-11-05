@@ -7,11 +7,12 @@ import { Card, PageHeader, Spinner } from '../components/ui'
 import { api, type RequestType } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 
-function Tile({ icon, label, hint, to, onClick }: { icon: ReactNode; label: string; hint?: string; to?: string; onClick?: () => void }) {
-  const cls = 'flex min-h-24 flex-col items-start gap-2 rounded-2xl border border-line bg-white p-4 text-start transition hover:border-brand hover:shadow-sm active:scale-[0.99]'
+function Tile({ icon, label, hint, to, onClick, disabled }: { icon: ReactNode; label: string; hint?: string; to?: string; onClick?: () => void; disabled?: boolean }) {
+  const cls = 'flex min-h-24 flex-col items-start gap-2 rounded-2xl border border-line bg-white p-4 text-start transition ' +
+    (disabled ? 'cursor-not-allowed opacity-50' : 'hover:border-brand hover:shadow-sm active:scale-[0.99]')
   const body = <><span className="grid size-10 place-items-center rounded-xl bg-brand/10 text-brand">{icon}</span>
     <span className="text-sm font-medium leading-tight">{label}</span>{hint && <span className="text-xs text-muted">{hint}</span>}</>
-  return to ? <Link to={to} className={cls}>{body}</Link> : <button type="button" onClick={onClick} className={cls}>{body}</button>
+  return to ? <Link to={to} className={cls}>{body}</Link> : <button type="button" onClick={onClick} disabled={disabled} className={cls}>{body}</button>
 }
 
 const CATEGORY_ORDER = ['Help', 'Attendance', 'Letter', 'Finance', 'Government', 'Document', 'Travel', 'Asset', 'Separation', 'Other']
@@ -50,7 +51,7 @@ export default function Services() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {groups[c].map((rt) => (
               <Tile key={rt.name} icon={CATEGORY_ICON[c]} label={typeTitle(rt, lang)}
-                hint={rt.non_saudi_only ? t('Non-Saudis') : undefined} onClick={() => setOpen(rt.name)} />
+                hint={rt.unavailable || (rt.non_saudi_only ? t('Non-Saudis') : undefined)} disabled={!!rt.unavailable} onClick={() => setOpen(rt.name)} />
             ))}
           </div>
         </Card>

@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Lightbulb } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api, uploadFile, type RequestField, type RequestType } from '../lib/api'
 import { useI18n } from '../lib/i18n'
@@ -16,13 +17,48 @@ function Input1({ f, value, onChange }: { f: RequestField; value: any; onChange:
   if (f.type === 'Select') return (
     <Select value={value ?? ''} onChange={(e) => onChange(e.target.value)}>
       <option value="">—</option>
-      {(f.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+      {(f.options ?? []).map((o) => <option key={o} value={o}>{f.option_labels?.[o] ?? o}</option>)}
     </Select>
   )
   if (f.type === 'Text') return <Textarea value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
   if (f.type === 'Check') return <input type="checkbox" className="size-5" checked={!!value} onChange={(e) => onChange(e.target.checked ? 1 : 0)} />
   const type = f.type === 'Date' ? 'date' : f.type === 'Time' ? 'time' : f.type === 'Int' || f.type === 'Currency' ? 'number' : 'text'
   return <Input type={type} value={value ?? ''} onChange={(e) => onChange(e.target.value)} />
+}
+
+/** Help-centre answers that match what the employee is asking, shown before the request is sent. */
+function HelpSuggestions({ text, onSolved }: { text: string; onSolved: () => void }) {
+  const { t, lang } = useI18n()
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState<string | null>(null)
+  useEffect(() => { const h = setTimeout(() => setQuery(text.trim()), 450); return () => clearTimeout(h) }, [text])
+  const q = useQuery({ queryKey: ['help-suggest', query], queryFn: () => api.helpSuggest(query), enabled: query.length >= 4, staleTime: 60_000 })
+  const art = useQuery({ queryKey: ['help-article', open], queryFn: () => api.helpArticle(open!), enabled: !!open })
+  if (!q.data?.length) return null
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-sm">
+      <div className="mb-2 flex items-center gap-2 font-medium text-amber-900"><Lightbulb className="size-4" />{t('Before you send: these answers may help')}</div>
+      <ul className="flex flex-col gap-1">
+        {q.data.map((a: any) => (
+          <li key={a.name}>
+            <button type="button" className="text-start text-brand hover:underline" onClick={() => setOpen(open === a.name ? null : a.name)}>
+              {lang === 'ar' && a.title_ar ? a.title_ar : a.title}
+            </button>
+            {open === a.name && (
+              <div className="mt-1 rounded-lg bg-white p-3 text-sm leading-relaxed">
+                {art.isLoading ? <Spinner /> : (
+                  <>
+                    <div className="max-h-48 overflow-auto whitespace-pre-line">{(lang === 'ar' && art.data?.body_ar ? art.data.body_ar : art.data?.body ?? '').replace(/<[^>]+>/g, '')}</div>
+                    <Button size="sm" variant="secondary" className="mt-2" onClick={() => { api.helpFeedback(a.name, 1).catch(() => undefined); onSolved() }}>{t('This answered my question')}</Button>
+                  </>
+                )}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
 }
 
 /** New request: pick a type, fill the type's own fields, optionally attach a document. */
@@ -55,7 +91,7 @@ export function RequestForm({ open, onClose, employee, initialType, category }: 
     <Modal open={open} onClose={onClose} title={t('New request')}
       footer={<>
         <Button variant="secondary" onClick={onClose}>{t('Cancel')}</Button>
-        <Button disabled={!rt || missing.length > 0 || (!!rt?.requires_attachment && !file)} loading={m.isPending} onClick={() => m.mutate()}>{t('Submit request')}</Button>
+        <Button disabled={!rt || !!rt.unavailable || missing.length > 0 || (!!rt?.requires_attachment && !file)} loading={m.isPending} onClick={() => m.mutate()}>{t('Submit request')}</Button>
       </>}>
       {types.isLoading ? <Spinner /> : types.error ? <ErrorBox error={types.error} /> : (
         <div className="grid gap-4">
@@ -64,12 +100,13 @@ export function RequestForm({ open, onClose, employee, initialType, category }: 
               <option value="">—</option>
               {Object.entries(groups).map(([cat, list]) => (
                 <optgroup key={cat} label={t(cat)}>
-                  {list.map((x) => <option key={x.name} value={x.name}>{typeTitle(x, lang)}</option>)}
+                  {list.map((x) => <option key={x.name} value={x.name} disabled={!!x.unavailable}>{typeTitle(x, lang)}{x.unavailable ? ` — ${x.unavailable}` : ''}</option>)}
                 </optgroup>
               ))}
             </Select>
           </Field>
           {rt?.description && <p className="text-sm text-muted">{rt.description}</p>}
+          {rt?.unavailable && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{rt.unavailable}</p>}
           {rt && (
             <p className="text-xs text-muted">
               {[rt.needs_manager ? t('Manager approval') : null, rt.needs_hr ? t('HR approval') : null, rt.needs_management ? t('Management approval') : null,
@@ -86,6 +123,10 @@ export function RequestForm({ open, onClose, employee, initialType, category }: 
             <Field label={t('Supporting document') + (rt.requires_attachment ? ' *' : '')}>
               <input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="text-sm" />
             </Field>
+          )}
+          {rt && !rt.special && !employee && (
+            <HelpSuggestions text={[typeTitle(rt, lang), ...rt.fields.filter((f) => f.type === 'Data' || f.type === 'Text' || f.type === 'Select').map((f) => values[f.fieldname] ?? ''), reason].join(' ')}
+              onSolved={() => { reset(); onClose() }} />
           )}
           {m.error && <ErrorBox error={m.error} />}
         </div>

@@ -183,7 +183,7 @@ export const api = {
   setupAnnualLeaveType: () => call(A + 'leave_setup.setup_annual_leave_type'),
   updateAnnualSettings: (data: Record<string, unknown>) => call(A + 'leave_setup.update_annual_settings', { data }),
   alertSettings: () => call<any>(A + 'alerts.settings'),
-  saveAlertSettings: (rules: any[]) => call<any>(A + 'alerts.save_settings', { rules }),
+  saveAlertSettings: (rules: any[], audience?: any[], bell_all?: number) => call<any>(A + 'alerts.save_settings', { rules, audience, bell_all }),
   myNotifications: () => call<{ items: any[]; unread: number }>(A + 'alerts.inbox'),
   markNotificationsRead: (name?: string) => call<{ items: any[]; unread: number }>(A + 'alerts.mark_read', name ? { name } : {}),
   approvalDelays: () => call<any>(A + 'delays.report'),
@@ -246,6 +246,8 @@ export const api = {
   bulkOptions: () => call<any>(A + 'bulk.options'),
   bulkPreview: (field: string, args: Record<string, unknown>) => call<any>(A + 'bulk.preview', { field, ...args }),
   bulkApply: (field: string, value: unknown, args: Record<string, unknown>) => call<any>(A + 'bulk.apply', { field, value, ...args }),
+  bulkMissing: (filters?: Record<string, string>) => call<any>(A + 'bulk.missing', { filters }),
+  bulkFillMissing: (values: Record<string, unknown>, filters?: Record<string, string>) => call<any>(A + 'bulk.fill_missing', { values, filters }),
   accrualRuns: (company?: string) => call<any>(A + 'accruals.runs', company ? { company } : {}),
   accrualPreview: (company: string, month: string) => call<any>(A + 'accruals.preview', { company, month }),
   accrualPost: (company: string, month: string) => call<any>(A + 'accruals.post', { company, month }),
@@ -312,6 +314,7 @@ export const api = {
   deleteWorkLocation: (name: string) => call(A + 'attendance.delete_work_location', { name }),
   helpArticles: (search?: string, category?: string) => call<any>(A + 'knowledge.articles', { search, category }),
   helpArticle: (name: string) => call<any>(A + 'knowledge.article', { name }),
+  helpSuggest: (text: string) => call<any[]>(A + 'knowledge.suggest', { text }),
   helpFeedback: (name: string, helpful: number) => call(A + 'knowledge.feedback', { name, helpful }),
   allHelpArticles: () => call<any[]>(A + 'knowledge.all_articles'),
   saveHelpArticle: (data: Record<string, unknown>, name?: string) => call(A + 'knowledge.save', { data, name }),
@@ -332,10 +335,11 @@ export const api = {
   importLegacy: (kind: string, dry_run: number) => call<any>(A + 'cutover.import_legacy', { kind, dry_run }),
 }
 
-export interface RequestField { fieldname: string; label: string; label_ar?: string; type: string; reqd?: number; options?: string[] }
+export interface RequestField { fieldname: string; label: string; label_ar?: string; type: string; reqd?: number; options?: string[]; option_labels?: Record<string, string> }
 export interface RequestType {
   name: string; title: string; title_ar?: string; category: string; description?: string; needs_manager: number; needs_hr: number; needs_management?: number; manager_can_raise?: number
   requires_attachment: number; non_saudi_only: number; sla_days: number; output?: string; enabled: number; fields: RequestField[]; special?: boolean
+  unavailable?: string
 }
 
 /** Attach a file to a document through Frappe's standard (permission-checked) upload. */

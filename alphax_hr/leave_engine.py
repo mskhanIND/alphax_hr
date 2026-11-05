@@ -84,6 +84,9 @@ def rule_to_dict(rule: lr.Rule | None):
 def validate_leave_application(doc, method=None):
 	if doc.status not in ("Cancelled", "Rejected"):
 		apply_counting(doc)
+		from alphax_hr.request_rules import validate_leave_overlap
+
+		validate_leave_overlap(doc)
 	rules = rules_by_leave_type()
 	rule = rules.get(doc.leave_type)
 	if not rule or doc.status in ("Cancelled", "Rejected"):

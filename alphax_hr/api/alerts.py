@@ -95,6 +95,41 @@ def recipients(r, employee=None, managers=None):
 	return {u for u in users if u not in ("Guest",)}
 
 
+TARGETS = ("All employees", "Department", "Branch", "Designation", "Role", "Employee", "User")
+
+
+def audience_users(target_type, target):
+	"""Enabled users behind one audience row."""
+	if target_type == "User":
+		return {target} if target and frappe.db.get_value("User", target, "enabled") else set()
+	if target_type == "Role":
+		return {u for u in frappe.get_all("Has Role", filters={"role": target, "parenttype": "User"}, pluck="parent")
+				if u not in ("Administrator", "Guest")}
+	filters = {"status": "Active", "user_id": ["is", "set"]}
+	if target_type == "Employee":
+		filters["name"] = target
+	elif target_type in ("Department", "Branch", "Designation"):
+		filters[target_type.lower()] = target
+	elif target_type != "All employees":
+		return set()
+	return set(frappe.get_all("Employee", filters=filters, pluck="user_id"))
+
+
+def apply_audience(name, users, service=None):
+	"""HR's extra recipients and exceptions for this event (and service): add first, then remove."""
+	conf = frappe.get_cached_doc("AlphaX HR Settings") if frappe.db.exists("DocType", "AlphaX HR Settings") else None
+	rows = [r for r in (conf.get("notify_audience") or []) if conf] if conf and conf.meta.has_field("notify_audience") else []
+	rows = [r for r in rows if r.event in (name, "All events") and (not r.service or r.service == service)]
+	users = set(users)
+	for r in rows:
+		if r.action == "Also notify":
+			users |= audience_users(r.target_type, r.target)
+	for r in rows:
+		if r.action == "Never notify":
+			users -= audience_users(r.target_type, r.target)
+	return users
+
+
 def _email_html(subject, message, url):
 	link = get_url(url) if url else get_url("/alphax")
 	return (f"<div style=\"font-family:system-ui,Segoe UI,Arial,sans-serif;font-size:14px;color:#111\">"
@@ -104,14 +139,16 @@ def _email_html(subject, message, url):
 			f"border-radius:8px;text-decoration:none\">{_('Open in {0}').format(frappe.utils.escape_html(frappe.get_cached_doc('AlphaX HR Settings').get('portal_title') or 'AlphaX HR'))}</a></div>")
 
 
-def event(name, subject, message="", employee=None, managers=None, url="/alphax", doc=None, users=None, tag=None):
+def event(name, subject, message="", employee=None, managers=None, url="/alphax", doc=None, users=None, tag=None, service=None):
 	"""Send ``name`` per HR's rule. ``managers``: approver users for this step (defaults to the reports-to manager).
-	``users``: an explicit recipient set (overrides employee/manager/HR choice). Returns the users reached."""
+	``users``: an explicit recipient set (overrides employee/manager/HR choice). ``service``: the request or leave type,
+	for HR's per-service recipients and exceptions. Returns the users reached."""
 	try:
 		r = rule(name)
 		if not r or not cint(r.enabled):
 			return set()
 		to = set(users) if users is not None else recipients(r, employee, managers)
+		to = apply_audience(name, to, service)
 		to = {u for u in to if u and frappe.db.get_value("User", u, "enabled")}
 		if not to:
 			return set()
@@ -121,7 +158,8 @@ def event(name, subject, message="", employee=None, managers=None, url="/alphax"
 			for u in to:
 				log = frappe.get_doc({"doctype": "Notification Log", "for_user": u, "type": "Alert", "subject": subject,
 									  "email_content": message, "from_user": frappe.session.user if frappe.session.user != "Guest" else None,
-									  "document_type": doc[0] if doc else None, "document_name": doc[1] if doc else None})
+									  "document_type": doc[0] if doc else None, "document_name": doc[1] if doc else None,
+									  "link": url or "/alphax"})
 				log.flags.alphax_pushed = True
 				log.insert(ignore_permissions=True)
 			notify.send(list(to), subject, message or subject, url, tag=tag)
@@ -146,16 +184,34 @@ def settings():
 	rows = [{"event": r.event, **{k: cint(r.get(k)) for k in FLAGS}, "help": HELP.get(r.event, "")}
 			for r in conf.get("notify_rules") or [] if r.event in DEFAULTS]
 	rows.sort(key=lambda r: list(DEFAULTS).index(r["event"]))
-	return {"rules": rows, "can_edit": bool(set(frappe.get_roles()) & {"HR Manager", "System Manager"}),
+	audience = [{k: r.get(k) for k in ("event", "service", "action", "target_type", "target")} for r in conf.get("notify_audience") or []] \
+		if conf.meta.has_field("notify_audience") else []
+	services = sorted(set(frappe.get_all("AlphaX Request Type", pluck="name") + frappe.get_all("Leave Type", pluck="name"))) \
+		if frappe.db.exists("DocType", "AlphaX Request Type") else frappe.get_all("Leave Type", pluck="name")
+	return {"rules": rows, "audience": audience, "services": services, "targets": list(TARGETS),
+			"events": ["All events"] + list(DEFAULTS), "bell_all": cint(conf.get("bell_all")),
+			"can_edit": bool(set(frappe.get_roles()) & {"HR Manager", "System Manager"}),
 			"approval_remind_hours": cint(conf.get("approval_remind_hours")),
 			"leave_escalation_hours": cint(conf.get("leave_escalation_hours"))}
 
 
 @frappe.whitelist(methods=["POST"])
-def save_settings(rules: str | dict | list):
+def save_settings(rules: str | dict | list, audience: str | dict | list | None = None, bell_all: int | str | None = None):
 	require_hr_manager()
 	rules = parse_json(rules) or []
 	conf = frappe.get_single("AlphaX HR Settings")
+	if audience is not None and conf.meta.has_field("notify_audience"):
+		conf.set("notify_audience", [])
+		for a in parse_json(audience) or []:
+			if a.get("event") not in ["All events", *DEFAULTS] or a.get("target_type") not in TARGETS:
+				frappe.throw(_("Check the extra recipients and exceptions: event or 'who' is not valid."))
+			if a.get("target_type") != "All employees" and not (a.get("target") or "").strip():
+				frappe.throw(_("Choose the {0} for each extra recipient or exception.").format(_(a.get("target_type")).lower()))
+			conf.append("notify_audience", {"event": a["event"], "service": (a.get("service") or "").strip() or None,
+											"action": "Never notify" if a.get("action") == "Never notify" else "Also notify",
+											"target_type": a["target_type"], "target": (a.get("target") or "").strip() or None})
+	if bell_all is not None and conf.meta.has_field("bell_all"):
+		conf.bell_all = cint(bell_all)
 	by_event = {r.event: r for r in conf.notify_rules}
 	for row in rules:
 		ev = row.get("event")
@@ -171,18 +227,31 @@ def save_settings(rules: str | dict | list):
 
 
 # ------------------------------------------------------- my notifications
+HR_DOCTYPES = ["Leave Application", "Leave Allocation", "Leave Encashment", "Compensatory Leave Request", "Attendance",
+			   "Attendance Request", "Employee Checkin", "Shift Request", "Shift Assignment", "Expense Claim", "Employee Advance",
+			   "Salary Slip", "Payroll Entry", "Additional Salary", "Salary Structure Assignment", "Appraisal",
+			   "Employee Performance Feedback", "Employee", "Employee Grievance", "Employee Separation", "Employee Onboarding",
+			   "Employee Promotion", "Employee Transfer", "Travel Request", "Full and Final Statement", "Training Event",
+			   "Job Applicant", "Job Offer", "Interview"]
+# Shown by the AlphaX bell unless HR turns on "The bell shows every notification".
+HR_FILTERS = [["document_type", "in", HR_DOCTYPES], ["document_type", "like", "AlphaX %"], ["link", "like", "/alphax%"]]
+
 @frappe.whitelist()
 def inbox(limit: int | str = 30):
 	user = frappe.session.user
 	if user == "Guest":
 		raise frappe.PermissionError
-	rows = frappe.get_all("Notification Log", filters={"for_user": user},
-						  fields=["name", "subject", "email_content", "document_type", "document_name", "read", "creation", "type"],
+	hr_only = not cint(frappe.db.get_single_value("AlphaX HR Settings", "bell_all")) \
+		if frappe.get_meta("AlphaX HR Settings").has_field("bell_all") else False
+	or_filters = HR_FILTERS if hr_only else None
+	rows = frappe.get_all("Notification Log", filters={"for_user": user}, or_filters=or_filters,
+						  fields=["name", "subject", "email_content", "document_type", "document_name", "read", "creation", "type", "link"],
 						  order_by="creation desc", limit=min(cint(limit) or 30, 100))
 	for r in rows:
 		r.subject = frappe.utils.strip_html(r.subject or "")
 		r.email_content = frappe.utils.strip_html(r.email_content or "")[:240]
-	unread = frappe.db.count("Notification Log", {"for_user": user, "read": 0})
+	unread = len(frappe.get_all("Notification Log", filters={"for_user": user, "read": 0}, or_filters=or_filters, pluck="name",
+								 limit=1000))
 	return {"items": rows, "unread": unread}
 
 
@@ -194,7 +263,11 @@ def mark_read(name: str | None = None):
 	filters = {"for_user": user, "read": 0}
 	if name:
 		filters["name"] = name
-	for n in frappe.get_all("Notification Log", filters=filters, pluck="name", limit=500):
+	hr_only = not cint(frappe.db.get_single_value("AlphaX HR Settings", "bell_all")) \
+		if frappe.get_meta("AlphaX HR Settings").has_field("bell_all") else False
+	# "Mark all read" only touches what the bell shows; other apps' alerts stay unread in the Desk.
+	for n in frappe.get_all("Notification Log", filters=filters, or_filters=HR_FILTERS if hr_only and not name else None,
+							pluck="name", limit=500):
 		frappe.db.set_value("Notification Log", n, "read", 1, update_modified=False)
 	return inbox()
 

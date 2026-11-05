@@ -2,6 +2,22 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.21.0 — 2026-11-05
+
+- **Fix:** migrate no longer stops when a bank in the built-in list already exists under another name with the same SWIFT code (e.g. SABB / Saudi Awwal Bank); reference data problems are logged and skipped.
+- **Request checks:** sensible dates for every request (no trips longer than 90 days, passports kept at most 180 days, no travel in the past, nothing years ahead); one open resignation / final exit / loan / advance at a time; the same request cannot be sent twice; loans and advances checked against the Saudi Labor Law limits when submitted.
+- **Overlap control:** a business trip cannot overlap leave or another trip; leave cannot be taken on trip days; no late/early permission or attendance request on a day of leave or travel.
+- **Loan postponement** lists the employee's loans being repaid; it is unavailable when there is none.
+- **Help before asking:** while writing a request, matching help-centre answers are suggested; "This answered my question" closes the form.
+- **Request details** show as labelled values instead of JSON.
+- **Bulk update:** every employee field (including your company's required fields), "only where empty", and a new *Fill missing required fields* tab that fills several fields at once and lists what is still missing.
+- **Notifications:** the bell shows only HR notifications (setting to show all); per event and per service, add departments, branches, designations, roles, employees or users — or exclude them.
+- **Fix:** record history showed the oldest 1,000 changes instead of the newest.
+
+## 0.20.1 — 2026-11-05
+
+- Fix "cannot import name N_" on older Frappe v15 releases; service worker "body already used" error; team appraisals crash for users without an employee record; wide org charts scale to the PDF page and teams without sub-teams are listed in a column.
+
 ## 0.20.0 — 2026-11-04
 
 - **Organisation chart views**: *Chart* (top-down boxes with reporting lines), *Tree* (indented, expand/collapse) and *By department* (one card per department, managers first). The chosen view is remembered.
