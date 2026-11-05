@@ -1,0 +1,129 @@
+{
+ "doctype": "DocType",
+ "name": "AlphaX Device Log",
+ "module": "AlphaX HR",
+ "custom": 0,
+ "engine": "InnoDB",
+ "creation": "2026-11-02 00:00:00.000000",
+ "modified": "2026-11-02 00:00:00.000000",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "field_order": [
+  "device",
+  "device_user",
+  "punch_time",
+  "raw_state",
+  "log_type",
+  "source",
+  "cb1",
+  "status",
+  "employee",
+  "employee_checkin",
+  "message"
+ ],
+ "fields": [
+  {
+   "fieldname": "device",
+   "fieldtype": "Link",
+   "label": "Device",
+   "options": "AlphaX Attendance Device",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "device_user",
+   "fieldtype": "Data",
+   "label": "Device user ID",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "punch_time",
+   "fieldtype": "Datetime",
+   "label": "Punch time",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "raw_state",
+   "fieldtype": "Data",
+   "label": "Device state"
+  },
+  {
+   "fieldname": "log_type",
+   "fieldtype": "Select",
+   "label": "IN / OUT",
+   "options": "\nIN\nOUT"
+  },
+  {
+   "fieldname": "source",
+   "fieldtype": "Select",
+   "label": "Source",
+   "options": "Device push\nPush API\nDatabase pull\nFile upload"
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Pending\nImported\nUnmatched\nDuplicate\nError",
+   "default": "Pending",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "label": "Employee",
+   "options": "Employee",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "employee_checkin",
+   "fieldtype": "Link",
+   "label": "Employee Checkin",
+   "options": "Employee Checkin",
+   "read_only": 1
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Small Text",
+   "label": "Message"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "HR Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "HR User",
+   "read": 1,
+   "report": 1
+  }
+ ],
+ "sort_field": "punch_time",
+ "sort_order": "DESC",
+ "track_changes": 1,
+ "states": [],
+ "autoname": "hash",
+ "title_field": "device_user"
+}

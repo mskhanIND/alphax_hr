@@ -2,6 +2,16 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.23.0 — 2026-11-05
+
+- **Attendance devices** (new page for HR): connect fingerprint and face devices of any brand.
+  - **ZKTeco and other ADMS/iClock devices** send punches straight to AlphaX (Cloud Server setting on the device); unknown devices wait for HR approval; optional allowed IP addresses; device users, model and last contact shown; commands: upload all logs again, send employees to the device, read device info, reboot.
+  - **Push API** with a per-device token for Hikvision event push, Suprema, Anviz, Dahua or a local bridge.
+  - **Database pull** from ZKTeco BioTime, ZKTime / ZKAccess or your own table (MySQL/MariaDB, PostgreSQL, SQL Server), every few minutes, with *Test connection* and *Pull now*.
+  - **Log file import** (attlog.dat from USB, CSV).
+  - Every punch is kept as a device log, matched by attendance device ID, Employee ID or Iqama, turned into an Employee Checkin (IN/OUT from the device or by rule, time offset per device), duplicates skipped; *Unmatched users* links a device user to an employee in one click and imports their punches.
+- **Fix:** "no loan being repaid" hint shown in Arabic.
+
 ## 0.22.0 — 2026-11-05
 
 - **Settings, easier:** sections in a side menu (Company & branding, Portal & pages, Employees & salary, Attendance, Leave, Payroll/GOSI/loans, Accruals, Payslips, Notifications, More setup), a short guide on each, *Find a setting*, changed fields highlighted, a sticky bar listing every unsaved change with Save / Discard, and a warning before leaving with unsaved changes.

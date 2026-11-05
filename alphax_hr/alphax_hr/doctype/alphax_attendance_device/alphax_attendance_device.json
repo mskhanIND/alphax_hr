@@ -1,0 +1,318 @@
+{
+ "doctype": "DocType",
+ "name": "AlphaX Attendance Device",
+ "module": "AlphaX HR",
+ "custom": 0,
+ "engine": "InnoDB",
+ "creation": "2026-11-02 00:00:00.000000",
+ "modified": "2026-11-02 00:00:00.000000",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "field_order": [
+  "device_name",
+  "enabled",
+  "brand",
+  "connection",
+  "serial_number",
+  "cb1",
+  "company",
+  "location",
+  "match_by",
+  "punch_rule",
+  "time_offset_minutes",
+  "allowed_ips",
+  "status_section",
+  "last_contact",
+  "last_punch",
+  "last_ip",
+  "cb2",
+  "model",
+  "user_count",
+  "log_stamp",
+  "oplog_stamp",
+  "api_section",
+  "api_token",
+  "db_section",
+  "db_type",
+  "db_host",
+  "db_port",
+  "db_name",
+  "db_user",
+  "db_password",
+  "cb3",
+  "db_preset",
+  "db_table",
+  "db_user_column",
+  "db_time_column",
+  "db_state_column",
+  "db_sn_column",
+  "db_last_time",
+  "pull_every"
+ ],
+ "fields": [
+  {
+   "fieldname": "device_name",
+   "fieldtype": "Data",
+   "label": "Device name",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "brand",
+   "fieldtype": "Select",
+   "label": "Brand",
+   "options": "ZKTeco\nHikvision\nSuprema\nAnviz\nDahua\nOther",
+   "default": "ZKTeco",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "connection",
+   "fieldtype": "Select",
+   "label": "Connection",
+   "reqd": 1,
+   "in_list_view": 1,
+   "options": "Device push (ZKTeco ADMS / iClock)\nPush API (bridge or other brands)\nDatabase pull (BioTime / ZKTime)\nFile upload",
+   "default": "Device push (ZKTeco ADMS / iClock)"
+  },
+  {
+   "fieldname": "serial_number",
+   "fieldtype": "Data",
+   "label": "Serial number (SN)",
+   "unique": 1,
+   "in_list_view": 1,
+   "description": "As shown on the device (Menu → System info). Required for device push."
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "location",
+   "fieldtype": "Data",
+   "label": "Location / site"
+  },
+  {
+   "fieldname": "match_by",
+   "fieldtype": "Select",
+   "label": "Match device users by",
+   "options": "Attendance device ID\nEmployee ID\nNational ID / Iqama",
+   "default": "Attendance device ID",
+   "description": "Attendance device ID is the standard field on the employee (Attendance & leave)."
+  },
+  {
+   "fieldname": "punch_rule",
+   "fieldtype": "Select",
+   "label": "IN / OUT",
+   "options": "From the device (0 = IN, 1 = OUT)\nAlternate (shift decides)\nAll IN\nAll OUT",
+   "default": "From the device (0 = IN, 1 = OUT)"
+  },
+  {
+   "fieldname": "time_offset_minutes",
+   "fieldtype": "Int",
+   "label": "Device clock offset (minutes)",
+   "default": "0",
+   "description": "Added to every punch time when the device clock is not in the site's time zone."
+  },
+  {
+   "fieldname": "allowed_ips",
+   "fieldtype": "Small Text",
+   "label": "Allowed IP addresses",
+   "description": "One per line. Empty = any address (device push / push API)."
+  },
+  {
+   "fieldname": "status_section",
+   "fieldtype": "Section Break",
+   "label": "Status"
+  },
+  {
+   "fieldname": "last_contact",
+   "fieldtype": "Datetime",
+   "label": "Last contact",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "last_punch",
+   "fieldtype": "Datetime",
+   "label": "Last punch",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_ip",
+   "fieldtype": "Data",
+   "label": "Last IP address",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "model",
+   "fieldtype": "Data",
+   "label": "Model / firmware",
+   "read_only": 1
+  },
+  {
+   "fieldname": "user_count",
+   "fieldtype": "Int",
+   "label": "Users on device",
+   "read_only": 1
+  },
+  {
+   "fieldname": "log_stamp",
+   "fieldtype": "Data",
+   "label": "ADMS log stamp",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "oplog_stamp",
+   "fieldtype": "Data",
+   "label": "ADMS operation stamp",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "api_section",
+   "fieldtype": "Section Break",
+   "label": "Push API"
+  },
+  {
+   "fieldname": "api_token",
+   "fieldtype": "Password",
+   "label": "Device token",
+   "description": "Sent by the bridge in the X-AlphaX-Device-Token header."
+  },
+  {
+   "fieldname": "db_section",
+   "fieldtype": "Section Break",
+   "label": "Database pull"
+  },
+  {
+   "fieldname": "db_type",
+   "fieldtype": "Select",
+   "label": "Database",
+   "options": "\nMySQL / MariaDB\nPostgreSQL\nSQL Server"
+  },
+  {
+   "fieldname": "db_host",
+   "fieldtype": "Data",
+   "label": "Host"
+  },
+  {
+   "fieldname": "db_port",
+   "fieldtype": "Int",
+   "label": "Port"
+  },
+  {
+   "fieldname": "db_name",
+   "fieldtype": "Data",
+   "label": "Database name"
+  },
+  {
+   "fieldname": "db_user",
+   "fieldtype": "Data",
+   "label": "User"
+  },
+  {
+   "fieldname": "db_password",
+   "fieldtype": "Password",
+   "label": "Password"
+  },
+  {
+   "fieldname": "cb3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "db_preset",
+   "fieldtype": "Select",
+   "label": "Software",
+   "options": "BioTime (iclock_transaction)\nZKTime / ZKAccess (CHECKINOUT)\nCustom",
+   "default": "BioTime (iclock_transaction)"
+  },
+  {
+   "fieldname": "db_table",
+   "fieldtype": "Data",
+   "label": "Punch table",
+   "description": "Custom only."
+  },
+  {
+   "fieldname": "db_user_column",
+   "fieldtype": "Data",
+   "label": "User column"
+  },
+  {
+   "fieldname": "db_time_column",
+   "fieldtype": "Data",
+   "label": "Time column"
+  },
+  {
+   "fieldname": "db_state_column",
+   "fieldtype": "Data",
+   "label": "IN/OUT column"
+  },
+  {
+   "fieldname": "db_sn_column",
+   "fieldtype": "Data",
+   "label": "Device column"
+  },
+  {
+   "fieldname": "db_last_time",
+   "fieldtype": "Datetime",
+   "label": "Pulled up to",
+   "read_only": 1
+  },
+  {
+   "fieldname": "pull_every",
+   "fieldtype": "Int",
+   "label": "Pull every (minutes)",
+   "default": "15"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "HR Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "HR User",
+   "read": 1,
+   "report": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1,
+ "states": [],
+ "autoname": "field:device_name",
+ "title_field": "device_name"
+}

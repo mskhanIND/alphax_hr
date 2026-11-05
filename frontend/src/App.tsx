@@ -52,6 +52,7 @@ const VacationPlanner = lazy(() => import('./pages/VacationPlanner'))
 const AnnouncementsAdmin = lazy(() => import('./pages/AnnouncementsAdmin'))
 const Checkins = lazy(() => import('./pages/Checkins'))
 const WorkLocations = lazy(() => import('./pages/WorkLocations'))
+const AttendanceDevices = lazy(() => import('./pages/AttendanceDevices'))
 const HelpCentre = lazy(() => import('./pages/HelpCentre'))
 const KnowledgeAdmin = lazy(() => import('./pages/KnowledgeAdmin'))
 
@@ -90,6 +91,7 @@ export default function App() {
             <Route path="/knowledge" element={<Guard when={hr}><KnowledgeAdmin /></Guard>} />
             <Route path="/checkins" element={<Guard when={mgr}><Checkins /></Guard>} />
             <Route path="/work-locations" element={<Guard when={hr}><WorkLocations /></Guard>} />
+            <Route path="/attendance-devices" element={<Guard when={hr}><AttendanceDevices /></Guard>} />
             <Route path="/announcements" element={<Guard when={hr}><AnnouncementsAdmin /></Guard>} />
             <Route path="/my-team" element={<Guard when={mgr}><MyTeam /></Guard>} />
             <Route path="/me/requests" element={<Guard when={emp}><MyRequests /></Guard>} />

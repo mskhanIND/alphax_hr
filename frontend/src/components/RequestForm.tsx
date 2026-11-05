@@ -100,13 +100,13 @@ export function RequestForm({ open, onClose, employee, initialType, category }: 
               <option value="">—</option>
               {Object.entries(groups).map(([cat, list]) => (
                 <optgroup key={cat} label={t(cat)}>
-                  {list.map((x) => <option key={x.name} value={x.name} disabled={!!x.unavailable}>{typeTitle(x, lang)}{x.unavailable ? ` — ${x.unavailable}` : ''}</option>)}
+                  {list.map((x) => <option key={x.name} value={x.name} disabled={!!x.unavailable}>{typeTitle(x, lang)}{x.unavailable ? ` — ${t(x.unavailable)}` : ''}</option>)}
                 </optgroup>
               ))}
             </Select>
           </Field>
           {rt?.description && <p className="text-sm text-muted">{rt.description}</p>}
-          {rt?.unavailable && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{rt.unavailable}</p>}
+          {rt?.unavailable && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{t(rt.unavailable)}</p>}
           {rt && (
             <p className="text-xs text-muted">
               {[rt.needs_manager ? t('Manager approval') : null, rt.needs_hr ? t('HR approval') : null, rt.needs_management ? t('Management approval') : null,

@@ -54,7 +54,7 @@ scheduler_events = {
 		"alphax_hr.api.loans.daily_post_due",
 	],
 	"hourly": ["alphax_hr.api.delays.escalate_pending_approvals"],
-	"cron": {"*/15 * * * *": ["alphax_hr.api.alerts.missing_checkins"]},
+	"cron": {"*/15 * * * *": ["alphax_hr.api.alerts.missing_checkins"], "*/5 * * * *": ["alphax_hr.devices.scheduled"]},
 }
 
 permission_query_conditions = {"AlphaX Request": "alphax_hr.api.requests.query_conditions",
@@ -68,5 +68,8 @@ has_permission = {"AlphaX Request": "alphax_hr.api.requests.has_permission",
 ignore_links_on_delete = ["AlphaX Approval Reminder"]
 
 after_request = ["alphax_hr.api.pwa.after_request", "alphax_hr.portal.after_request"]
+
+# ZKTeco ADMS / iClock push: /iclock/cdata, /iclock/getrequest, /iclock/devicecmd (plain text for the device firmware)
+page_renderer = ["alphax_hr.adms.ADMSRenderer"]
 
 jinja = {"methods": ["alphax_hr.api.payslip.alphax_payslip"]}

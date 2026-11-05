@@ -51,7 +51,7 @@ export default function Services() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {groups[c].map((rt) => (
               <Tile key={rt.name} icon={CATEGORY_ICON[c]} label={typeTitle(rt, lang)}
-                hint={rt.unavailable || (rt.non_saudi_only ? t('Non-Saudis') : undefined)} disabled={!!rt.unavailable} onClick={() => setOpen(rt.name)} />
+                hint={(rt.unavailable && t(rt.unavailable)) || (rt.non_saudi_only ? t('Non-Saudis') : undefined)} disabled={!!rt.unavailable} onClick={() => setOpen(rt.name)} />
             ))}
           </div>
         </Card>

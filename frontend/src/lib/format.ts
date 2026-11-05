@@ -36,6 +36,12 @@ export function fmtMonth(value: string, lang = 'en') {
   return fmtDate(value, lang, { month: 'long', year: 'numeric' })
 }
 
+/** "05 Nov 2026 08:01" from "2026-11-05 08:01:10" (server local time, shown as is). */
+export function fmtDateTime(value: string | null | undefined, lang = 'en') {
+  if (!value) return '—'
+  return `${fmtDate(value, lang)} ${value.slice(11, 16)}`
+}
+
 export function fmtTime(value: string | null | undefined) {
   if (!value) return '—'
   return value.slice(11, 16)

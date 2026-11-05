@@ -599,6 +599,17 @@ try {
       await page.getByRole('button', { name: 'Portal & pages' }).click()
       await page.getByText('Hide pages for everyone').waitFor()
     })
+    await step('attendance devices: add a ZKTeco device and see the setup guide', async () => {
+      await page.goto(`${BASE}/alphax/attendance-devices`)
+      await page.getByRole('button', { name: 'Add device' }).click()
+      const dialog = page.getByRole('dialog')
+      await dialog.locator('input').first().fill(`E2E Gate ${Date.now()}`)
+      await dialog.locator('input').nth(1).fill(`E2ESN${Date.now()}`)
+      await dialog.getByText('Cloud Server Setting (ADMS)').waitFor()
+      await dialog.getByRole('button', { name: 'Save' }).click()
+      await page.getByText('E2E Gate').first().waitFor()
+      await page.screenshot({ path: `${OUT}/37-devices.png`, fullPage: true })
+    })
     await step('GOSI register', async () => {
       await page.goto(`${BASE}/alphax/payroll/gosi`)
       await page.getByText('Employer share').first().waitFor()

@@ -20,7 +20,7 @@ React SPA (/alphax)  ──►  alphax_hr API (permission-checked)  ──►  F
 |---|---|---|
 | ![Sign-in](docs/screenshots/36-sign-in.png) | ![Accruals](docs/screenshots/35-accruals.png) | ![Payroll](docs/screenshots/23-payroll-control.png) |
 
-## Modules (v0.20)
+## Modules (v0.23)
 
 | Area | Who | What |
 |---|---|---|
@@ -63,6 +63,7 @@ React SPA (/alphax)  ──►  alphax_hr API (permission-checked)  ──►  F
 | Portal & sign-in | HR Manager | *Portal mode*: HR and self-service users always land in `/alphax` and cannot open the Desk; roles that keep the Desk are listed in Settings (default System Manager, Accounts Manager, Accounts User). Branded bilingual sign-in page at `/alphax-login` (optionally used for `/login`). *Pages*: hide any page for everyone or show it only to chosen roles |
 | Accruals | HR Manager, Accounts Manager | Each month the end-of-service obligation (Art. 84 full award, or Art. 85 resignation basis) and the unused-annual-leave obligation (days × daily wage) are measured again per employee and only the difference is posted — one journal entry, Dr expense / Cr provision by cost center. Later months must be cancelled first. Warnings until the End of Service Benefit and Leave Encashment components post to the provision accounts, so final settlements use the provision |
 | Bank salary file | HR | Excel salary transfer file from a submitted payroll run (ID/Iqama, bank, SWIFT, IBAN, basic, housing, other earnings, deductions, net) for the bank's WPS upload |
+| Attendance devices | HR (set up: HR Manager) | Fingerprint and face devices of any brand. **ZKTeco** (and other ADMS/iClock firmwares) push punches straight to AlphaX: point the device's *Cloud Server* to the site — no software on a PC; a device that connects before it is added waits for HR to enable it; users on the device, model and last contact are shown; commands to the device (upload all logs again, send employees, read info, reboot). **Other brands** (Hikvision event push, Suprema, Anviz, Dahua or a local bridge) post to the push API with a per-device token. **Attendance software** (ZKTeco BioTime, ZKTime/ZKAccess or own tables on MySQL, PostgreSQL or SQL Server) is read every few minutes. **Log files** (attlog.dat from USB, CSV) can be imported. Every punch is kept as a device log, matched to the employee by attendance device ID, Employee ID or Iqama, and becomes an Employee Checkin (duplicates skipped); unknown device users are linked to an employee in one click and their punches imported |
 | Compliance | HR | Nitaqat estimate, Iqama/work permit/passport/contract expiry, data-readiness checks (holiday lists, approvers, GOSI dates, Iqama data …) |
 
 ## Install
@@ -102,6 +103,20 @@ always keeps the Desk. *Use the AlphaX sign-in page for /login* (off by default)
 Payroll → *Accruals*: pick the month, check the lines, *Post accruals*. Companies reporting under full IFRS should still
 have the end-of-service obligation valued by an actuary each year (IAS 19) and post the difference.
 
+**Attendance devices.** `/alphax` → *Attendance devices* → *Add device*, then choose how it connects:
+
+* *Device push (ZKTeco ADMS / iClock)* — on the device: Menu → Comm. → Cloud Server Setting. Server address = the site
+  domain, port 443 with HTTPS on (or 80), and enter the device's serial number in AlphaX. The reverse proxy must pass
+  `/iclock/` to Frappe (the standard bench nginx config does). Older firmwares without HTTPS need plain HTTP on port 80.
+  Optionally limit the device to its public IP address.
+* *Push API* — create a token on the device card; the bridge or device posts to
+  `/api/method/alphax_hr.api.devices.push` with the header `X-AlphaX-Device-Token`.
+* *Database pull* — host, port, database and a read-only user of the attendance software; choose BioTime, ZKTime or
+  your own table and columns. SQL Server needs `pip install pymssql` in the bench.
+* *Log file* — import attlog.dat or a CSV on the device card.
+
+Set each employee's *Attendance Device ID* to the user number on the device (or match by Employee ID or Iqama).
+
 **Make /alphax the landing page.** Set *System Settings → Default App* (or a user's *Default App*) to **AlphaX HR**. Users then land on `/alphax` after login.
 
 ### First setup (5 minutes)
@@ -126,7 +141,7 @@ HR Manager → **Administration → Cut-over readiness**. Preview and import leg
 
 ## Security model
 
-* Only three things are public: the sign-in page, the web app manifest and the service worker script. Every API checks login, then server-side roles (never a role sent by the browser).
+* Only these are public: the sign-in page, the web app manifest, the service worker script, and the device endpoints (`/iclock/…` answers only enabled devices with a known serial number and, if set, allowed IP; the push API needs the device's token). Every API checks login, then server-side roles (never a role sent by the browser).
 * Every API argument is type-annotated and checked by Frappe; CI runs Frappe's Semgrep security rules.
 * Reads use permission-aware `frappe.get_list` / `check_permission`; writes go through `insert/save/submit`, so HRMS validations, Workflows and User Permissions remain authoritative.
 * Employee self-service is always scoped to the employee linked to the signed-in user.

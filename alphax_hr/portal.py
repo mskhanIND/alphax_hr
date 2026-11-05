@@ -114,6 +114,7 @@ PAGES = [
 	("/appraisals", "Appraisals", "People"), ("/compliance", "Compliance", "People"),
 	("/roster", "Roster", "Time & attendance"), ("/attendance", "Attendance", "Time & attendance"),
 	("/checkins", "Check-ins & movements", "Time & attendance"), ("/work-locations", "Work locations", "Time & attendance"),
+	("/attendance-devices", "Attendance devices", "Time & attendance"),
 	("/attendance-policies", "Attendance exceptions", "Time & attendance"), ("/leave-balances", "Leave balances", "Leave"),
 	("/payroll", "Payroll control centre", "Payroll"), ("/payroll/loans", "Loans & advances", "Payroll"),
 	("/payroll/adjustments", "Bonuses & deductions", "Payroll"), ("/payroll/accruals", "Accruals (leave & end of service)", "Payroll"),

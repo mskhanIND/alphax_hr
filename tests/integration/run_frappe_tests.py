@@ -7,7 +7,19 @@ Creates an isolated test company, users for each role, then exercises the
 AlphaX API as each user, including negative (security) cases.
 Safe to re-run: fixtures are reused.
 """
+import random
 import sys
+
+
+def random_int():
+    return random.randint(1000, 9999)
+
+
+def cint_(v):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return 0
 import traceback
 
 import frappe
@@ -2607,6 +2619,120 @@ def run(site):
                 _remove_unused_salary_setup(emp)
                 frappe.delete_doc("Employee", emp, force=True)
         check("employee data issues fixed from the profile: leave approver, holiday list, login created", employee_issue_fixes)
+
+        def attendance_devices():
+            from werkzeug.test import EnvironBuilder
+            from werkzeug.wrappers import Request
+            from alphax_hr import adms, devices as dvm
+            from alphax_hr.api import devices as dapi
+            frappe.set_user("Administrator")
+            sn, user_id = "AXTSN" + frappe.generate_hash(length=5).upper(), "88" + str(random_int())
+            emp = f["e_emp2"]
+            old_id = frappe.db.get_value("Employee", emp, "attendance_device_id")
+            def call(path, method="GET", data=None, headers=None):
+                env = EnvironBuilder(path=path, method=method, data=data, headers=headers or {}).get_environ()
+                req = Request(env)
+                return adms.handle(path.split("?")[0].split("/")[-1], req)
+            try:
+                # unknown device: refused and listed disabled for HR
+                r = call(f"/iclock/cdata?SN={sn}&options=all")
+                assert r.status_code == 403
+                name = frappe.db.get_value(dvm.DEVICE, {"serial_number": sn}, "name")
+                assert name and not frappe.db.get_value(dvm.DEVICE, name, "enabled")
+                frappe.set_user(f["hr"])
+                dapi.save({"enabled": 1, "device_name": "AXT Gate", "company": COMPANY}, name)
+                name = "AXT Gate"
+                assert any(d["name"] == name and d["status"] == "Online" for d in dapi.overview()["devices"])
+                frappe.set_user("Administrator")
+                r = call(f"/iclock/cdata?SN={sn}&options=all")
+                assert r.status_code == 200 and f"GET OPTION FROM: {sn}" in r.get_data(as_text=True)
+                frappe.db.set_value("Employee", emp, "attendance_device_id", user_id)
+                body = f"{user_id}\t2026-10-01 08:00:05\t0\t1\t0\n{user_id}\t2026-10-01 17:01:00\t1\t1\t0\n555999\t2026-10-01 08:02:00\t0\t1\t0\n"
+                r = call(f"/iclock/cdata?SN={sn}&table=ATTLOG&Stamp=9", "POST", body)
+                assert r.get_data(as_text=True) == "OK: 3", r.get_data(as_text=True)
+                chk = frappe.get_all("Employee Checkin", filters={"employee": emp, "time": ["between", ["2026-10-01 00:00:00", "2026-10-01 23:59:59"]],
+                                                                  "device_id": name}, fields=["log_type", "time"], order_by="time")
+                assert [c.log_type for c in chk] == ["IN", "OUT"], chk
+                r = call(f"/iclock/cdata?SN={sn}&table=ATTLOG&Stamp=10", "POST", f"{user_id}\t2026-10-01 08:00:05\t0\n")
+                assert frappe.db.count(dvm.LOG, {"device": name, "device_user": user_id}) == 2  # the same punch twice is stored once
+                # unknown user on the device: unmatched until HR links it
+                call(f"/iclock/cdata?SN={sn}&table=OPERLOG&OpStamp=3", "POST", "USER PIN=555999\tName=Guest Worker\tPri=0\n")
+                frappe.set_user(f["hr"])
+                um = [u for u in dapi.unmatched() if u["device"] == name]
+                assert um and um[0]["device_user"] == "555999" and um[0]["user_name"] == "Guest Worker", um
+                out = dapi.link_user(name, "555999", f["e_emp"])
+                assert out["imported"] == 1, out
+                # commands: queued, collected by the device, result recorded
+                dapi.command(name, "Reboot")
+                frappe.set_user("Administrator")
+                r = call(f"/iclock/getrequest?SN={sn}&INFO=Ver 6.60,12,0,40,10.0.0.5")
+                text = r.get_data(as_text=True)
+                assert text.startswith("C:") and text.strip().endswith(":REBOOT"), text
+                cmd = text.split(":")[1].split(".")[0]
+                call(f"/iclock/devicecmd?SN={sn}", "POST", f"ID={cmd}.0&Return=0&CMD=REBOOT")
+                assert frappe.db.get_value("AlphaX Device Command", cmd, "status") == "Done"
+                assert frappe.db.get_value(dvm.DEVICE, name, "model") == "Ver 6.60"
+                # disabled device and wrong IP are refused
+                frappe.db.set_value(dvm.DEVICE, name, "allowed_ips", "10.9.9.9")
+                assert call(f"/iclock/cdata?SN={sn}").status_code == 403
+                frappe.db.set_value(dvm.DEVICE, name, "allowed_ips", "")
+                # push API (bridge / other brands): token required
+                frappe.set_user(f["hr"])
+                dapi.save({"connection": "Push API (bridge or other brands)"}, name)
+                token = dapi.new_token(name)["token"]
+                frappe.set_user("Guest")
+                env = EnvironBuilder(path="/api/method/alphax_hr.api.devices.push", method="POST",
+                                     headers={"X-AlphaX-Device-Token": "wrong"}).get_environ()
+                frappe.local.request = Request(env)
+                frappe.local.form_dict = frappe._dict()
+                assert dapi.push(device=sn, punches=[{"user": user_id, "time": "2026-10-02 08:10:00", "state": "0"}])["ok"] is False
+                frappe.local.request = Request(EnvironBuilder(path="/api/method/x", method="POST", headers={"X-AlphaX-Device-Token": token}).get_environ())
+                out = dapi.push(device=sn, punches=[{"user": user_id, "time": "2026-10-02 08:10:00", "state": "0"}])
+                assert out["ok"] and out["imported"] == 1, out
+                hik = {"dateTime": "2026-10-02T17:20:00+03:00", "AccessControllerEvent": {"employeeNoString": user_id, "attendanceStatus": "checkOut"}}
+                frappe.local.form_dict = frappe._dict({"event_log": frappe.as_json(hik)})
+                out = dapi.push(device=sn)
+                assert out["imported"] == 1, out
+                assert frappe.db.get_value("Employee Checkin", {"employee": emp, "time": "2026-10-02 17:20:00"}, "log_type") == "OUT"
+                frappe.set_user("Administrator")
+                # log file from USB
+                rows = dvm.parse_file(b"No\tTime\n" + f"{user_id}\t2026-10-03 07:59:00\t0\t1\n".encode())
+                assert len(rows) == 1 and dvm.ingest(frappe.get_doc(dvm.DEVICE, name), rows, "File upload")["imported"] == 1
+                # database pull from a BioTime-like table (here on the local database server)
+                frappe.db.sql_ddl("create table if not exists axt_punches (emp_code varchar(20), punch_time datetime, punch_state varchar(5), terminal_sn varchar(30))")
+                frappe.db.sql("delete from axt_punches")
+                frappe.db.sql("insert into axt_punches values (%s, '2026-10-04 08:05:00', '0', %s), (%s, '2026-10-04 16:55:00', '1', %s)",
+                              (user_id, sn, user_id, sn))
+                frappe.db.commit()
+                conf = frappe.conf
+                dev = frappe.get_doc(dvm.DEVICE, name)
+                dev.update({"connection": "Database pull (BioTime / ZKTime)", "db_type": "MySQL / MariaDB", "db_host": conf.db_host or "127.0.0.1",
+                            "db_port": cint_(conf.db_port) or 3306, "db_name": conf.db_name, "db_user": conf.db_name, "db_password": conf.db_password,
+                            "db_preset": "Custom", "db_table": "axt_punches", "db_user_column": "emp_code", "db_time_column": "punch_time",
+                            "db_state_column": "punch_state", "db_sn_column": "terminal_sn"})
+                dev.save()
+                assert dvm.test_connection(dev)["punches"] == 2
+                out = dvm.pull(dev)
+                assert out["imported"] == 2, out
+                assert dvm.pull(frappe.get_doc(dvm.DEVICE, name))["new"] == 0  # nothing new since the last pull
+                dev.db_table = "axt_punches; drop table x"
+                expect_error(lambda: dvm._select(dev, "2000-01-01"), frappe.ValidationError)
+            finally:
+                frappe.set_user("Administrator")
+                frappe.local.form_dict = frappe._dict()
+                frappe.db.sql_ddl("drop table if exists axt_punches")
+                for n in frappe.get_all(dvm.LOG, filters={"device": ["in", ["AXT Gate", f"New device {sn}"]]}, fields=["name", "employee_checkin"]):
+                    if n.employee_checkin and frappe.db.exists("Employee Checkin", n.employee_checkin):
+                        frappe.delete_doc("Employee Checkin", n.employee_checkin, force=True)
+                for dt_ in (dvm.LOG, "AlphaX Device Command", "AlphaX Device User"):
+                    frappe.db.delete(dt_, {"device": ["in", ["AXT Gate", f"New device {sn}"]]})
+                for n in ("AXT Gate", f"New device {sn}"):
+                    if frappe.db.exists(dvm.DEVICE, n):
+                        frappe.delete_doc(dvm.DEVICE, n, force=True)
+                frappe.db.set_value("Employee", emp, "attendance_device_id", old_id)
+                frappe.db.set_value("Employee", f["e_emp"], "attendance_device_id", None)
+        check("attendance devices: ZKTeco ADMS push, unknown device approval, users and commands, push API with token, Hikvision events, log file, database pull",
+              attendance_devices)
 
         def portal_and_pages():
             from alphax_hr import portal
