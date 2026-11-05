@@ -33,7 +33,7 @@ SECTIONS = {
 }
 EDITABLE = {f for fields in SECTIONS.values() for f in fields} - {"status"}
 LOOKUP_DOCTYPES = {"Company", "Department", "Designation", "Branch", "Employment Type", "Employee Grade",
-				   "Holiday List", "Shift Type", "Gender", "User", "Employee", "Leave Type", "Salary Component"}
+				   "Holiday List", "Shift Type", "Gender", "User", "Employee", "Leave Type", "Salary Component", "AlphaX Request Type"}
 NEW_EMPLOYEE_CORE = ["first_name", "last_name", "alphax_employee_name_ar", "gender", "date_of_birth", "date_of_joining",
 					 "alphax_contract_years", "notice_number_of_days", "alphax_iqama_number", "alphax_is_saudi",
 					 "alphax_iqama_expiry", "alphax_gosi_registration_date", "passport_number", "valid_upto",

@@ -2734,6 +2734,144 @@ def run(site):
         check("attendance devices: ZKTeco ADMS push, unknown device approval, users and commands, push API with token, Hikvision events, log file, database pull",
               attendance_devices)
 
+        def approval_policies():
+            from alphax_hr import approval_policy as ap
+            from alphax_hr.api import approval_policies as apol, approvals, delays, requests as rq
+            frappe.set_user("Administrator")
+            rlog = "AlphaX Approval Reminder"
+            made, leaves = [], []
+            def wipe():
+                frappe.set_user("Administrator")
+                for n in frappe.get_all(ap.POLICY, filters={"policy_name": ["like", "AXT %"]}, pluck="name"):
+                    frappe.db.delete(ap.STATE, {"policy": n})
+                    frappe.delete_doc(ap.POLICY, n, force=True)
+            def backdate(dt, name, days, field="creation"):
+                frappe.db.set_value(dt, name, field, frappe.utils.add_to_date(frappe.utils.now_datetime(), days=-days), update_modified=False)
+            wipe()
+            try:
+                # working days skip the weekly off (Friday on the test holiday list)
+                assert ap.working_days("2026-11-05 10:00:00", "2026-11-09 11:00:00", f["e_emp"]) == 3
+                assert ap.working_days("2026-11-05 10:00:00", "2026-11-09 09:00:00", f["e_emp"]) == 2
+                frappe.set_user(f["hr"])
+                levels = [{"level_label": "Line manager", "approver_type": "Reporting manager"},
+                          {"level_label": "Second manager", "approver_type": "Manager's manager"},  # the manager has no manager: skipped
+                          {"level_label": "Finance", "approver_type": "Specific user", "user": f["emp2"]},
+                          {"level_label": "Big amounts", "approver_type": "Specific user", "user": f["hr"], "min_amount": 50000},
+                          {"level_label": "HR", "approver_type": "HR"}]
+                base = {"enabled": 1, "applies_to": "Requests", "request_type": "General Request", "multi_level": 1, "levels": levels,
+                        "restart_rule": ap.RESUME, "escalate_after_days": 2, "remind_after_days": 1, "reject_after_days": 2, "auto_reject": 1,
+                        "rejection_comment": "No decision in time - raise it again if needed."}
+                apol.save({"policy_name": "AXT Chain", **base})
+                expect_error(lambda: apol.save({"policy_name": "AXT Bad", "applies_to": "Requests", "multi_level": 1, "levels": []}),
+                             frappe.ValidationError)
+                pv = apol.preview(f["e_emp"], "Requests", request_type="General Request")
+                assert pv["policy"] == "AXT Chain" and [x["label"] for x in pv["levels"]] == ["Line manager", "Finance", "HR"], pv
+                # level by level: manager -> finance (a named user) -> HR
+                frappe.set_user(f["emp"])
+                r = rq.create("General Request", {}, "Laptop bag")
+                made.append(r["name"])
+                assert r["status"] == "Pending Manager" and frappe.db.get_value("AlphaX Request", r["name"], "approver") == f["mgr"]
+                frappe.set_user(f["mgr"])
+                approvals.act("AlphaX Request", r["name"], "Approve", "ok from me")
+                doc = frappe.get_doc("AlphaX Request", r["name"])
+                assert (doc.status, doc.approver) == ("Pending Manager", f["emp2"]), (doc.status, doc.approver)
+                frappe.set_user(f["emp2"])
+                assert any(i["name"] == r["name"] for i in approvals.inbox()["items"])
+                assert apol.chain("AlphaX Request", r["name"])["levels"][1]["state"] == "Waiting"  # the named approver can open it
+                approvals.act("AlphaX Request", r["name"], "Reject", "budget is closed this month")
+                assert frappe.db.get_value("AlphaX Request", r["name"], "status") == "Rejected"
+                ch = apol.chain("AlphaX Request", r["name"])
+                assert [x["state"] for x in ch["levels"]] == ["Approved", "Rejected", "Skipped"], ch
+                # raised again: the manager's approval is kept, it goes back to finance
+                frappe.set_user(f["emp"])
+                again = rq.raise_again(r["name"])
+                assert again["previous_request"] == r["name"]
+                expect_error(lambda: rq.create("Salary Certificate", {"addressed_to": "x", "purpose": "Bank"}, previous_request=r["name"]),
+                             frappe.ValidationError)
+                r2 = rq.create("General Request", again["details"], again["reason"], previous_request=r["name"])
+                made.append(r2["name"])
+                assert frappe.db.get_value("AlphaX Request", r2["name"], "approver") == f["emp2"]
+                ch = apol.chain("AlphaX Request", r2["name"])
+                assert ch["levels"][0]["state"] == "Approved" and ch["levels"][0]["carried"] and ch["levels"][1]["state"] == "Waiting", ch
+                frappe.set_user(f["emp2"])
+                approvals.act("AlphaX Request", r2["name"], "Approve")
+                assert frappe.db.get_value("AlphaX Request", r2["name"], "status") == "Pending HR"
+                frappe.set_user(f["hr"])
+                approvals.act("AlphaX Request", r2["name"], "Approve")
+                assert frappe.db.get_value("AlphaX Request", r2["name"], "status") in ("Approved", "Completed")
+                # restart from the first level
+                apol.save({"restart_rule": "From the first level"}, "AXT Chain")
+                frappe.set_user(f["emp"])
+                r3 = rq.create("General Request", {}, "Chair")
+                made.append(r3["name"])
+                frappe.set_user(f["mgr"]); approvals.act("AlphaX Request", r3["name"], "Approve")
+                frappe.set_user(f["emp2"]); approvals.act("AlphaX Request", r3["name"], "Reject")
+                frappe.set_user(f["emp"])
+                r4 = rq.create("General Request", {}, "Chair", previous_request=r3["name"])
+                made.append(r4["name"])
+                assert frappe.db.get_value("AlphaX Request", r4["name"], "approver") == f["mgr"]
+                # nobody decides: escalation to HR, HR reminder, then automatic rejection with the comment
+                frappe.set_user("Administrator")
+                st = ap.state_of("AlphaX Request", r4["name"])
+                backdate(ap.STATE, st.name, 6, "level_since")
+                delays.escalate_pending_approvals()
+                esc = frappe.db.get_value(rlog, {"reference_name": r4["name"], "stage": "Escalation"}, "name")
+                assert esc and frappe.db.get_value("AlphaX Request", r4["name"], "status") == "Pending Manager"
+                assert not frappe.db.exists(rlog, {"reference_name": r4["name"], "stage": "HR reminder"})
+                backdate(rlog, esc, 3)
+                delays.escalate_pending_approvals()
+                rem = frappe.db.get_value(rlog, {"reference_name": r4["name"], "stage": "HR reminder"}, "name")
+                assert rem and "mgr@axt.test" in (frappe.db.get_value(rlog, rem, "sent_to") or "")
+                frappe.set_user(f["hr"])
+                row = next(x for x in delays.report()["rows"] if x["name"] == r4["name"])
+                assert row["stage"] == "HR reminded" and row["policy"] == "AXT Chain" and row["reject_on"], row
+                frappe.set_user("Administrator")
+                delays.escalate_pending_approvals()
+                assert frappe.db.get_value("AlphaX Request", r4["name"], "status") == "Pending Manager"  # not yet: 2 working days
+                backdate(rlog, rem, 4)
+                delays.escalate_pending_approvals()
+                d = frappe.db.get_value("AlphaX Request", r4["name"], ["status", "hr_note"], as_dict=True)
+                assert d.status == "Rejected" and "raise it again" in d.hr_note, d
+                assert ap.state_of("AlphaX Request", r4["name"]).status == "Rejected"
+                assert frappe.db.exists(rlog, {"reference_name": r4["name"], "stage": "Auto-rejected"})
+                # HR reminds by hand: the rejection clock starts from that moment
+                frappe.set_user(f["emp"])
+                r5 = rq.create("General Request", {}, "Desk lamp")
+                made.append(r5["name"])
+                frappe.set_user(f["hr"])
+                out = delays.remind("AlphaX Request", r5["name"])
+                assert out["reject_on"] and out["sent_to"] >= 1, out
+                # leave in two levels: the manager, then HR; the leave stays open in between
+                apol.save({"policy_name": "AXT Leave", "enabled": 1, "applies_to": "Leave", "leave_type": f["lt"], "multi_level": 1,
+                           "levels": [{"level_label": "Manager", "approver_type": "Reporting manager"}, {"level_label": "HR", "approver_type": "HR"}]})
+                frappe.set_user(f["emp"])
+                frm, to = next_working_pair(47)
+                lv = ess.apply_leave(f["lt"], frm, to, "two levels")
+                leaves.append(lv["name"])
+                frappe.set_user(f["mgr"])
+                approvals.act("Leave Application", lv["name"], "Approve")
+                assert frappe.db.get_value("Leave Application", lv["name"], ["status", "docstatus"]) == ("Open", 0)
+                assert not any(i["name"] == lv["name"] for i in approvals.inbox()["items"])
+                expect_error(lambda: approvals.act("Leave Application", lv["name"], "Approve"), frappe.PermissionError)
+                frappe.set_user(f["hr"])
+                assert any(i["name"] == lv["name"] for i in approvals.inbox()["items"])
+                approvals.act("Leave Application", lv["name"], "Approve")
+                assert frappe.db.get_value("Leave Application", lv["name"], ["status", "docstatus"]) == ("Approved", 1)
+                assert [x["state"] for x in apol.chain("Leave Application", lv["name"])["levels"]] == ["Approved", "Approved"]
+            finally:
+                frappe.set_user("Administrator")
+                for n in leaves:
+                    d = frappe.get_doc("Leave Application", n)
+                    if d.docstatus == 1:
+                        d.cancel()
+                    frappe.delete_doc("Leave Application", n, force=True)
+                for n in made:
+                    frappe.db.delete(rlog, {"reference_name": n})
+                    frappe.db.delete("AlphaX Request", {"name": n})
+                wipe()
+        check("approval policies: levels by amount, named users, HR; resume or restart after a rejection; escalation, HR reminder and automatic rejection in working days; leave in two levels",
+              approval_policies)
+
         def portal_and_pages():
             from alphax_hr import portal
             from alphax_hr.www import alphax_login as login_page

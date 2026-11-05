@@ -23,6 +23,8 @@ DEFAULTS = {
 	"Missing check-in": (1, 0, 1, 1, 0, 0, 60),
 	"Approval reminder": (1, 1, 1, 0, 1, 0, 0),
 	"Approval escalation": (1, 1, 1, 0, 1, 1, 0),
+	"HR reminder": (1, 1, 1, 0, 1, 0, 0),
+	"Automatic rejection": (1, 1, 1, 1, 1, 0, 0),
 	"Announcement": (1, 0, 1, 1, 0, 0, 0),
 }
 FLAGS = ("enabled", "email", "app", "to_employee", "to_manager", "to_hr", "minutes")
@@ -37,6 +39,8 @@ HELP = {
 	"Missing check-in": "When no check-in arrives this many minutes after the shift starts.",
 	"Approval reminder": "To the approver when a request has waited the reminder hours.",
 	"Approval escalation": "To the approver's manager (and HR) after the escalation hours.",
+	"HR reminder": "To the approver, from HR (sent by an approval policy or from Approval delays).",
+	"Automatic rejection": "To the employee and the approver when an approval policy rejects a request nobody decided.",
 	"Announcement": "When HR publishes an announcement.",
 }
 

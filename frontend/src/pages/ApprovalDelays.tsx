@@ -1,11 +1,12 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { BellRing } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { Badge, Card, Empty, ErrorBox, PageHeader, Spinner, Stat } from '../components/ui'
+import { Badge, Button, Card, Empty, ErrorBox, PageHeader, Spinner, Stat } from '../components/ui'
 import { api } from '../lib/api'
 import { fmtDate } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 
-const TONE: Record<string, string> = { 'On time': 'green', Reminded: 'amber', Overdue: 'red', Escalated: 'red' }
+const TONE: Record<string, string> = { 'On time': 'green', Reminded: 'amber', Overdue: 'red', Escalated: 'red', 'HR reminded': 'red' }
 
 function age(h: number, t: (s: string) => string) {
   return h >= 48 ? `${Math.floor(h / 24)} ${t('days')}` : `${Math.round(h)} ${t('hours')}`
@@ -14,6 +15,8 @@ function age(h: number, t: (s: string) => string) {
 export default function ApprovalDelays() {
   const { t } = useI18n()
   const q = useQuery<any>({ queryKey: ['approvalDelays'], queryFn: api.approvalDelays, refetchInterval: 300_000 })
+  const qc = useQueryClient()
+  const remind = useMutation({ mutationFn: (r: any) => api.remindApprover(r.doctype, r.name), onSuccess: () => qc.invalidateQueries({ queryKey: ['approvalDelays'] }) })
   if (q.isLoading) return <Spinner />
   if (q.error) return <ErrorBox error={q.error} onRetry={() => q.refetch()} />
   const d = q.data
@@ -22,7 +25,8 @@ export default function ApprovalDelays() {
       <PageHeader title={t('Approval delays')}
         subtitle={d.remind_hours || d.escalate_hours
           ? `${t('Reminder after')} ${d.remind_hours || '—'} h · ${t('escalation after')} ${d.escalate_hours || '—'} h`
-          : t('Reminders and escalation are off. Set them in Leave setup → Approval delays.')} />
+          : t('Reminders and escalation are off. Set them in Leave setup → Approval delays.')}
+        actions={d.is_hr ? <Link to="/approval-policies"><Button variant="secondary">{t('Approval policies')}{d.policies ? ` (${d.policies})` : ''}</Button></Link> : undefined} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label={t('Waiting')} value={d.rows.length} />
         <Stat label={t('Reminded')} value={d.counts.Reminded} tone="amber" />
@@ -53,6 +57,8 @@ export default function ApprovalDelays() {
           </div>
         </Card>
       )}
+      {remind.error && <ErrorBox error={remind.error} />}
+      {remind.data && <p className="rounded-xl bg-brand-50 p-3 text-sm text-brand">{t('Reminder sent.')}{remind.data.reject_on ? ` ${t('Rejected automatically on')} ${fmtDate(remind.data.reject_on)} ${t('if nobody decides.')}` : ''}</p>}
       <Card title={t('Waiting for a decision')}>
         {d.rows.length === 0 ? <Empty title={t('Nothing is waiting.')} /> : (
           <div className="overflow-x-auto">
@@ -61,6 +67,7 @@ export default function ApprovalDelays() {
                 <th className="pb-2 text-start">{t('Employee')}</th><th className="pb-2 text-start">{t('Request')}</th>
                 <th className="pb-2 text-start">{t('Waiting with')}</th><th className="pb-2 text-start">{t('Since')}</th>
                 <th className="pb-2 text-start">{t('Waiting')}</th><th className="pb-2 text-start">{t('Stage')}</th>
+                <th className="pb-2 text-start">{t('Next')}</th>{d.is_hr && <th className="pb-2" />}
               </tr></thead>
               <tbody className="divide-y divide-line">
                 {d.rows.map((r: any) => (
@@ -69,8 +76,17 @@ export default function ApprovalDelays() {
                     <td className="py-2 pe-3"><Link className="text-brand-700 hover:underline" to="/approvals">{t(r.kind)}: {r.what}</Link></td>
                     <td className="py-2 pe-3">{r.approver_name}</td>
                     <td className="py-2 pe-3">{fmtDate(r.since)}</td>
-                    <td className="py-2 pe-3">{age(r.age_hours, t)}</td>
-                    <td className="py-2"><Badge tone={TONE[r.stage]}>{t(r.stage)}</Badge></td>
+                    <td className="py-2 pe-3">{r.working_days != null ? `${r.working_days} ${t('working days')}` : age(r.age_hours, t)}</td>
+                    <td className="py-2 pe-3"><Badge tone={TONE[r.stage]}>{t(r.stage)}</Badge></td>
+                    <td className="py-2 pe-3 text-xs text-muted">
+                      {r.next_step ? `${t(r.next_step)} ${fmtDate(r.next_on)}` : ''}
+                      {r.reject_on && <div className="text-red-700">{t('Rejected automatically on')} {fmtDate(r.reject_on)}</div>}
+                    </td>
+                    {d.is_hr && <td className="py-2 text-end">
+                      <Button size="sm" variant="secondary" loading={remind.isPending && remind.variables?.name === r.name} onClick={() => remind.mutate(r)}
+                        title={t('Remind the approver now. Under a policy, the automatic rejection is counted from this reminder.')}>
+                        <BellRing className="size-4" />{t('Remind')}</Button>
+                    </td>}
                   </tr>
                 ))}
               </tbody>

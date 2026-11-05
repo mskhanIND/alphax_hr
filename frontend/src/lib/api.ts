@@ -187,6 +187,12 @@ export const api = {
   myNotifications: () => call<{ items: any[]; unread: number }>(A + 'alerts.inbox'),
   markNotificationsRead: (name?: string) => call<{ items: any[]; unread: number }>(A + 'alerts.mark_read', name ? { name } : {}),
   approvalDelays: () => call<any>(A + 'delays.report'),
+  remindApprover: (doctype: string, name: string) => call<any>(A + 'delays.remind', { doctype, name }),
+  approvalPolicies: () => call<any>(A + 'approval_policies.overview'),
+  saveApprovalPolicy: (data: Record<string, unknown>, name?: string) => call<any>(A + 'approval_policies.save', { data, name }),
+  deleteApprovalPolicy: (name: string) => call<any>(A + 'approval_policies.delete', { name }),
+  previewApprovalPolicy: (args: Record<string, unknown>) => call<any>(A + 'approval_policies.preview', args),
+  approvalChain: (doctype: string, name: string) => call<any>(A + 'approval_policies.chain', { doctype, name }),
   countingRules: () => call<any>(A + 'leave_setup.counting_rules'),
   saveCountingRule: (data: Record<string, unknown>) => call(A + 'leave_setup.save_counting_rule', { data }),
   deleteCountingRule: (name: string) => call(A + 'leave_setup.delete_counting_rule', { name }),
@@ -195,8 +201,9 @@ export const api = {
   expiring: (days: number) => call(A + 'compliance.expiring_documents', { days }),
   // employee requests
   requestTypes: (include_disabled = 0) => call<RequestType[]>(A + 'requests.types', { include_disabled }),
-  createRequest: (request_type: string, details: Record<string, unknown>, reason?: string, employee?: string) =>
-    call<{ name: string; status: string }>(A + 'requests.create', { request_type, details, reason, employee }),
+  createRequest: (request_type: string, details: Record<string, unknown>, reason?: string, employee?: string, previous_request?: string) =>
+    call<{ name: string; status: string }>(A + 'requests.create', { request_type, details, reason, employee, previous_request }),
+  raiseAgain: (name: string) => call<any>(A + 'requests.raise_again', { name }),
   myAlphaxRequests: () => call<any[]>(A + 'requests.mine'),
   cancelRequest: (name: string) => call(A + 'requests.cancel', { name }),
   allRequests: (args: Record<string, unknown>) => call<{ rows: any[]; counts: Record<string, number> }>(A + 'requests.all_requests', args),

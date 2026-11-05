@@ -36,7 +36,7 @@
    "fieldname": "stage",
    "fieldtype": "Select",
    "label": "Stage",
-   "options": "Reminder\nEscalation\nMissing check-in",
+   "options": "Reminder\nEscalation\nHR reminder\nAuto-rejected\nMissing check-in",
    "in_list_view": 1
   },
   {

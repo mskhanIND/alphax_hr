@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileText, MessageCircle, Plus } from 'lucide-react'
+import { FileText, MessageCircle, Plus, RotateCcw } from 'lucide-react'
 import { useState } from 'react'
 import { ActivityDrawer } from '../components/ActivityDrawer'
-import { RequestForm, typeTitle } from '../components/RequestForm'
+import { ApprovalChain } from '../components/ApprovalChain'
+import { RequestForm, type RequestPrefill, typeTitle } from '../components/RequestForm'
 import { RequestThread } from '../components/RequestThread'
 import { Badge, Button, Card, Empty, ErrorBox, PageHeader, Spinner, StatusBadge } from '../components/ui'
 import { api } from '../lib/api'
@@ -20,6 +21,8 @@ export default function MyRequests() {
   const [open, setOpen] = useState(false)
   const [trail, setTrail] = useState<string | null>(null)
   const [thread, setThread] = useState<any>(null)
+  const [prefill, setPrefill] = useState<RequestPrefill | null>(null)
+  const again = useMutation({ mutationFn: api.raiseAgain, onSuccess: (d) => { setPrefill(d); setOpen(true) } })
   const q = useQuery({ queryKey: ['my-requests'], queryFn: api.myAlphaxRequests })
   const types = useQuery({ queryKey: ['request-types'], queryFn: () => api.requestTypes() })
   const cancel = useMutation({ mutationFn: api.cancelRequest, onSuccess: () => qc.invalidateQueries({ queryKey: ['my-requests'] }) })
@@ -43,9 +46,14 @@ export default function MyRequests() {
                   </div>
                   <div className="truncate text-sm text-muted">{r.name} · {fmtDate(r.creation, lang)}{detailsText(r.details) ? ` · ${detailsText(r.details)}` : ''}</div>
                   {r.details?.short_notice && <div className="text-xs text-amber-800">{r.details.short_notice}</div>}
+                  {r.status === 'Rejected' && r.hr_note && <div className="mt-1 rounded-lg bg-red-50 px-2 py-1 text-xs text-red-800">{t('Reason')}: {r.hr_note}</div>}
                 </button>
+                <div className="w-full sm:order-last"><ApprovalChain doctype="AlphaX Request" name={r.name} /></div>
                 <Button size="sm" variant="secondary" onClick={() => setThread(r)}><MessageCircle className="size-4" />{r.messages ? r.messages : t('Message HR')}</Button>
                 {r.letter && <a className="text-sm font-medium text-brand underline" href={r.letter} target="_blank" rel="noreferrer">{t('Download letter')}</a>}
+                {r.status === 'Rejected' && (
+                  <Button size="sm" variant="secondary" loading={again.isPending && again.variables === r.name} onClick={() => again.mutate(r.name)}><RotateCcw className="size-4" />{t('Raise again')}</Button>
+                )}
                 {['Pending Manager', 'Pending HR', 'Pending Management'].includes(r.status) && (
                   <Button size="sm" variant="secondary" loading={cancel.isPending && cancel.variables === r.name} onClick={() => cancel.mutate(r.name)}>{t('Withdraw')}</Button>
                 )}
@@ -53,9 +61,9 @@ export default function MyRequests() {
             ))}
           </ul>
         )}
-        {cancel.error && <ErrorBox error={cancel.error} />}
+        {(cancel.error || again.error) && <ErrorBox error={cancel.error || again.error} />}
       </Card>
-      <RequestForm open={open} onClose={() => setOpen(false)} />
+      <RequestForm open={open} prefill={prefill} onClose={() => { setOpen(false); setPrefill(null) }} />
       {trail && <ActivityDrawer doctype="AlphaX Request" name={trail} onClose={() => setTrail(null)} />}
       {thread && <RequestThread name={thread.name} title={`${typeTitle(typeOf(thread.request_type), lang, thread.request_type)} · ${thread.name}`} onClose={() => setThread(null)} />}
     </div>

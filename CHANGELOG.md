@@ -2,6 +2,17 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.24.0 — 2026-11-05
+
+- **Approval policies** (new HR page, *Administration → Approval policies*), switched on per policy, for all approvals or only some (requests, leave, expenses, attendance corrections, shift changes, compensatory leave, vacation plans), and optionally only for a request or leave type, company, department, branch, designation, amount or number of days. The most specific enabled policy wins; without one, the reminder/escalation hours in Settings apply as before.
+  - **Waiting times in working days** (employee's holiday list): the approver's time, then **escalation to HR** (and the approver's manager), then an **HR reminder** to the approver, then — if switched on — **automatic rejection** with HR's comment. The employee sees the reason and can **raise the request again** (leave: *Apply again*). Each approval level gets its own time.
+  - **Remind** button on *Approval delays* (HR): the automatic-rejection clock then counts from that reminder; the page shows each item's next step and its automatic-rejection date.
+  - **Multi-level approval** for requests and leave, off by default: levels by reporting manager, manager's manager, a named user, HR or management; a level can apply only from an amount or number of days; levels with nobody to ask are skipped. The chain is shown on the request, the leave and in Approvals.
+  - **After a rejection**, the policy decides whether the request raised again **starts from the first level** or **resumes at the level that rejected** (earlier approvals kept and marked).
+  - *Try it*: which policy applies to an employee and who approves, level by level. Two switched-off examples are added.
+- Rejecting asks for a reason; the employee sees it on the request.
+- **Fix:** managers whose user is limited to their own Employee record (HRMS default) now see their team's AlphaX requests in Approvals.
+
 ## 0.23.0 — 2026-11-05
 
 - **Attendance devices** (new page for HR): connect fingerprint and face devices of any brand.

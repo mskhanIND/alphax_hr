@@ -3,6 +3,7 @@ import { BadgeCheck } from 'lucide-react'
 import { useState } from 'react'
 import { Avatar, Badge, Button, Card, Empty, ErrorBox, Modal, PageHeader, Spinner, Textarea } from '../components/ui'
 import { ActivityDrawer } from '../components/ActivityDrawer'
+import { ApprovalChain } from '../components/ApprovalChain'
 import { api } from '../lib/api'
 import { fmtDate, fmtMoney, fmtNumber } from '../lib/format'
 import { useI18n } from '../lib/i18n'
@@ -76,6 +77,7 @@ export default function Approvals() {
                   {r.attachments > 0 && <div className="mt-0.5 text-xs text-muted">📎 {r.attachments}</div>}
                 </div>
                 </button>
+                {(r.doctype === 'AlphaX Request' || r.doctype === 'Leave Application') && <div className="w-full ps-[52px] sm:order-last"><ApprovalChain doctype={r.doctype} name={r.name} /></div>}
                 <div className="flex gap-2">
                   {(r.actions ?? []).map((a: string) => (
                     <Button key={a} size="sm" variant={isNegative(a) ? 'secondary' : 'primary'} onClick={() => setPending({ row: r, action: a })}>{t(a)}</Button>
@@ -93,11 +95,11 @@ export default function Approvals() {
         title={pending ? `${t(pending.action)} · ${pending.row.employee_name ?? pending.row.name}` : ''}
         footer={<>
           <Button variant="secondary" onClick={() => setPending(null)}>{t('Cancel')}</Button>
-          <Button variant={pending && isNegative(pending.action) ? 'danger' : 'primary'} loading={m.isPending} onClick={() => pending && m.mutate(pending)}>{pending ? t(pending.action) : ''}</Button>
+          <Button variant={pending && isNegative(pending.action) ? 'danger' : 'primary'} loading={m.isPending} disabled={!!pending && pending.action === 'Reject' && !comment.trim()} onClick={() => pending && m.mutate(pending)}>{pending ? t(pending.action) : ''}</Button>
         </>}
       >
         {pending && <p className="mb-3 text-sm text-muted">{summary(pending.row, t, lang)}</p>}
-        <Textarea placeholder={t('Comment (optional)')} value={comment} onChange={(e) => setComment(e.target.value)} />
+        <Textarea placeholder={pending && isNegative(pending.action) ? t('Reason — the employee sees it') : t('Comment (optional)')} value={comment} onChange={(e) => setComment(e.target.value)} />
         {m.error && <div className="mt-3"><ErrorBox error={m.error} /></div>}
       </Modal>
     </div>

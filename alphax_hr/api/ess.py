@@ -149,13 +149,19 @@ def my_leave_applications(limit: int | str = 30):
 			  "description", "posting_date", "leave_approver_name", "half_day"]
 	if has_field("Leave Application", "workflow_state"):
 		fields.append("workflow_state")
-	return frappe.get_list(
+	rows = frappe.get_list(
 		"Leave Application",
 		filters={"employee": employee},
 		fields=fields,
 		order_by="from_date desc",
 		page_length=min(cint(limit) or 30, 100),
 	)
+	for r in rows:  # why it was rejected: the last comment (the approver's reason or the automatic rejection)
+		if r.status == "Rejected":
+			note = frappe.get_all("Comment", filters={"reference_doctype": "Leave Application", "reference_name": r.name,
+													  "comment_type": "Comment"}, pluck="content", order_by="creation desc", limit=1)
+			r.rejection_note = frappe.utils.strip_html(note[0])[:500] if note else None
+	return rows
 
 
 @frappe.whitelist()
@@ -287,8 +293,10 @@ def _leave_approver_for(employee):
 
 
 @frappe.whitelist()
-def apply_leave(leave_type: str, from_date: str, to_date: str, reason: str | None = None, half_day: int | str = 0, half_day_date: str | None = None, event_date: str | None = None, relation: str | None = None, extra: str | dict | list | None = None):
+def apply_leave(leave_type: str, from_date: str, to_date: str, reason: str | None = None, half_day: int | str = 0, half_day_date: str | None = None, event_date: str | None = None, relation: str | None = None, extra: str | dict | list | None = None, previous: str | None = None):
 	employee = current_employee()
+	if previous and frappe.db.get_value("Leave Application", previous, ["employee", "status"]) != (employee, "Rejected"):
+		frappe.throw(_("Only your own rejected leave request can be applied for again."))
 	emp = frappe.db.get_value("Employee", employee, ["company", "holiday_list"], as_dict=True)
 
 	doc = frappe.new_doc("Leave Application")
@@ -321,6 +329,7 @@ def apply_leave(leave_type: str, from_date: str, to_date: str, reason: str | Non
 			missing.append(_(df.label or df.fieldname))
 	if missing:
 		frappe.throw(_("Please fill in: {0}").format(", ".join(missing)), title=_("Missing information"))
+	doc.flags.alphax_previous = previous or None
 	try:
 		doc.insert()  # permissions + HRMS validation (balance, overlap, holidays ...)
 	except frappe.MandatoryError as exc:

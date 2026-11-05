@@ -48,6 +48,9 @@ def seed_catalogues():
 	from alphax_hr.api.components import seed as seed_components
 
 	seed_components()
+	from alphax_hr.approval_policy import seed as seed_policies
+
+	seed_policies()
 
 
 # AlphaX's own Employee columns and the width they really need. Sites with many

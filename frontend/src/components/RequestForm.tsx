@@ -62,7 +62,9 @@ function HelpSuggestions({ text, onSolved }: { text: string; onSolved: () => voi
 }
 
 /** New request: pick a type, fill the type's own fields, optionally attach a document. */
-export function RequestForm({ open, onClose, employee, initialType, category }: { open: boolean; onClose: () => void; employee?: string; initialType?: string; category?: string }) {
+export interface RequestPrefill { request_type: string; details: Record<string, any>; reason: string; previous_request: string; note?: string }
+
+export function RequestForm({ open, onClose, employee, initialType, category, prefill }: { open: boolean; onClose: () => void; employee?: string; initialType?: string; category?: string; prefill?: RequestPrefill | null }) {
   const { t, lang } = useI18n()
   const qc = useQueryClient()
   const types = useQuery({ queryKey: ['request-types'], queryFn: () => api.requestTypes(), enabled: open })
@@ -71,11 +73,12 @@ export function RequestForm({ open, onClose, employee, initialType, category }: 
   const [reason, setReason] = useState('')
   const [file, setFile] = useState<File | null>(null)
   useEffect(() => { if (open && initialType) { setType(initialType); setValues({}) } }, [open, initialType])
+  useEffect(() => { if (open && prefill) { setType(prefill.request_type); setValues(prefill.details ?? {}); setReason(prefill.reason ?? '') } }, [open, prefill])
   const rt: RequestType | undefined = types.data?.find((x) => x.name === type)
   const reset = () => { setType(''); setValues({}); setReason(''); setFile(null) }
   const m = useMutation({
     mutationFn: async () => {
-      const r = await api.createRequest(type, values, reason || undefined, employee)
+      const r = await api.createRequest(type, values, reason || undefined, employee, prefill && prefill.request_type === type ? prefill.previous_request : undefined)
       if (file) await uploadFile('AlphaX Request', r.name, file)
       return r
     },
@@ -88,7 +91,7 @@ export function RequestForm({ open, onClose, employee, initialType, category }: 
   const groups: Record<string, RequestType[]> = {}
   for (const x of types.data ?? []) if (!x.special && (!category || x.category === category)) (groups[x.category] ??= []).push(x)
   return (
-    <Modal open={open} onClose={onClose} title={t('New request')}
+    <Modal open={open} onClose={onClose} title={prefill ? t('Raise again') : t('New request')}
       footer={<>
         <Button variant="secondary" onClick={onClose}>{t('Cancel')}</Button>
         <Button disabled={!rt || !!rt.unavailable || missing.length > 0 || (!!rt?.requires_attachment && !file)} loading={m.isPending} onClick={() => m.mutate()}>{t('Submit request')}</Button>
@@ -105,6 +108,7 @@ export function RequestForm({ open, onClose, employee, initialType, category }: 
               ))}
             </Select>
           </Field>
+          {prefill?.note && <p className="rounded-xl bg-brand-50 p-3 text-sm text-brand">{t('Raised again from {0}.').replace('{0}', prefill.previous_request)} {t(prefill.note)}</p>}
           {rt?.description && <p className="text-sm text-muted">{rt.description}</p>}
           {rt?.unavailable && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{t(rt.unavailable)}</p>}
           {rt && (

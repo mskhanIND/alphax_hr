@@ -38,8 +38,10 @@ doc_events = {
 	"Leave Application": {
 		"validate": "alphax_hr.leave_engine.validate_leave_application",
 		"before_submit": "alphax_hr.leave_engine.before_submit_leave_application",
-		"after_insert": "alphax_hr.api.notify.on_leave_insert",
+		"after_insert": ["alphax_hr.approval_policy.on_leave_insert", "alphax_hr.api.notify.on_leave_insert"],
 		"on_submit": "alphax_hr.api.notify.on_leave_decided",
+		"on_cancel": "alphax_hr.approval_policy.on_leave_cancel",
+		"on_trash": "alphax_hr.approval_policy.on_leave_cancel",
 	},
 	"Attendance Request": {"validate": "alphax_hr.request_rules.validate_attendance_request"},
 	"Notification Log": {"after_insert": "alphax_hr.api.notify.on_notification_log"},

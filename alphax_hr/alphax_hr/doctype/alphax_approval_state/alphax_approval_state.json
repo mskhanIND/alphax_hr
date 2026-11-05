@@ -1,0 +1,108 @@
+{
+ "doctype": "DocType",
+ "name": "AlphaX Approval State",
+ "module": "AlphaX HR",
+ "custom": 0,
+ "engine": "InnoDB",
+ "creation": "2026-11-02 00:00:00.000000",
+ "modified": "2026-11-02 00:00:00.000000",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "field_order": [
+  "reference_doctype",
+  "reference_name",
+  "policy",
+  "status",
+  "current_level",
+  "rejected_level",
+  "level_since",
+  "previous",
+  "levels_json",
+  "trail_json"
+ ],
+ "fields": [
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "label": "Document type",
+   "options": "DocType",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Document",
+   "options": "reference_doctype",
+   "reqd": 1,
+   "in_list_view": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "policy",
+   "fieldtype": "Link",
+   "label": "Policy",
+   "options": "AlphaX Approval Policy"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Pending\nApproved\nRejected\nCancelled",
+   "default": "Pending",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "current_level",
+   "fieldtype": "Int",
+   "label": "Current level (from 0)"
+  },
+  {
+   "fieldname": "rejected_level",
+   "fieldtype": "Int",
+   "label": "Rejected at level (from 0)"
+  },
+  {
+   "fieldname": "level_since",
+   "fieldtype": "Datetime",
+   "label": "Waiting since"
+  },
+  {
+   "fieldname": "previous",
+   "fieldtype": "Data",
+   "label": "Raised again from"
+  },
+  {
+   "fieldname": "levels_json",
+   "fieldtype": "Long Text",
+   "label": "Levels"
+  },
+  {
+   "fieldname": "trail_json",
+   "fieldtype": "Long Text",
+   "label": "Decisions"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "HR Manager",
+   "read": 1
+  },
+  {
+   "role": "HR User",
+   "read": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1,
+ "states": [],
+ "autoname": "hash"
+}

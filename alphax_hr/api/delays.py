@@ -7,8 +7,9 @@ import frappe
 from frappe import _
 from frappe.utils import add_days, cint, get_datetime, now_datetime
 
+from alphax_hr import approval_policy as ap
 from alphax_hr.api import alerts
-from alphax_hr.api._common import is_hr, login_required
+from alphax_hr.api._common import is_hr, login_required, require_hr
 from alphax_hr.api.approvals import SOURCES
 
 HR = "HR"
@@ -44,7 +45,14 @@ def pending_items():
 			if meta.has_field(extra):
 				fields.append(extra)
 		filters = {"docstatus": 0, **conf["open"]}
-		for row in frappe.get_all(dt, filters=filters, fields=list(dict.fromkeys(fields)), limit=2000):
+		rows = frappe.get_all(dt, filters=filters, fields=list(dict.fromkeys(fields)), limit=2000)
+		chains = {}
+		if dt in ap.MULTI_LEVEL and ap.installed() and rows:
+			for st in frappe.get_all(ap.STATE, filters={"reference_doctype": dt, "status": "Pending",
+														"reference_name": ["in", [r.name for r in rows]]},
+									 fields=["reference_name", "current_level", "levels_json", "level_since", "policy", "status"]):
+				chains[st.reference_name] = st
+		for row in rows:
 			status = row.get(conf.get("status_field") or "") if conf.get("status_field") else None
 			approver = row.get(conf.get("approver_field") or "") if conf.get("approver_field") else None
 			waiting_since = row.creation
@@ -54,9 +62,15 @@ def pending_items():
 					waiting_since = row.get("decided_on") or row.creation
 			if not approver:
 				approver = HR
+			policy = None
+			st = chains.get(row.name)
+			if st and status not in ("Approved",):
+				lv = ap.current(st)
+				if lv:
+					approver, waiting_since, policy = lv["approver"], st.level_since or waiting_since, st.policy
 			out.append(frappe._dict(doctype=dt, name=row.name, employee=row.employee, employee_name=row.employee_name,
 									what=row.get("leave_type") or row.get("request_type") or _(LABELS.get(dt, dt)),
-									status=status, approver=approver, since=get_datetime(waiting_since)))
+									status=status, approver=approver, since=get_datetime(waiting_since), policy=policy))
 	return out
 
 
@@ -85,15 +99,114 @@ def _already(item, stage):
 														 "stage": stage, "approver": item.approver})
 
 
+def _policy_for(item):
+	"""The approval policy that times this item (its chain's policy, else the best match), if enabled."""
+	if not ap._policies():
+		return None
+	if item.policy:
+		p = frappe.get_cached_doc(ap.POLICY, item.policy)
+		if cint(p.enabled):
+			return p
+	try:
+		return ap.find(frappe.get_doc(item.doctype, item.name))
+	except frappe.DoesNotExistError:
+		return None
+
+
+def _log_time(item, stage):
+	return frappe.db.get_value("AlphaX Approval Reminder", {"reference_doctype": item.doctype, "reference_name": item.name,
+															 "stage": stage, "approver": item.approver}, "creation")
+
+
+def plan(item, policy, now=None):
+	"""Where this item stands on its policy's timeline: stage, the next step and when it is due."""
+	esc, rem, rej = cint(policy.escalate_after_days), cint(policy.remind_after_days), cint(policy.reject_after_days)
+	auto = cint(policy.auto_reject) and item.doctype in ap.AUTO_REJECT
+	e_log, r_log = _log_time(item, "Escalation"), _log_time(item, "HR reminder")
+	emp = item.employee
+	if r_log:
+		base, stage = r_log, "HR reminded"
+		nxt = ("Reject", ap.add_working_days(base, rej, emp)) if auto else (None, None)
+	elif e_log or not esc:
+		base, stage = (e_log or item.since), ("Escalated" if e_log else "On time")
+		if rem:
+			nxt = ("HR reminder", ap.add_working_days(base, rem, emp))
+		elif auto:
+			nxt = ("Reject", ap.add_working_days(base, rej, emp))
+		else:
+			nxt = (None, None)
+	else:
+		base, stage = item.since, "On time"
+		nxt = ("Escalate", ap.add_working_days(base, esc, emp))
+	deadline = None
+	if auto:  # the automatic rejection date if nobody acts
+		d = get_datetime(nxt[1]) if nxt[0] else now_datetime()
+		if nxt[0] == "Escalate":
+			d = ap.add_working_days(d, rem, emp) if rem else d
+		if nxt[0] in ("Escalate", "HR reminder"):
+			d = ap.add_working_days(d, rej, emp)
+		deadline = d
+	return frappe._dict(stage=stage, base=base, next=nxt[0], due=nxt[1], reject_on=deadline,
+						days=ap.working_days(item.since, now, emp))
+
+
+def _users(item):
+	return _approver_users(item.approver)
+
+
+def _policy_step(item, policy, now):
+	p = plan(item, policy, now)
+	if not p.next or get_datetime(p.due) > now:
+		return
+	ref = (item.doctype, item.name)
+	who = f"{item.employee_name or ''} · {item.what}"
+	when = (" " + _("If nobody decides, it is rejected automatically on {0}.").format(frappe.utils.formatdate(p.reject_on))) if p.reject_on else ""
+	if p.next == "Escalate":
+		to = alerts.event("Approval escalation", _("Waiting {0} working days: {1}").format(p.days, who),
+						  _("Pending with {0} since {1}.").format(_group_name(item.approver), frappe.utils.format_datetime(item.since, "dd-MM-yyyy HH:mm")) + when,
+						  employee=item.employee, managers=_approver_manager(item.approver) + list(alerts.hr_users()),
+						  url=LINKS.get(item.doctype, "/alphax/approvals"), doc=ref, tag=f"esc-{item.name}")
+		alerts._log_reminder(item.doctype, item.name, "Escalation", item.approver, to)
+	elif p.next == "HR reminder":
+		_send_hr_reminder(item, p)
+	elif p.next == "Reject":
+		comment = (policy.rejection_comment or _(ap.DEFAULT_COMMENT)).strip()
+		if ap.auto_reject(item, policy):
+			to = alerts.event("Automatic rejection", _("Rejected automatically: {0}").format(_(item.what)), comment,
+							  employee=item.employee, managers=_users(item), url="/alphax/me/requests" if item.doctype == "AlphaX Request" else "/alphax/me/leave",
+							  doc=ref, tag=f"rej-{item.name}")
+			alerts._log_reminder(item.doctype, item.name, "Auto-rejected", item.approver, to)
+
+
+def _send_hr_reminder(item, p=None):
+	when = (" " + _("If nobody decides, it is rejected automatically on {0}.").format(frappe.utils.formatdate(p.reject_on))) if p and p.reject_on else ""
+	to = alerts.event("HR reminder", _("Reminder from HR: {0} · {1}").format(item.employee_name or "", item.what),
+					  _("Waiting for your decision since {0}.").format(frappe.utils.format_datetime(item.since, "dd-MM-yyyy HH:mm")) + when,
+					  employee=item.employee, managers=_users(item), url=LINKS.get(item.doctype, "/alphax/approvals"),
+					  doc=(item.doctype, item.name), tag=f"hrrem-{item.name}")
+	alerts._log_reminder(item.doctype, item.name, "HR reminder", item.approver, to)
+	return to
+
+
 def escalate_pending_approvals():
-	"""Hourly: one reminder after the reminder hours, one escalation after the escalation hours, per approval step."""
+	"""Hourly. Items under an approval policy follow its working-day timeline (escalation, HR reminder, automatic
+	rejection); others get one reminder after the reminder hours and one escalation after the escalation hours."""
 	if not frappe.db.exists("DocType", "AlphaX Approval Reminder"):
 		return
 	remind, escalate = _hours()
-	if not remind and not escalate:
-		return
 	now = now_datetime()
 	for item in pending_items():
+		policy = _policy_for(item)
+		if policy:
+			try:
+				_policy_step(item, policy, now)
+				frappe.db.commit()
+			except Exception:  # noqa: BLE001 - one bad document must not stop the rest
+				frappe.db.rollback()
+				frappe.log_error(title=f"AlphaX approval policy: {item.doctype} {item.name}")
+			continue
+		if not remind and not escalate:
+			continue
 		age = (now - item.since).total_seconds() / 3600
 		subject_bits = f"{item.employee_name or ''} · {item.what}"
 		ref = (item.doctype, item.name)
@@ -112,6 +225,23 @@ def escalate_pending_approvals():
 							  employee=item.employee, managers=_approver_users(item.approver),
 							  url=LINKS.get(item.doctype, "/alphax/approvals"), doc=ref, tag=f"rem-{item.name}")
 			alerts._log_reminder(item.doctype, item.name, "Reminder", item.approver, to)
+
+
+@frappe.whitelist(methods=["POST"])
+def remind(doctype: str, name: str):
+	"""HR reminds the approver now; under a policy the automatic-rejection clock starts from this reminder."""
+	require_hr()
+	item = next((i for i in pending_items() if i.doctype == doctype and i.name == name), None)
+	if not item:
+		frappe.throw(_("This item is no longer waiting for a decision."))
+	policy = _policy_for(item)
+	p = None
+	if policy:
+		alerts._log_reminder(item.doctype, item.name, "Escalation", item.approver, set()) if not _log_time(item, "Escalation") else None
+		p = frappe._dict(reject_on=ap.add_working_days(now_datetime(), policy.reject_after_days, item.employee)
+						 if cint(policy.auto_reject) and item.doctype in ap.AUTO_REJECT else None)
+	to = _send_hr_reminder(item, p)
+	return {"sent_to": len(to), "reject_on": str(p.reject_on) if p and p.reject_on else None}
 
 
 def _turnaround(days=90):
@@ -148,6 +278,17 @@ def report():
 	rows = []
 	for i in items:
 		age = round((now - i.since).total_seconds() / 3600, 1)
+		policy = _policy_for(i)
+		if policy:
+			p = plan(i, policy, now)
+			rows.append({"doctype": i.doctype, "name": i.name, "kind": _(LABELS.get(i.doctype, i.doctype)), "what": i.what,
+						 "employee": i.employee, "employee_name": i.employee_name, "status": i.status,
+						 "approver": i.approver, "approver_name": _group_name(i.approver),
+						 "since": str(i.since), "age_hours": age, "working_days": p.days,
+						 "stage": "Overdue" if p.stage == "On time" and p.next == "Escalate" and get_datetime(p.due) <= now else p.stage,
+						 "policy": policy.name, "next_step": p.next, "next_on": str(p.due) if p.due else None,
+						 "reject_on": str(p.reject_on) if p.reject_on else None})
+			continue
 		if (i.doctype, i.name, "Escalation") in marks:
 			stage = "Escalated"
 		elif escalate and age >= escalate:
@@ -168,7 +309,7 @@ def report():
 		b["approver"], b["approver_name"] = r["approver"], r["approver_name"]
 		b["pending"] += 1
 		b["oldest_hours"] = max(b["oldest_hours"], r["age_hours"])
-		b["overdue"] += 1 if r["stage"] in ("Escalated", "Overdue") else 0
+		b["overdue"] += 1 if r["stage"] in ("Escalated", "Overdue", "HR reminded") else 0
 	for u, (avg, n) in turn.items():
 		b = by[u]
 		b.setdefault("approver", u)
@@ -176,4 +317,5 @@ def report():
 		b["avg_hours"], b["decided"] = avg, n
 	approvers = sorted(by.values(), key=lambda b: (-b["overdue"], -b["pending"]))
 	return {"rows": rows, "approvers": approvers, "remind_hours": remind, "escalate_hours": escalate, "is_hr": hr,
-			"counts": {s: sum(1 for r in rows if r["stage"] == s) for s in ("On time", "Reminded", "Overdue", "Escalated")}}
+			"counts": {s: sum(1 for r in rows if r["stage"] == s) for s in ("On time", "Reminded", "Overdue", "Escalated", "HR reminded")},
+			"policies": frappe.db.count(ap.POLICY, {"enabled": 1}) if ap.installed() else 0}

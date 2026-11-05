@@ -25,7 +25,7 @@
    "label": "Event",
    "reqd": 1,
    "in_list_view": 1,
-   "options": "Leave request\nLeave decision\nEmergency leave\nRequest submitted\nRequest decision\nCheck-in confirmation\nLate arrival\nMissing check-in\nApproval reminder\nApproval escalation\nAnnouncement"
+   "options": "Leave request\nLeave decision\nEmergency leave\nRequest submitted\nRequest decision\nCheck-in confirmation\nLate arrival\nMissing check-in\nApproval reminder\nApproval escalation\nHR reminder\nAutomatic rejection\nAnnouncement"
   },
   {
    "fieldname": "enabled",

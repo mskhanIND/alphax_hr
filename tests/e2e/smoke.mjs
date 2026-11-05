@@ -22,6 +22,7 @@ async function session(browser, user, { lang = 'en', mobile = false } = {}) {
   const page = await ctx.newPage()
   const errors = []
   page.on('pageerror', (e) => errors.push(String(e)))
+  page.on('response', (r) => { if (r.status() === 403) errors.push(`403 ${r.url().replace(BASE, '')}`) })
   page.on('console', (m) => { if (m.type() === 'error' && !/favicon|manifest|status of 417/.test(m.text())) errors.push(m.text()) }) // 417 = expected validation response
   return { ctx, page, errors }
 }
@@ -609,6 +610,27 @@ try {
       await dialog.getByRole('button', { name: 'Save' }).click()
       await page.getByText('E2E Gate').first().waitFor()
       await page.screenshot({ path: `${OUT}/37-devices.png`, fullPage: true })
+    })
+    await step('approval policies: example policies, a new policy with two levels and the restart rule', async () => {
+      await page.goto(`${BASE}/alphax/approval-policies`)
+      await page.getByText('Standard approval times').waitFor()
+      await page.getByRole('button', { name: 'New policy' }).click()
+      const dialog = page.getByRole('dialog')
+      await dialog.locator('input').first().fill(`E2E Policy ${Date.now()}`)
+      await dialog.locator('select').first().selectOption('Requests')
+      await dialog.getByText('Rejected automatically').first().waitFor()
+      await dialog.getByLabel('Use approval levels').check()
+      await dialog.getByRole('button', { name: 'Add level' }).click()
+      await dialog.getByRole('button', { name: 'Add level' }).click()
+      await dialog.locator('select').nth(2).selectOption('HR')
+      await dialog.getByText('goes straight to manager 3').waitFor({ state: 'detached' })
+      await dialog.locator('select').last().selectOption('From the level that rejected')
+      await dialog.getByText('goes straight to manager 3').waitFor()
+      await page.screenshot({ path: `${OUT}/38-approval-policy-form.png`, fullPage: true })
+      await dialog.getByRole('button', { name: 'Save' }).click()
+      await dialog.waitFor({ state: 'detached' })
+      await page.getByText('E2E Policy').first().waitFor()
+      await page.screenshot({ path: `${OUT}/38b-approval-policies.png`, fullPage: true })
     })
     await step('GOSI register', async () => {
       await page.goto(`${BASE}/alphax/payroll/gosi`)

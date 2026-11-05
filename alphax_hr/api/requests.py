@@ -207,8 +207,10 @@ def _manager(employee):
 
 
 @frappe.whitelist(methods=["POST"])
-def create(request_type: str, details: str | dict | list | None = None, reason: str | None = None, employee: str | None = None):
-	"""Raise a request (for yourself; HR may raise one for any employee)."""
+def create(request_type: str, details: str | dict | list | None = None, reason: str | None = None, employee: str | None = None,
+		   previous_request: str | None = None):
+	"""Raise a request (for yourself; HR may raise one for any employee). ``previous_request``: a rejected request
+	raised again (the approval policy decides whether its approvals carry over)."""
 	user = login_required()
 	t = frappe.get_doc("AlphaX Request Type", request_type)
 	if employee and employee != current_employee(required=False):
@@ -234,17 +236,80 @@ def create(request_type: str, details: str | dict | list | None = None, reason: 
 	if approver == user:
 		approver = None  # raised by the reporting manager (or their own request): no manager step
 	status = "Pending Manager" if approver else next_status(t, "Pending Manager")
+	if previous_request:
+		prev = frappe.db.get_value("AlphaX Request", previous_request, ["employee", "request_type", "status"], as_dict=True)
+		if not prev or prev.employee != employee or prev.request_type != request_type or prev.status != "Rejected":
+			frappe.throw(_("Only a rejected request of the same type can be raised again."))
 	doc = frappe.get_doc({"doctype": "AlphaX Request", "employee": employee, "request_type": request_type, "status": status,
 						  "approver": approver, "raised_by": user, "details": json.dumps(data, ensure_ascii=False), "reason": (reason or "")[:2000],
-						  "due_on": add_days(nowdate(), cint(t.sla_days) or 3)})
+						  "due_on": add_days(nowdate(), cint(t.sla_days) or 3), "previous_request": previous_request})
+	from alphax_hr import approval_policy as ap
+
+	policy = ap.find(doc)
+	chain = ap.resolve_levels(policy, ap.facts(doc), raised_by=user) if policy and cint(policy.multi_level) else []
 	doc.flags.alphax_engine = True
 	doc.insert()
+	if chain:
+		st = ap.start(doc, policy, chain, previous=previous_request)
+		_apply_level(doc, ap.current(st))
+		status = doc.status
+		doc.flags.alphax_engine = True
+		doc.save(ignore_permissions=True)
 	if status == "Approved":
 		_on_approved(doc, t)
 	from alphax_hr.api import notify
 
 	notify.request_created(doc)
 	return {"name": doc.name, "status": doc.status}
+
+
+def _apply_level(doc, level):
+	"""Put the request with the approver of this level of its approval chain (None: the chain is complete)."""
+	from alphax_hr import approval_policy as ap
+
+	if doc.name and level:
+		ap.share_with(doc, level)
+	if not level:
+		doc.status = "Approved"
+	elif level["approver"] == ap.HR:
+		doc.status = "Pending HR"
+	elif level["approver"] == ap.MANAGEMENT:
+		doc.status = "Pending Management"
+	else:
+		doc.status, doc.approver = "Pending Manager", level["approver"]
+
+
+def auto_reject(doc, comment):
+	"""Called by the approval policy when nobody decided in time."""
+	doc.add_comment("Comment", frappe.utils.escape_html(_("Rejected automatically: {0}").format(comment)))
+	doc.status = "Rejected"
+	doc.decided_by, doc.decided_on = None, now_datetime()
+	doc.hr_note = comment[:2000]
+	doc.flags.alphax_engine = True
+	doc.save(ignore_permissions=True)
+	from alphax_hr.api import notify
+
+	notify.request_decided(doc)
+
+
+@frappe.whitelist()
+def raise_again(name: str):
+	"""What the form needs to raise a rejected request again (type, details, reason)."""
+	user = login_required()
+	doc = frappe.get_doc("AlphaX Request", name)
+	own = current_employee(required=False)
+	if doc.employee != own and doc.raised_by != user and not is_hr(user):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+	if doc.status != "Rejected":
+		frappe.throw(_("Only a rejected request can be raised again."))
+	from alphax_hr import approval_policy as ap
+
+	info = ap.summary("AlphaX Request", name) or {}
+	resume = info.get("restart_rule") == ap.RESUME
+	return {"request_type": doc.request_type, "details": parse_json(doc.details, {}) or {}, "reason": doc.reason or "",
+			"previous_request": doc.name, "employee": doc.employee,
+			"note": _("Approvals already given are kept; it goes back to the level that rejected it.") if resume and info.get("levels")
+			else _("It goes through the approvals again from the start.")}
 
 
 def next_status(t, current):
@@ -357,10 +422,20 @@ def decide(name, action, comment=None):
 	t = frappe.get_doc("AlphaX Request Type", doc.request_type)
 	if comment:
 		doc.add_comment("Comment", frappe.utils.escape_html(str(comment)[:2000]))
+	from alphax_hr import approval_policy as ap
+
+	chain = ap.state_of("AlphaX Request", name) if doc.status in OPEN else None
+	chain = chain if chain and chain.status == "Pending" else None
 	if action == "Reject":
 		doc.status = "Rejected"
+		if comment:
+			doc.hr_note = str(comment)[:2000]  # the reason the employee sees
+		if chain:
+			ap.reject(chain, user, comment)
 	elif action == "Cancel":
 		doc.status = "Cancelled"
+		if chain:
+			ap.close("AlphaX Request", name)
 	elif action in ("Complete", "Resolve"):
 		doc.status = "Completed"
 		if comment:
@@ -371,7 +446,10 @@ def decide(name, action, comment=None):
 			frappe.throw(_("Ask the employee to attach a copy of the new document first."))
 		if cint(t.requires_attachment) and not frappe.db.exists("File", {"attached_to_doctype": "AlphaX Request", "attached_to_name": name}):
 			frappe.throw(_("{0} needs a supporting document before approval.").format(t.request_type_name))
-		doc.status = next_status(t, doc.status)
+		if chain:
+			_apply_level(doc, ap.advance(chain, user, comment))
+		else:
+			doc.status = next_status(t, doc.status)
 		if doc.status == "Approved" and t.get("effect") in ("Create loan", "Create salary advance"):
 			from alphax_hr.api import loans
 
@@ -462,7 +540,7 @@ def _row(r):
 
 
 FIELDS = ["name", "employee", "employee_name", "request_type", "status", "approver", "due_on", "creation", "details", "reason",
-		  "letter", "decided_by", "decided_on", "department"]
+		  "letter", "decided_by", "decided_on", "department", "hr_note", "previous_request"]
 
 
 def _attach_counts(rows):

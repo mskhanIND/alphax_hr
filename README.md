@@ -20,7 +20,7 @@ React SPA (/alphax)  ──►  alphax_hr API (permission-checked)  ──►  F
 |---|---|---|
 | ![Sign-in](docs/screenshots/36-sign-in.png) | ![Accruals](docs/screenshots/35-accruals.png) | ![Payroll](docs/screenshots/23-payroll-control.png) |
 
-## Modules (v0.23)
+## Modules (v0.24)
 
 | Area | Who | What |
 |---|---|---|
@@ -30,6 +30,7 @@ React SPA (/alphax)  ──►  alphax_hr API (permission-checked)  ──►  F
 | Check-in rules & movements | HR, managers | Location rule per company or policy group (anywhere / location required / inside a work location with radius), minimum minutes between punches; work locations with "use my current location"; live check-ins & movements board (in, out, not in, on leave, outside a location, map links) for HR and for managers' teams |
 | Leave counting policy | HR | Per leave type, decided by HR in Leave setup: count calendar days, working days only, or skip only public holidays / only weekends; sandwich rule (a weekend between two leave days counts — inside one request, or also across separate requests taken before and after it; optionally public holidays too); must start and end on a working day (e.g. marriage leave = 5 working days); minimum notice; maximum counted days per request; emergency leave types. The employee sees the counted days before applying; the balance is checked on the counted days |
 | Notifications by event | HR decides, every user receives | Email and in-app/phone alerts for leave requests and decisions, emergency leave (manager and HR at once), requests submitted and decided, check-in/out confirmation, late arrival, missing check-in (scheduled every 15 minutes), approval reminders and escalations, announcements — each event on/off with its channels and recipients (employee, manager/approver, HR) in Notifications; a bell with unread count in the header |
+| Approval policies | HR (edit: HR Manager) | Per kind of approval and optionally per request/leave type, company, department, branch, designation, amount or days: working-day waiting times — escalation to HR, HR reminder, automatic rejection with a comment (the employee raises it again); optional multi-level approval for requests and leave (reporting manager, manager's manager, named user, HR, management; levels by amount or days), restarting from the first level or resuming at the level that rejected; *Try it* on an employee |
 | Approval delay control | HR, managers | One reminder to the approver after the reminder hours and one escalation to the approver's manager and HR after the escalation hours, for every approval type (leave, expense, attendance, shift, compensatory, AlphaX requests, vacation plans); Approval delays page with every waiting item by age and stage (on time, reminded, overdue, escalated), and per approver the pending count, oldest item and average decision time over 90 days |
 | Notifications | Every user | Phone/browser push (installed app on Android and iPhone 16.4+, desktop browsers): new approvals for managers, decisions on leave and requests, messages from HR, warnings, announcements; built-in Web Push (VAPID), no extra service |
 | Help centre | Employees, HR | Searchable HR articles (Arabic/English, categories, attachments, helpful votes); "Ask HR" conversations tied to a topic, answered in a private thread and resolved by HR |

@@ -2,17 +2,19 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarPlus } from 'lucide-react'
 import { useState } from 'react'
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, StatusBadge, Textarea } from '../components/ui'
+import { ApprovalChain } from '../components/ApprovalChain'
 import { LeaveLedger } from '../components/LeaveLedger'
 import { api, uploadFile, type LeaveTypeOption } from '../lib/api'
 import { fmtDate, fmtNumber, todayISO } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 import { FieldInput, isEmpty } from '../components/FieldInput'
 
-function ApplyForm({ onDone }: { onDone: (warnings: string[]) => void }) {
+function ApplyForm({ onDone, again }: { onDone: (warnings: string[]) => void; again?: any }) {
   const { t } = useI18n()
   const types = useQuery<LeaveTypeOption[]>({ queryKey: ['leaveTypes'], queryFn: api.leaveTypes })
   const today = todayISO()
-  const [form, setForm] = useState({ leave_type: '', from_date: today, to_date: today, half_day: false, reason: '', event_date: '', relation: '' })
+  const [form, setForm] = useState({ leave_type: again?.leave_type ?? '', from_date: again?.from_date ?? today, to_date: again?.to_date ?? today,
+    half_day: !!Number(again?.half_day), reason: again?.description ?? '', event_date: '', relation: '' })
   const [file, setFile] = useState<File | null>(null)
   const extraSpec = useQuery({ queryKey: ['leaveForm'], queryFn: api.leaveForm, staleTime: 300_000 })
   const [extra, setExtra] = useState<Record<string, any>>({})
@@ -31,6 +33,7 @@ function ApplyForm({ onDone }: { onDone: (warnings: string[]) => void }) {
         half_day: form.half_day ? 1 : 0, half_day_date: form.half_day ? form.from_date : undefined,
         event_date: rule?.requires_event_date ? form.event_date || undefined : undefined,
         relation: rule?.relations.length ? form.relation || undefined : undefined,
+        previous: again?.name,
       })
       if (file) await uploadFile('Leave Application', r.name, file)
       return r
@@ -117,6 +120,7 @@ export default function MyLeave() {
   const balances = useQuery<any>({ queryKey: ['balances'], queryFn: api.balances })
   const leaves = useQuery<any[]>({ queryKey: ['myLeaves'], queryFn: api.myLeaves })
   const [open, setOpen] = useState(false)
+  const [again, setAgain] = useState<any>(null)
   const [notice, setNotice] = useState<string[] | null>(null)
   const qc = useQueryClient()
   const withdraw = useMutation({ mutationFn: api.withdrawLeave, onSuccess: () => { qc.invalidateQueries({ queryKey: ['myLeaves'] }); qc.invalidateQueries({ queryKey: ['balances'] }) } })
@@ -160,10 +164,15 @@ export default function MyLeave() {
                 <div>
                   <div className="font-medium">{l.leave_type} <span className="text-sm font-normal text-muted">· {fmtNumber(l.total_leave_days, lang, 1)} {t('days')}</span></div>
                   <div className="text-sm text-muted">{fmtDate(l.from_date, lang)} → {fmtDate(l.to_date, lang)}</div>
+                  {l.status === 'Rejected' && l.rejection_note && <div className="mt-1 rounded-lg bg-red-50 px-2 py-1 text-xs text-red-800">{t('Reason')}: {l.rejection_note}</div>}
+                  {l.status === 'Open' && <div className="mt-1"><ApprovalChain doctype="Leave Application" name={l.name} /></div>}
                 </div>
                 <div className="flex items-center gap-2">
                   {l.workflow_state && l.workflow_state !== l.status && <Badge tone="blue">{l.workflow_state}</Badge>}
                   <StatusBadge status={l.status} />
+                  {l.status === 'Rejected' && (
+                    <Button size="sm" variant="secondary" onClick={() => { setAgain(l); setOpen(true) }}>{t('Apply again')}</Button>
+                  )}
                   {l.docstatus === 0 && l.status === 'Open' && (
                     <Button size="sm" variant="ghost" loading={withdraw.isPending && withdraw.variables === l.name} onClick={() => withdraw.mutate(l.name)}>{t('Withdraw')}</Button>
                   )}
@@ -174,8 +183,8 @@ export default function MyLeave() {
         )}
         {withdraw.error && <div className="mt-3"><ErrorBox error={withdraw.error} /></div>}
       </Card>
-      <Modal open={open} onClose={() => setOpen(false)} title={t('Apply for leave')}>
-        <ApplyForm onDone={(w) => { setOpen(false); setNotice(w) }} />
+      <Modal open={open} onClose={() => { setOpen(false); setAgain(null) }} title={again ? t('Apply again') : t('Apply for leave')}>
+        <ApplyForm key={again?.name ?? 'new'} again={again} onDone={(w) => { setOpen(false); setAgain(null); setNotice(w) }} />
       </Modal>
     </div>
   )

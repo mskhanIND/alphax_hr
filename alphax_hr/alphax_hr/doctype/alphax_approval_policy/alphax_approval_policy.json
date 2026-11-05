@@ -1,0 +1,247 @@
+{
+ "doctype": "DocType",
+ "name": "AlphaX Approval Policy",
+ "module": "AlphaX HR",
+ "custom": 0,
+ "engine": "InnoDB",
+ "creation": "2026-11-02 00:00:00.000000",
+ "modified": "2026-11-02 00:00:00.000000",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "field_order": [
+  "policy_name",
+  "enabled",
+  "applies_to",
+  "priority",
+  "description",
+  "cond_section",
+  "request_type",
+  "leave_type",
+  "company",
+  "cb1",
+  "department",
+  "branch",
+  "designation",
+  "cb2",
+  "min_amount",
+  "min_days",
+  "timer_section",
+  "escalate_after_days",
+  "remind_after_days",
+  "cb3",
+  "auto_reject",
+  "reject_after_days",
+  "rejection_comment",
+  "levels_section",
+  "multi_level",
+  "levels",
+  "restart_rule",
+  "skip_repeat"
+ ],
+ "fields": [
+  {
+   "fieldname": "policy_name",
+   "fieldtype": "Data",
+   "label": "Policy name",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "0",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "applies_to",
+   "fieldtype": "Select",
+   "label": "Applies to",
+   "options": "All approvals\nRequests\nLeave\nExpense claims\nAttendance corrections\nShift changes\nCompensatory leave\nVacation plans",
+   "default": "All approvals",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "priority",
+   "fieldtype": "Int",
+   "label": "Priority",
+   "default": "0",
+   "description": "When two policies fit equally, the higher priority wins."
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "cond_section",
+   "fieldtype": "Section Break",
+   "label": "Only when (leave empty for all)"
+  },
+  {
+   "fieldname": "request_type",
+   "fieldtype": "Link",
+   "label": "Request type",
+   "options": "AlphaX Request Type"
+  },
+  {
+   "fieldname": "leave_type",
+   "fieldtype": "Link",
+   "label": "Leave type",
+   "options": "Leave Type"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "department",
+   "fieldtype": "Link",
+   "label": "Department",
+   "options": "Department"
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "Branch"
+  },
+  {
+   "fieldname": "designation",
+   "fieldtype": "Link",
+   "label": "Designation",
+   "options": "Designation"
+  },
+  {
+   "fieldname": "cb2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "min_amount",
+   "fieldtype": "Currency",
+   "label": "Amount at least"
+  },
+  {
+   "fieldname": "min_days",
+   "fieldtype": "Float",
+   "label": "Days at least"
+  },
+  {
+   "fieldname": "timer_section",
+   "fieldtype": "Section Break",
+   "label": "Waiting times (working days)"
+  },
+  {
+   "fieldname": "escalate_after_days",
+   "fieldtype": "Int",
+   "label": "Escalate to HR after",
+   "default": "2",
+   "description": "Working days without a decision. 0 = never"
+  },
+  {
+   "fieldname": "remind_after_days",
+   "fieldtype": "Int",
+   "label": "HR reminder to the approver after",
+   "default": "1",
+   "description": "Working days after the escalation. 0 = no reminder"
+  },
+  {
+   "fieldname": "cb3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "auto_reject",
+   "fieldtype": "Check",
+   "label": "Reject automatically when nobody decides",
+   "default": "0"
+  },
+  {
+   "fieldname": "reject_after_days",
+   "fieldtype": "Int",
+   "label": "Reject after",
+   "default": "2",
+   "description": "Working days after the reminder (or the escalation)",
+   "depends_on": "auto_reject"
+  },
+  {
+   "fieldname": "rejection_comment",
+   "fieldtype": "Small Text",
+   "label": "Comment on the automatic rejection",
+   "depends_on": "auto_reject",
+   "default": "Rejected automatically: no decision was taken within the approval time. If you still need it, raise the request again."
+  },
+  {
+   "fieldname": "levels_section",
+   "fieldtype": "Section Break",
+   "label": "Multi-level approval"
+  },
+  {
+   "fieldname": "multi_level",
+   "fieldtype": "Check",
+   "label": "Use approval levels",
+   "default": "0",
+   "description": "Requests and leave go through these levels in order instead of the usual manager / HR steps."
+  },
+  {
+   "fieldname": "levels",
+   "fieldtype": "Table",
+   "label": "Levels",
+   "options": "AlphaX Approval Level",
+   "depends_on": "multi_level"
+  },
+  {
+   "fieldname": "restart_rule",
+   "fieldtype": "Select",
+   "label": "When a level rejects and the employee raises it again",
+   "options": "From the first level\nFrom the level that rejected",
+   "default": "From the first level",
+   "depends_on": "multi_level"
+  },
+  {
+   "fieldname": "skip_repeat",
+   "fieldtype": "Check",
+   "label": "Skip a level when the same person already approved",
+   "default": "1",
+   "depends_on": "multi_level"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "HR Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "HR User",
+   "read": 1,
+   "report": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1,
+ "states": [],
+ "autoname": "field:policy_name",
+ "title_field": "policy_name"
+}

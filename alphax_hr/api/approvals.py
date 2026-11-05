@@ -83,6 +83,32 @@ SOURCES = {
 }
 
 
+def _chain(doc):
+	"""The pending multi-level approval state of a leave application, if any."""
+	if doc.doctype != "Leave Application" or doc.docstatus != 0:
+		return None
+	from alphax_hr import approval_policy as ap
+
+	st = ap.state_of(doc.doctype, doc.name)
+	return st if st and st.status == "Pending" else None
+
+
+def _chain_waiting(dt, user):
+	"""Leave applications whose current level waits for this user's group (HR or Management)."""
+	from alphax_hr import approval_policy as ap
+	from alphax_hr.api.requests import is_management
+
+	if dt != "Leave Application" or not ap.installed():
+		return []
+	names = []
+	for st in frappe.get_all(ap.STATE, filters={"reference_doctype": dt, "status": "Pending"}, fields=["name", "current_level", "levels_json"],
+							 limit=2000):
+		lv = ap.current(frappe._dict(st, status="Pending"))
+		if lv and (lv["approver"] == user or (lv["approver"] == ap.MANAGEMENT and is_management(user))):
+			names.append(frappe.db.get_value(ap.STATE, st.name, "reference_name"))
+	return names
+
+
 def _installed(dt):
 	return bool(frappe.db.exists("DocType", dt))
 
@@ -103,6 +129,11 @@ def _actions_for(doc, user, workflow):
 	conf = SOURCES[doc.doctype]
 	if doc.docstatus != 0 or doc.owner == user and not is_hr(user):
 		return []
+	chain = _chain(doc)
+	if chain:
+		from alphax_hr import approval_policy as ap
+
+		return list(conf["values"].keys()) if ap.can_act(ap.current(chain), user) else []
 	approver_field = conf["approver_field"]
 	if approver_field and doc.get(approver_field) != user and not is_hr(user):
 		return []
@@ -137,9 +168,16 @@ def inbox(doctype: str | None = None, limit: int | str = 100):
 		elif not workflow:
 			filters.update(conf["open"])
 			if conf["approver_field"] and not is_hr(user):
-				filters[conf["approver_field"]] = user
-		rows = frappe.get_list(dt, filters=filters, or_filters=or_filters, fields=list(dict.fromkeys(_row_fields(dt))),
-							   order_by="modified desc", page_length=min(cint(limit) or 100, 200))
+				extra = _chain_waiting(dt, user)
+				if extra:
+					or_filters = [[dt, conf["approver_field"], "=", user], [dt, "name", "in", extra]]
+				else:
+					filters[conf["approver_field"]] = user
+		# AlphaX's own requests are filtered to this approver above; employees' user permissions (own Employee
+		# record only) must not hide their team's requests from them.
+		lister = frappe.get_all if conf.get("engine") else frappe.get_list
+		rows = lister(dt, filters=filters, or_filters=or_filters, fields=list(dict.fromkeys(_row_fields(dt))),
+					  order_by="modified desc", page_length=min(cint(limit) or 100, 200))
 		for row in rows:
 			doc = frappe.get_doc(dt, row.name)
 			actions = _actions_for(doc, user, workflow)
@@ -170,6 +208,23 @@ def act(doctype: str, name: str, action: str, comment: str | None = None):
 		frappe.throw(_("You cannot perform '{0}' on this request.").format(action), frappe.PermissionError)
 	if comment:
 		doc.add_comment("Comment", frappe.utils.escape_html(str(comment)[:2000]))
+	chain = None if workflow else _chain(doc)
+	if chain:
+		from alphax_hr import approval_policy as ap
+
+		if action == "Approve":
+			nxt = ap.advance(chain, user, comment)
+			if nxt:  # more levels to go: hand it to the next approver, the leave stays open
+				if nxt["approver"] not in (ap.HR, ap.MANAGEMENT):
+					doc.leave_approver = nxt["approver"]
+					doc.flags.ignore_permissions = True
+					doc.save()
+				ap.share_with(doc, nxt)
+				_notify_next(doc, nxt)
+				return {"name": doc.name, "docstatus": doc.docstatus, "status": doc.status, "level": nxt["label"]}
+		else:
+			ap.reject(chain, user, comment)
+		doc.flags.ignore_permissions = True  # the chain decided who may act
 	if workflow:
 		doc = apply_workflow(doc, action)
 	else:
@@ -179,10 +234,24 @@ def act(doctype: str, name: str, action: str, comment: str | None = None):
 			doc.set(conf["status_field"], value)
 			doc.save()
 		if conf["submit_on_decision"] and (action == "Approve" or conf["status_field"]):
-			doc.check_permission("submit")
+			if not chain:
+				doc.check_permission("submit")
 			doc.submit()
 	return {"name": doc.name, "docstatus": doc.docstatus, "status": doc.get("status") or doc.get("approval_status"),
 			"workflow_state": doc.get("workflow_state")}
+
+
+def _notify_next(doc, level):
+	from alphax_hr import approval_policy as ap
+	from alphax_hr.api import alerts
+	from alphax_hr.api.requests import management_users
+
+	users = list(alerts.hr_users()) if level["approver"] == ap.HR else (
+		management_users() if level["approver"] == ap.MANAGEMENT else [level["approver"]])
+	alerts.event("Leave request", _("Leave request from {0} ({1})").format(doc.employee_name, level["label"]),
+				 f"{doc.leave_type}, {frappe.utils.formatdate(doc.from_date)} → {frappe.utils.formatdate(doc.to_date)}",
+				 employee=doc.employee, managers=users, url="/alphax/approvals", doc=(doc.doctype, doc.name), tag=doc.name,
+				 service=doc.leave_type)
 
 
 def _who(user):
@@ -200,6 +269,14 @@ def pending_with(doc):
 		return frappe.get_attr(engine + ".pending_with")(doc)
 	if doc.docstatus != 0:
 		return []
+	chain = _chain(doc)
+	if chain:
+		from alphax_hr import approval_policy as ap
+
+		lv = ap.current(chain)
+		if lv and lv["approver"] in (ap.HR, ap.MANAGEMENT):
+			return [{"role": "HR Manager" if lv["approver"] == ap.HR else ap.MANAGEMENT}]
+		return [_who(lv["approver"])] if lv else []
 	workflow = get_workflow_name(doc.doctype)
 	if workflow:
 		state = doc.get(doc.meta.get("workflow_state_field") or "workflow_state")
@@ -236,8 +313,9 @@ def decided(doctype: str | None = None, limit: int | str = 50):
 			or_filters = [[dt, "approver", "=", user], [dt, "decided_by", "=", user]]  # includes management decisions
 		elif conf["approver_field"] and not is_hr(user):
 			filters[conf["approver_field"]] = user
-		rows = frappe.get_list(dt, filters=filters, or_filters=or_filters, fields=list(dict.fromkeys(_row_fields(dt))),
-							   order_by="modified desc", page_length=min(cint(limit) or 50, 200))
+		lister = frappe.get_all if conf.get("engine") and or_filters else frappe.get_list
+		rows = lister(dt, filters=filters, or_filters=or_filters, fields=list(dict.fromkeys(_row_fields(dt))),
+					  order_by="modified desc", page_length=min(cint(limit) or 50, 200))
 		for r in rows:
 			r["doctype"] = dt
 			out.append(r)
