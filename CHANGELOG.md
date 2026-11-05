@@ -2,6 +2,10 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.21.1 — 2026-11-05
+
+- **Data issues on the employee profile are fixable in place:** set the suggested holiday list (company default or the current one) or leave approver (the reporting manager) in one click, create the employee's login from their e-mail (Employee role, welcome e-mail to set a password), or jump to the right section.
+
 ## 0.21.0 — 2026-11-05
 
 - **Fix:** migrate no longer stops when a bank in the built-in list already exists under another name with the same SWIFT code (e.g. SABB / Saudi Awwal Bank); reference data problems are logged and skipped.

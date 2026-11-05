@@ -244,6 +244,7 @@ export const api = {
   saveAttendanceException: (employee: string, data: Record<string, unknown>) => call<any>(A + 'bulk.save_exception', { employee, data }),
   removeAttendanceException: (employee: string) => call<any>(A + 'bulk.remove_exception', { employee }),
   bulkOptions: () => call<any>(A + 'bulk.options'),
+  fixEmployeeIssue: (employee: string, issue: string, value?: string) => call<any>(A + 'hr.fix_issue', { employee, issue, value }),
   bulkPreview: (field: string, args: Record<string, unknown>) => call<any>(A + 'bulk.preview', { field, ...args }),
   bulkApply: (field: string, value: unknown, args: Record<string, unknown>) => call<any>(A + 'bulk.apply', { field, value, ...args }),
   bulkMissing: (filters?: Record<string, string>) => call<any>(A + 'bulk.missing', { filters }),

@@ -177,8 +177,12 @@ export default function EmployeeDetail() {
           <AttendanceException employee={id} canWrite={e.can_write} />
           {e.issues.length > 0 && (
             <Card title={t('Data issues')}>
-              <ul className="flex flex-col gap-2 text-sm">
-                {e.issues.map((i: string) => <li key={i} className="flex items-center gap-2 text-amber-800"><AlertTriangle className="size-4 shrink-0" />{t(i)}</li>)}
+              <ul className="flex flex-col gap-3 text-sm">
+                {e.issues.map((i: string) => (
+                  <IssueRow key={i} issue={i} fix={e.issue_fixes?.[i]} employee={id} canWrite={e.can_write}
+                    onOpen={(section) => (section ? fillNow(Object.keys(e.sections[section] ?? {})[0]) : fillNow())}
+                    onFixed={(d) => qc.setQueryData(['employee', id], d)} />
+                ))}
               </ul>
             </Card>
           )}
@@ -235,5 +239,34 @@ export default function EmployeeDetail() {
         </div>
       </div>
     </div>
+  )
+}
+
+/** One data issue with its fix: a suggested value to apply in one click, account creation, or a jump to the section. */
+function IssueRow({ issue, fix, employee, canWrite, onOpen, onFixed }: {
+  issue: string; fix?: { section?: string; doctype?: string; suggest?: string; action?: string }; employee: string; canWrite: boolean
+  onOpen: (section?: string) => void; onFixed: (d: any) => void
+}) {
+  const { t } = useI18n()
+  const [value, setValue] = useState(fix?.suggest ?? '')
+  const m = useMutation({ mutationFn: () => api.fixEmployeeIssue(employee, issue, value || undefined), onSuccess: onFixed })
+  const quick = canWrite && fix && (fix.doctype || fix.action === 'create_user')
+  return (
+    <li className="flex flex-col gap-2 rounded-xl bg-amber-50/60 p-3">
+      <div className="flex items-center gap-2 font-medium text-amber-900"><AlertTriangle className="size-4 shrink-0" />{t(issue)}</div>
+      {quick ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-48 flex-1">{fix!.action === 'create_user'
+            ? <Input type="email" placeholder={t('E-mail for the login')} value={value} onChange={(ev) => setValue(ev.target.value)} />
+            : <LinkInput doctype={fix!.doctype!} value={value} onChange={setValue} />}</div>
+          <Button size="sm" disabled={!value} loading={m.isPending} onClick={() => m.mutate()}>
+            {fix!.action === 'create_user' ? t('Create login') : t('Set')}
+          </Button>
+        </div>
+      ) : null}
+      {fix?.action === 'create_user' && <p className="text-xs text-muted">{t('The employee gets an e-mail with a link to set a password.')}</p>}
+      {m.error && <ErrorBox error={m.error} />}
+      {canWrite && fix?.section && <button type="button" className="self-start text-xs text-brand hover:underline" onClick={() => onOpen(fix.section)}>{t('Open in the profile')}</button>}
+    </li>
   )
 }

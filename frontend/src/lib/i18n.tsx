@@ -6,6 +6,11 @@ type Lang = 'en' | 'ar'
 // English is the key. Arabic uses Saudi HR terminology.
 const ar: Record<string, string> = {
   'Home': 'الرئيسية',
+  'E-mail for the login': 'البريد الإلكتروني لتسجيل الدخول',
+  'Create login': 'إنشاء حساب دخول',
+  'Set': 'تعيين',
+  'The employee gets an e-mail with a link to set a password.': 'يصل للموظف بريد إلكتروني برابط لتعيين كلمة المرور.',
+  'Open in the profile': 'فتح في الملف',
   'Before you send: these answers may help': 'قبل الإرسال: قد تفيدك هذه الإجابات',
   'This answered my question': 'أجاب هذا عن سؤالي',
   'Every active employee has all required fields filled.': 'جميع الموظفين النشطين أكملوا كل الحقول المطلوبة.',

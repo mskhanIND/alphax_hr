@@ -2575,6 +2575,39 @@ def run(site):
                 frappe.set_user("Administrator")
         check("notifications: per-service extra recipients and exceptions, HR-only bell", notification_audience)
 
+        def employee_issue_fixes():
+            import random
+            frappe.set_user(f["hr"])
+            r = hr.create_employee({"first_name": "Fix", "last_name": "Issues AXT", "gender": "Male", "date_of_birth": "1991-02-02",
+                                    "date_of_joining": nowdate(), "company": COMPANY, "alphax_is_saudi": 1,
+                                    "alphax_iqama_number": "1" + "".join(random.choice("0123456789") for _ in range(9))})
+            emp = r["name"]
+            email = f"fix.{frappe.generate_hash(length=6)}@axt.test"
+            try:
+                frappe.db.set_value("Employee", emp, {"holiday_list": None, "leave_approver": None, "reports_to": f["e_mgr"]})
+                d = hr.employee(emp)
+                assert {"no_leave_approver", "no_user_account"} <= set(d["issues"]), d["issues"]
+                assert d["issue_fixes"]["no_leave_approver"]["suggest"] == f["mgr"], d["issue_fixes"]
+                d = hr.fix_issue(emp, "no_leave_approver", d["issue_fixes"]["no_leave_approver"]["suggest"])
+                assert "no_leave_approver" not in d["issues"]
+                hl = frappe.get_all("Holiday List", pluck="name", limit=1)[0]
+                d = hr.fix_issue(emp, "no_holiday_list", hl)
+                assert frappe.db.get_value("Employee", emp, "holiday_list") == hl
+                expect_error(lambda: hr.fix_issue(emp, "no_user_account", "not-an-email"), frappe.ValidationError)
+                d = hr.fix_issue(emp, "no_user_account", email)
+                assert frappe.db.get_value("Employee", emp, "user_id") == email and "no_user_account" not in d["issues"]
+                assert "Employee" in frappe.get_roles(email)
+                expect_error(lambda: hr.fix_issue(emp, "no_user_account", email), frappe.ValidationError)  # already has one
+            finally:
+                frappe.set_user("Administrator")
+                frappe.db.set_value("Employee", emp, "user_id", None)
+                if frappe.db.exists("User", email):
+                    frappe.delete_doc("User", email, force=True)
+                from alphax_hr.api.hr import _remove_unused_salary_setup
+                _remove_unused_salary_setup(emp)
+                frappe.delete_doc("Employee", emp, force=True)
+        check("employee data issues fixed from the profile: leave approver, holiday list, login created", employee_issue_fixes)
+
         def portal_and_pages():
             from alphax_hr import portal
             from alphax_hr.www import alphax_login as login_page

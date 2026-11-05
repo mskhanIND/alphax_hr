@@ -372,7 +372,97 @@ def employee(name: str):
 		"missing_required": missing_required, "missing_fields": missing_fields,
 		"can_write": bool(frappe.has_permission("Employee", "write", doc)),
 		"issues": (["mandatory_fields_missing"] if missing_fields else []) + _issues(doc),
+		"issue_fixes": _issue_fixes(doc),
 	}
+
+
+ISSUE_SECTION = {"no_holiday_list": "attendance_leave", "holiday_list_outdated": "attendance_leave",
+				 "no_leave_approver": "attendance_leave", "no_user_account": "contact", "gosi_registration_date_missing": "saudi",
+				 "iqama_missing": "saudi", "iqama_expiry_missing": "saudi", "passport_missing": "saudi"}
+
+
+def _current_holiday_list(company):
+	today = getdate(nowdate())
+	default = frappe.get_cached_value("Company", company, "default_holiday_list") if company else None
+	if default and (end := frappe.db.get_value("Holiday List", default, "to_date")) and getdate(end) >= today:
+		return default
+	rows = frappe.get_all("Holiday List", filters={"from_date": ["<=", today], "to_date": [">=", today]}, pluck="name", limit=5)
+	return rows[0] if len(rows) == 1 else default
+
+
+def _issue_fixes(doc):
+	"""What each data issue needs and a suggested value, so HR can fix it from the profile in one click."""
+	out = {}
+	hl = _current_holiday_list(doc.company)
+	for key in ("no_holiday_list", "holiday_list_outdated"):
+		out[key] = {"section": "attendance_leave", "field": "holiday_list", "doctype": "Holiday List", "suggest": hl}
+	boss_user = frappe.db.get_value("Employee", doc.reports_to, "user_id") if doc.reports_to else None
+	out["no_leave_approver"] = {"section": "attendance_leave", "field": "leave_approver", "doctype": "User", "suggest": boss_user}
+	out["no_user_account"] = {"section": "contact", "field": "user_id", "action": "create_user",
+							  "suggest": doc.get("company_email") or doc.get("personal_email") or doc.get("prefered_email")}
+	for key, sec in ISSUE_SECTION.items():
+		out.setdefault(key, {"section": sec})
+	return out
+
+
+@frappe.whitelist(methods=["POST"])
+def fix_issue(employee: str, issue: str, value: str | None = None):
+	"""Fix one data issue on an employee: set the holiday list or leave approver, or create the user account."""
+	require_hr()
+	doc = frappe.get_doc("Employee", employee)
+	doc.check_permission("write")
+	value = (value or "").strip()
+	if issue in ("no_holiday_list", "holiday_list_outdated"):
+		if not value or not frappe.db.exists("Holiday List", value):
+			frappe.throw(_("Choose a holiday list."))
+		doc.holiday_list = value
+	elif issue == "no_leave_approver":
+		if not value or not frappe.db.get_value("User", value, "enabled"):
+			frappe.throw(_("Choose an active user as leave approver."))
+		doc.leave_approver = value
+	elif issue == "no_user_account":
+		return _create_user(doc, value)
+	else:
+		frappe.throw(_("This issue is fixed by editing the profile."))
+	doc.flags.ignore_mandatory = True  # one field changes; other missing data is shown separately
+	doc.save()
+	return employee_detail_after(doc.name)
+
+
+def _create_user(doc, email):
+	"""A login for the employee (Employee role; welcome e-mail with a link to set the password)."""
+	from frappe.utils import validate_email_address
+
+	if doc.user_id:
+		frappe.throw(_("This employee already has a user account."))
+	email = validate_email_address((email or "").strip().lower(), throw=False)
+	if not email:
+		frappe.throw(_("Enter the employee's e-mail address."))
+	if frappe.db.exists("User", email):
+		if frappe.db.exists("Employee", {"user_id": email}):
+			frappe.throw(_("{0} is already linked to another employee.").format(email))
+		user = frappe.get_doc("User", email)  # existing login without an employee: link it
+	else:
+		parts = (doc.employee_name or "").split()
+		user = frappe.get_doc({"doctype": "User", "email": email, "first_name": doc.first_name or (parts[0] if parts else email),
+							   "last_name": doc.last_name or (" ".join(parts[1:]) if len(parts) > 1 else None),
+							   "gender": doc.gender, "birth_date": doc.date_of_birth, "mobile_no": doc.cell_number,
+							   "enabled": 1, "send_welcome_email": 1})
+		user.flags.ignore_permissions = True
+		user.insert()
+	roles = [r for r in ("Employee", "Employee Self Service") if frappe.db.exists("Role", r)]
+	user.flags.ignore_permissions = True
+	user.add_roles(*roles)
+	doc.user_id = user.name
+	if not doc.get("company_email") and not doc.get("personal_email"):
+		doc.personal_email = email
+	doc.flags.ignore_mandatory = True
+	doc.save()
+	return employee_detail_after(doc.name)
+
+
+def employee_detail_after(name):
+	return employee(name)
 
 
 def _issues(doc):
