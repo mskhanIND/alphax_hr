@@ -33,6 +33,20 @@
   "advances",
   "other_deductions",
   "net_amount",
+  "notice_section",
+  "contract_type",
+  "monthly_paid",
+  "notice_given_on",
+  "notice_waived",
+  "notice_required_days",
+  "notice_shortfall_days",
+  "notice_pay_to_employee",
+  "notice_pay_by_employee",
+  "cb_notice",
+  "unlawful_termination",
+  "contract_end_date",
+  "agreed_compensation",
+  "art77_amount",
   "links_section",
   "additional_salaries",
   "approved_by",
@@ -190,6 +204,85 @@
    "label": "Net Settlement",
    "read_only": 1,
    "in_list_view": 1
+  },
+  {
+   "fieldname": "notice_section",
+   "fieldtype": "Section Break",
+   "label": "Notice and compensation (Art. 75–77)"
+  },
+  {
+   "fieldname": "contract_type",
+   "fieldtype": "Select",
+   "label": "Contract",
+   "options": "Indefinite\nFixed term",
+   "default": "Indefinite"
+  },
+  {
+   "fieldname": "monthly_paid",
+   "fieldtype": "Check",
+   "label": "Paid monthly",
+   "default": "1"
+  },
+  {
+   "fieldname": "notice_given_on",
+   "fieldtype": "Date",
+   "label": "Written notice given on"
+  },
+  {
+   "fieldname": "notice_waived",
+   "fieldtype": "Check",
+   "label": "Notice waived by agreement"
+  },
+  {
+   "fieldname": "notice_required_days",
+   "fieldtype": "Int",
+   "label": "Notice required (days)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "notice_shortfall_days",
+   "fieldtype": "Int",
+   "label": "Notice not given (days)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "notice_pay_to_employee",
+   "fieldtype": "Currency",
+   "label": "Notice pay to employee (Art. 76)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "notice_pay_by_employee",
+   "fieldtype": "Currency",
+   "label": "Notice pay by employee (Art. 76)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb_notice",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "unlawful_termination",
+   "fieldtype": "Check",
+   "label": "Ended without a valid reason (Art. 77)"
+  },
+  {
+   "fieldname": "contract_end_date",
+   "fieldtype": "Date",
+   "label": "Fixed-term contract end date",
+   "description": "For Art. 77 on a fixed-term contract: the rest of the term."
+  },
+  {
+   "fieldname": "agreed_compensation",
+   "fieldtype": "Currency",
+   "label": "Compensation set in the contract",
+   "description": "Replaces the Art. 77 formula when the contract sets it."
+  },
+  {
+   "fieldname": "art77_amount",
+   "fieldtype": "Currency",
+   "label": "Art. 77 compensation",
+   "read_only": 1
   },
   {
    "fieldname": "links_section",

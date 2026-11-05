@@ -1,0 +1,138 @@
+{
+ "doctype": "DocType",
+ "name": "AlphaX Localization Rule",
+ "module": "AlphaX HR",
+ "custom": 0,
+ "engine": "InnoDB",
+ "creation": "2026-11-02 00:00:00.000000",
+ "modified": "2026-11-02 00:00:00.000000",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "field_order": [
+  "rule_name",
+  "localization_group",
+  "enabled",
+  "kind",
+  "percent",
+  "effective_from",
+  "cb1",
+  "min_workers",
+  "min_wage",
+  "activity",
+  "source",
+  "last_reviewed",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "rule_name",
+   "fieldtype": "Data",
+   "label": "Rule",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "localization_group",
+   "fieldtype": "Data",
+   "label": "Saudization group",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1"
+  },
+  {
+   "fieldname": "kind",
+   "fieldtype": "Select",
+   "label": "Kind",
+   "options": "Saudis only\nMinimum Saudi %",
+   "default": "Minimum Saudi %",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "percent",
+   "fieldtype": "Percent",
+   "label": "Minimum Saudi %",
+   "depends_on": "eval:doc.kind==\"Minimum Saudi %\"",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "effective_from",
+   "fieldtype": "Date",
+   "label": "In force from",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "min_workers",
+   "fieldtype": "Int",
+   "label": "Applies from workers in the group",
+   "default": "0",
+   "description": "The rule applies only when the establishment has at least this many workers in these professions. 0 = always."
+  },
+  {
+   "fieldname": "min_wage",
+   "fieldtype": "Currency",
+   "label": "Saudi counts from wage",
+   "description": "A Saudi below this wage does not count for this rule. 0 = no minimum."
+  },
+  {
+   "fieldname": "activity",
+   "fieldtype": "Data",
+   "label": "Only for activity",
+   "description": "e.g. hospital pharmacy, tourism establishments"
+  },
+  {
+   "fieldname": "source",
+   "fieldtype": "Data",
+   "label": "Source (link)",
+   "options": "URL"
+  },
+  {
+   "fieldname": "last_reviewed",
+   "fieldtype": "Date",
+   "label": "Last checked"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "HR Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "HR User",
+   "read": 1
+  }
+ ],
+ "sort_field": "effective_from",
+ "sort_order": "DESC",
+ "track_changes": 1,
+ "states": [],
+ "autoname": "field:rule_name",
+ "title_field": "rule_name"
+}

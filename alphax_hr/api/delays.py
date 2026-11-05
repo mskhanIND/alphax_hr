@@ -121,7 +121,7 @@ def _log_time(item, stage):
 def plan(item, policy, now=None):
 	"""Where this item stands on its policy's timeline: stage, the next step and when it is due."""
 	esc, rem, rej = cint(policy.escalate_after_days), cint(policy.remind_after_days), cint(policy.reject_after_days)
-	auto = cint(policy.auto_reject) and item.doctype in ap.AUTO_REJECT
+	auto = cint(policy.auto_reject) and ap.can_auto_reject(item.doctype, item.what)
 	e_log, r_log = _log_time(item, "Escalation"), _log_time(item, "HR reminder")
 	emp = item.employee
 	if r_log:
@@ -239,7 +239,7 @@ def remind(doctype: str, name: str):
 	if policy:
 		alerts._log_reminder(item.doctype, item.name, "Escalation", item.approver, set()) if not _log_time(item, "Escalation") else None
 		p = frappe._dict(reject_on=ap.add_working_days(now_datetime(), policy.reject_after_days, item.employee)
-						 if cint(policy.auto_reject) and item.doctype in ap.AUTO_REJECT else None)
+						 if cint(policy.auto_reject) and ap.can_auto_reject(item.doctype, item.what) else None)
 	to = _send_hr_reminder(item, p)
 	return {"sent_to": len(to), "reject_on": str(p.reject_on) if p and p.reject_on else None}
 

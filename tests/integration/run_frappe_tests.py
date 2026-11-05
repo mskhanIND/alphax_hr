@@ -2832,6 +2832,129 @@ def run(site):
         check("holiday lists: new list with Saudi public holidays, extend into next year with personal week-off lists, move an Eid date, plain-language status",
               holiday_lists)
 
+        def labour_law_controls():
+            from alphax_hr import absence_warnings as aw
+            from alphax_hr import saudization as sz
+            from alphax_hr.api import compliance, designations as dsg, requests as rq, settlements as fs
+            frappe.set_user("Administrator")
+            sz.seed()
+            emp2 = f["e_emp2"]
+            old_des = frappe.db.get_value("Employee", emp2, "designation")
+            des_names = ["AXT HR Officer", "AXT Sr Accountant", "AXT Senior Accountant"]
+            made_att, made_req = [], []
+            try:
+                # Nitaqat: official schedule, the SAR 3,000 floor and the forecast
+                frappe.set_user(f["hr"])
+                n = compliance.overview()["nitaqat"]
+                assert n["schedule_followed"] and n["full_count_wage"] == 4000 and [x["full_count_wage"] for x in n["forecast"]] == [5000, 6000], n
+                # professions: HR officer is Saudis only; a non-Saudi cannot be given it
+                frappe.set_user("Administrator")
+                for d in des_names:
+                    if not frappe.db.exists("Designation", d):
+                        frappe.get_doc({"doctype": "Designation", "designation_name": d}).insert()
+                frappe.set_user(f["hr"])
+                ov = dsg.overview()
+                row = next(r for r in ov["designations"] if r["name"] == "AXT Senior Accountant")
+                assert row["suggestion"] == "Accountant", row
+                dsg.map_designations({"AXT HR Officer": "Human Resources Specialist", "AXT Senior Accountant": "Accountant"})
+                assert frappe.db.get_value("Designation", "AXT HR Officer", "alphax_localization") == "Administrative support"
+                assert not frappe.db.get_value("Employee", emp2, "alphax_is_saudi")
+                emp = frappe.get_doc("Employee", emp2)
+                emp.designation = "AXT HR Officer"
+                expect_error(lambda: emp.save(), frappe.ValidationError)
+                dsg.save_control("Warn")
+                frappe.db.set_value("Employee", emp2, "designation", "AXT HR Officer")
+                dsg.save_control("Block")
+                ov = dsg.overview()
+                assert next(r for r in ov["designations"] if r["name"] == "AXT HR Officer")["violation"]
+                grp = next(g for g in ov["report"] if g["group"] == "Administrative support")
+                assert grp["status"] == "Violation" and any(v["name"] == emp2 for v in grp["violations"])
+                # counts as Saudi (mother of a Saudi / child of a Saudi woman): allowed
+                frappe.db.set_value("Employee", emp2, "alphax_counts_as_saudi", 1)
+                assert not next(r for r in dsg.overview()["designations"] if r["name"] == "AXT HR Officer")["violation"]
+                frappe.db.set_value("Employee", emp2, "alphax_counts_as_saudi", 0)
+                # duplicates merged: employees move to the kept designation
+                frappe.db.set_value("Employee", emp2, "designation", "AXT Sr Accountant")
+                dsg.merge(["AXT Sr Accountant"], "AXT Senior Accountant")
+                assert frappe.db.get_value("Employee", emp2, "designation") == "AXT Senior Accountant"
+                assert not frappe.db.exists("Designation", "AXT Sr Accountant")
+                # resignation: never rejected automatically, accepted after 30 days without an answer
+                frappe.set_user(f["emp2"])
+                res = rq.create("Resignation", {"last_working_day": add_days(nowdate(), 40)})
+                made_req.append(res["name"])
+                frappe.set_user("Administrator")
+                from alphax_hr import approval_policy as ap
+                assert not ap.can_auto_reject("AlphaX Request", "Resignation") and ap.can_auto_reject("AlphaX Request", "General Request")
+                rq.accept_overdue_resignations()
+                assert frappe.db.get_value("AlphaX Request", res["name"], "status") == "Pending Manager"
+                frappe.db.set_value("AlphaX Request", res["name"], "creation", frappe.utils.add_to_date(frappe.utils.now_datetime(), days=-31), update_modified=False)
+                rq.accept_overdue_resignations()
+                r = frappe.db.get_value("AlphaX Request", res["name"], ["status", "hr_note"], as_dict=True)
+                assert r.status in ("Approved", "Completed") and "30 days" in r.hr_note, r
+                frappe.db.set_value("Employee", emp2, {"relieving_date": None, "resignation_letter_date": None})
+                # Article 80: 10 working days absent in a row -> a draft written warning, once
+                hl = frappe.db.get_value("Employee", emp2, "holiday_list") or frappe.db.get_value("Company", COMPANY, "default_holiday_list")
+                hol = set(str(x) for x in frappe.get_all("Holiday", filters={"parent": hl}, pluck="holiday_date"))
+                d, days = getdate(add_days(nowdate(), -1)), []
+                while len(days) < 11:
+                    if str(d) not in hol and not frappe.db.exists("Attendance", {"employee": emp2, "attendance_date": d, "docstatus": ["<", 2]}) \
+                            and not frappe.db.exists("Leave Application", {"employee": emp2, "from_date": ["<=", d], "to_date": [">=", d], "docstatus": ["<", 2]}):
+                        days.append(d)
+                    elif str(d) not in hol:
+                        days = []  # keep them consecutive
+                    d = getdate(add_days(d, -1))
+                for day in days:
+                    a = frappe.get_doc({"doctype": "Attendance", "employee": emp2, "attendance_date": day, "status": "Absent", "company": COMPANY})
+                    a.insert(ignore_permissions=True)
+                    a.submit()
+                    made_att.append(a.name)
+                rows = {r["name"]: r for r in aw.compute()}
+                assert rows[emp2]["consecutive"] >= 10 and "consecutive_warning" in rows[emp2]["due"], rows.get(emp2)
+                aw.daily()
+                key = rows[emp2]["keys"]["consecutive"]
+                assert frappe.db.count("AlphaX Penalty", {"source_ref": key, "status": "Draft"}) == 1
+                aw.daily()
+                assert frappe.db.count("AlphaX Penalty", {"source_ref": key}) == 1
+                frappe.set_user(f["hr"])
+                assert any(r["name"] == emp2 and r["warning_consecutive"] for r in aw.watch(refresh=1)["rows"])
+                # settlement: employer gave 30 of 60 days' notice, and ended the contract without a valid reason
+                frappe.set_user("Administrator")
+                for n in frappe.get_all("AlphaX Final Settlement", filters={"employee": emp2}, pluck="name"):
+                    frappe.delete_doc("AlphaX Final Settlement", n, force=1, ignore_permissions=True)
+                frappe.set_user(f["hr"])
+                exit_on = add_days(nowdate(), 30)
+                st = fs.prepare(emp2, exit_on, "Termination by employer", "Separate payment", monthly_wage=6000, leave_days=0, advances=0,
+                                notice={"contract_type": "Indefinite", "notice_given_on": nowdate()})
+                assert (st["notice_required_days"], st["notice_shortfall_days"], st["notice_pay_to_employee"]) == (60, 30, 6000), st
+                net0 = st["net_amount"]
+                st = fs.prepare(emp2, exit_on, "Termination by employer", "Separate payment", monthly_wage=6000, leave_days=0, advances=0,
+                                name=st["name"], notice={"unlawful_termination": 1})
+                assert st["art77_amount"] >= 12000 and abs(st["net_amount"] - net0 - st["art77_amount"]) < 0.01, st
+                st = fs.prepare(emp2, exit_on, "Resignation", "Separate payment", monthly_wage=6000, leave_days=0, advances=0, name=st["name"],
+                                notice={"unlawful_termination": 0, "notice_given_on": add_days(nowdate(), 20)})
+                assert st["notice_required_days"] == 30 and st["notice_pay_by_employee"] == 4000 and st["notice_pay_to_employee"] == 0, st
+            finally:
+                frappe.set_user("Administrator")
+                for n in made_att:
+                    a = frappe.get_doc("Attendance", n)
+                    if a.docstatus == 1:
+                        a.cancel()
+                    frappe.delete_doc("Attendance", n, force=True, ignore_permissions=True)
+                frappe.db.delete("AlphaX Penalty", {"employee": emp2, "source_ref": ["like", "art80-%"]})
+                frappe.db.delete("AlphaX Approval Reminder", {"reference_doctype": "Employee", "reference_name": emp2})
+                for n in made_req:
+                    frappe.db.delete("AlphaX Request", {"name": n})
+                for n in frappe.get_all("AlphaX Final Settlement", filters={"employee": emp2}, pluck="name"):
+                    frappe.delete_doc("AlphaX Final Settlement", n, force=1, ignore_permissions=True)
+                frappe.db.set_value("Employee", emp2, {"designation": old_des, "alphax_counts_as_saudi": 0, "relieving_date": None})
+                for d in des_names:
+                    if frappe.db.exists("Designation", d):
+                        frappe.delete_doc("Designation", d, force=True)
+                frappe.db.set_single_value("AlphaX HR Settings", "saudi_only_control", "Block")
+                frappe.cache().delete_value(aw.CACHE_KEY)
+        check("labour law: Nitaqat schedule and forecast, Saudis-only professions blocked, designations mapped and merged, resignation accepted after 30 days, Article 80 warning drafted once, notice pay and Art. 77 compensation",
+              labour_law_controls)
+
         def approval_policies():
             from alphax_hr import approval_policy as ap
             from alphax_hr.api import approval_policies as apol, approvals, delays, requests as rq

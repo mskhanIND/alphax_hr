@@ -33,6 +33,13 @@ KINDS = {"AlphaX Request": "Requests", "Leave Application": "Leave", "Expense Cl
 MULTI_LEVEL = ("AlphaX Request", "Leave Application")
 AUTO_REJECT = ("AlphaX Request", "Leave Application", "Expense Claim", "Shift Request", "AlphaX Leave Plan")
 RESUME = "From the level that rejected"
+# Never rejected automatically: a resignation not answered within 30 days counts as accepted (Saudi Labor Law).
+NEVER_AUTO_REJECT = {"Resignation"}
+RESIGNATION_ACCEPT_DAYS = 30
+
+
+def can_auto_reject(doctype, what=None):
+	return doctype in AUTO_REJECT and not (doctype == "AlphaX Request" and what in NEVER_AUTO_REJECT)
 DEFAULT_COMMENT = ("Rejected automatically: no decision was taken within the approval time. "
 				   "If you still need it, raise the request again.")
 LEVEL_TYPES = ("Reporting manager", "Manager's manager", "Specific user", "HR", "Management")
@@ -377,6 +384,8 @@ def add_working_days(since, days, employee=None):
 # ----------------------------------------------------------------------------- automatic rejection
 def auto_reject(item, policy):
 	"""Reject one waiting document because nobody decided in time; the policy's comment explains why."""
+	if not can_auto_reject(item.doctype, item.get("what")):
+		return False
 	comment = (policy.rejection_comment or _(DEFAULT_COMMENT)).strip()
 	dt, name = item.doctype, item.name
 	doc = frappe.get_doc(dt, name)

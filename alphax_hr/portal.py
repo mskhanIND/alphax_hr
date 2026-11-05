@@ -109,7 +109,7 @@ PAGES = [
 	("/me/performance", "My performance", "My file"), ("/me/warnings", "My warnings", "My file"),
 	("/approvals", "Approvals", "Manager"), ("/approval-delays", "Approval delays", "Manager"), ("/my-team", "My team", "Manager"),
 	("/team-appraisals", "Team appraisals", "Manager"), ("/vacation-planner", "Vacation planner", "Manager"), ("/team", "Team Calendar", "Manager"),
-	("/people", "Employees", "People"), ("/people/bulk-update", "Bulk update", "People"), ("/announcements", "Announcements", "People"),
+	("/people", "Employees", "People"), ("/designations", "Designations & Saudization", "People"), ("/people/bulk-update", "Bulk update", "People"), ("/announcements", "Announcements", "People"),
 	("/knowledge", "Help centre articles", "People"), ("/requests", "Requests", "People"), ("/penalties", "Warnings & penalties", "People"),
 	("/appraisals", "Appraisals", "People"), ("/compliance", "Compliance", "People"),
 	("/roster", "Roster", "Time & attendance"), ("/attendance", "Attendance", "Time & attendance"),

@@ -16,7 +16,9 @@ function SettlementForm({ initial, onClose }: { initial: any; onClose: () => voi
   const qc = useQueryClient()
   const [f, setF] = useState<any>(initial ?? { exit_date: todayISO(), reason: REASONS[2], mode: 'With payroll' })
   const set = (k: string, v: any) => setF((s: any) => ({ ...s, [k]: v }))
-  const m = useMutation({ mutationFn: () => api.prepareSettlement({ ...f, name: f.name || undefined }),
+  const notice = { contract_type: f.contract_type, monthly_paid: f.monthly_paid ?? 1, notice_given_on: f.notice_given_on, notice_waived: f.notice_waived,
+    unlawful_termination: f.unlawful_termination, contract_end_date: f.contract_end_date, agreed_compensation: f.agreed_compensation }
+  const m = useMutation({ mutationFn: () => api.prepareSettlement({ ...f, notice, name: f.name || undefined }),
     onSuccess: (d) => { setF(d); qc.invalidateQueries({ queryKey: ['settlements'] }) } })
   const num = (k: string, label: string, hint?: string) => (
     <Field label={label} hint={hint}><Input type="number" step="0.01" value={f[k] ?? ''} onChange={(e) => set(k, e.target.value === '' ? null : e.target.value)} /></Field>
@@ -39,6 +41,19 @@ function SettlementForm({ initial, onClose }: { initial: any; onClose: () => voi
           {num('other_earnings', t('Other earnings'))}
           {num('advances', t('Advances / loans to recover'), t('Empty = outstanding advances'))}
           {num('other_deductions', t('Other deductions'))}
+          <div className="grid gap-3 rounded-xl border border-line p-3">
+            <div className="text-sm font-semibold">{t('Notice and compensation (Art. 75–77)')}</div>
+            <Field label={t('Contract')}><Select value={f.contract_type ?? ''} onChange={(e) => set('contract_type', e.target.value || null)}>
+              <option value="">{t('From the employee record')}</option><option value="Indefinite">{t('Indefinite')}</option><option value="Fixed term">{t('Fixed term')}</option></Select></Field>
+            <Field label={t('Written notice given on')} hint={t('Empty = no notice given')}><Input type="date" value={f.notice_given_on ?? ''} onChange={(e) => set('notice_given_on', e.target.value || null)} /></Field>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-4 accent-[var(--color-brand)]" checked={f.monthly_paid === undefined || f.monthly_paid === null ? true : !!Number(f.monthly_paid)} onChange={(e) => set('monthly_paid', e.target.checked ? 1 : 0)} />{t('Paid monthly')}</label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-4 accent-[var(--color-brand)]" checked={!!Number(f.notice_waived)} onChange={(e) => set('notice_waived', e.target.checked ? 1 : 0)} />{t('Notice waived by agreement')}</label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" className="size-4 accent-[var(--color-brand)]" checked={!!Number(f.unlawful_termination)} onChange={(e) => set('unlawful_termination', e.target.checked ? 1 : 0)} />{t('Ended without a valid reason (Art. 77)')}</label>
+            {!!Number(f.unlawful_termination) && <>
+              {(f.contract_type ?? r?.contract_type) === 'Fixed term' && <Field label={t('Fixed-term contract end date')}><Input type="date" value={f.contract_end_date ?? ''} onChange={(e) => set('contract_end_date', e.target.value || null)} /></Field>}
+              {num('agreed_compensation', t('Compensation set in the contract'), t('Empty = Art. 77 formula'))}
+            </>}
+          </div>
           <Field label={t('Notes')}><Textarea value={f.notes ?? ''} onChange={(e) => set('notes', e.target.value)} /></Field>
         </div>
         <div>
@@ -52,6 +67,10 @@ function SettlementForm({ initial, onClose }: { initial: any; onClose: () => voi
                 <tr><td className="py-1.5">{t('Leave encashment')} ({r.leave_days})</td><td className="text-end">{fmtMoney(r.leave_amount, lang)}</td></tr>
                 {r.unpaid_salary > 0 && <tr><td className="py-1.5">{t('Unpaid salary')}</td><td className="text-end">{fmtMoney(r.unpaid_salary, lang)}</td></tr>}
                 {r.other_earnings > 0 && <tr><td className="py-1.5">{t('Other earnings')}</td><td className="text-end">{fmtMoney(r.other_earnings, lang)}</td></tr>}
+                {r.notice_pay_to_employee > 0 && <tr><td className="py-1.5">{t('Notice not given by the employer (Art. 76)')} ({r.notice_shortfall_days} {t('days')})</td><td className="text-end">{fmtMoney(r.notice_pay_to_employee, lang)}</td></tr>}
+                {r.art77_amount > 0 && <tr><td className="py-1.5">{t('Compensation, ended without a valid reason (Art. 77)')}</td><td className="text-end">{fmtMoney(r.art77_amount, lang)}</td></tr>}
+                {r.notice_pay_by_employee > 0 && <tr><td className="py-1.5">{t('Notice not given by the employee (Art. 76)')} ({r.notice_shortfall_days} {t('days')})</td><td className="text-end">-{fmtMoney(r.notice_pay_by_employee, lang)}</td></tr>}
+                {r.notice_required_days > 0 && !r.notice_shortfall_days && <tr><td className="py-1.5 text-muted" colSpan={2}>{t('Notice of {0} days was given.').replace('{0}', String(r.notice_required_days))}</td></tr>}
                 {r.advances > 0 && <tr><td className="py-1.5">{t('Advances / loans to recover')}</td><td className="text-end">-{fmtMoney(r.advances, lang)}</td></tr>}
                 {r.other_deductions > 0 && <tr><td className="py-1.5">{t('Other deductions')}</td><td className="text-end">-{fmtMoney(r.other_deductions, lang)}</td></tr>}
                 <tr className="font-semibold"><td className="py-2">{t('Net settlement')}</td><td className="text-end">{fmtMoney(r.net_amount, lang)}</td></tr>

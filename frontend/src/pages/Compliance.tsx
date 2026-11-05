@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Badge, Card, ErrorBox, PageHeader, Spinner, Stat } from '../components/ui'
 import { api } from '../lib/api'
-import { fmtDate, fmtNumber } from '../lib/format'
+import { fmtDate, fmtMoney, fmtNumber } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 
 const BUCKETS = ['expired', 'within_30', 'within_60', 'within_90', 'valid', 'missing'] as const
@@ -51,6 +51,9 @@ export default function Compliance() {
               <div className="flex justify-between"><dt className="text-muted">{t('Headcount')}</dt><dd className="font-medium tabular-nums">{fmtNumber(n.total_employees, lang)}</dd></div>
               <div className="flex justify-between"><dt className="text-muted">{t('Saudis')}</dt><dd className="font-medium tabular-nums">{fmtNumber(n.saudi_headcount, lang)}</dd></div>
               <div className="flex justify-between"><dt className="text-muted">{t('Weighted Saudis')}</dt><dd className="font-medium tabular-nums">{fmtNumber(n.saudi_weighted, lang, 1)}</dd></div>
+              <div className="flex justify-between"><dt className="text-muted">{t('Counts fully from')}</dt><dd className="font-medium tabular-nums">{fmtMoney(n.full_count_wage, lang)}</dd></div>
+              {n.saudis_counted_partially > 0 && <div className="flex justify-between"><dt className="text-muted">{t('Counted as half')}</dt><dd className="font-medium tabular-nums">{fmtNumber(n.saudis_counted_partially, lang)}</dd></div>}
+              {n.saudis_not_counted > 0 && <div className="flex justify-between"><dt className="text-muted">{t('Not counted (below SAR 3,000)')}</dt><dd className="font-medium tabular-nums text-red-700">{fmtNumber(n.saudis_not_counted, lang)}</dd></div>}
               {n.target_percent != null && <div className="flex justify-between"><dt className="text-muted">{t('Target')}</dt><dd className="font-medium tabular-nums">{n.target_percent}%</dd></div>}
               {n.saudis_needed_for_target != null && <div className="flex justify-between"><dt className="text-muted">{t('Saudis needed for target')}</dt><dd className="font-semibold tabular-nums text-brand">{fmtNumber(n.saudis_needed_for_target, lang)}</dd></div>}
             </dl>
@@ -74,6 +77,32 @@ export default function Compliance() {
           </div>
         </Card>
       </div>
+      {n.forecast?.length > 0 && (
+        <Card title={t('Nitaqat wage changes ahead')} subtitle={t('The wage at which a Saudi counts fully rises by royal directive. This is not a minimum wage: a Saudi paid less still works for you but counts as half (SAR 3,000 and above) or not at all.')}>
+          <div className="grid gap-4 md:grid-cols-2">
+            {n.forecast.map((f: any) => (
+              <div key={f.date} className="rounded-xl border border-line p-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <div className="font-semibold">{fmtDate(f.date, lang)} · {fmtMoney(f.full_count_wage, lang)}</div>
+                  <div className={clsx('text-sm', f.after.saudization_percent < n.saudization_percent ? 'text-red-700' : 'text-muted')}>
+                    {t('Saudization')} {n.saudization_percent}% → <b>{f.after.saudization_percent}%</b></div>
+                </div>
+                <p className="mt-1 text-sm">{f.stop_counting_fully.length
+                  ? t('{0} Saudis stop counting fully unless their wage rises.').replace('{0}', String(f.stop_counting_fully.length))
+                  : t('No Saudi drops below the new wage.')}</p>
+                {f.saudis_below > 0 && <p className="text-sm text-muted">{t('Raising every Saudi below it costs about {0} a month.').replace('{0}', fmtMoney(f.monthly_cost_all_below, lang))}</p>}
+                {f.stop_counting_fully.length > 0 && (
+                  <ul className="mt-2 max-h-48 divide-y divide-line overflow-auto text-sm">
+                    {f.stop_counting_fully.map((e: any) => (
+                      <li key={e.name} className="flex justify-between gap-2 py-1"><span>{e.employee_name}</span><span className="tabular-nums text-muted">{fmtMoney(e.wage, lang)} · +{fmtMoney(e.raise_needed, lang)}</span></li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
       <Card title={t('Data readiness')} subtitle={t('Fix these so leave, payroll and compliance work correctly.')}>
         <ul className="divide-y divide-line">
           {d.checks.map((c: any) => (

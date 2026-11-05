@@ -1,0 +1,43 @@
+{
+ "custom_fields": [
+  {
+   "doctype": "Custom Field",
+   "dt": "Designation",
+   "module": "AlphaX HR",
+   "name": "Designation-alphax_profession",
+   "fieldname": "alphax_profession",
+   "fieldtype": "Link",
+   "label": "Standard profession",
+   "insert_after": "designation_name",
+   "creation": "2026-11-05 00:00:00.000000",
+   "modified": "2026-11-05 00:00:00.000000",
+   "owner": "Administrator",
+   "modified_by": "Administrator",
+   "is_system_generated": 0,
+   "options": "AlphaX Profession",
+   "description": "The standard profession this designation is (Saudi occupational classification). Used for Saudization rules."
+  },
+  {
+   "doctype": "Custom Field",
+   "dt": "Designation",
+   "module": "AlphaX HR",
+   "name": "Designation-alphax_localization",
+   "fieldname": "alphax_localization",
+   "fieldtype": "Data",
+   "label": "Saudization group",
+   "insert_after": "alphax_profession",
+   "creation": "2026-11-05 00:00:00.000000",
+   "modified": "2026-11-05 00:00:00.000000",
+   "owner": "Administrator",
+   "modified_by": "Administrator",
+   "is_system_generated": 0,
+   "fetch_from": "alphax_profession.localization_group",
+   "read_only": 1
+  }
+ ],
+ "property_setters": [],
+ "custom_perms": [],
+ "doctype": "Designation",
+ "links": [],
+ "sync_on_migrate": 1
+}

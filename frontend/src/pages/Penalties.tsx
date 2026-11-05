@@ -102,6 +102,39 @@ function Schedule() {
   )
 }
 
+function Article80() {
+  const { t, lang } = useI18n()
+  const q = useQuery<any>({ queryKey: ['art80'], queryFn: () => api.absenceWatch() })
+  if (!q.data?.rows?.length) return null
+  const th = q.data.thresholds
+  const state = (w: any) => w ? `${t('Warning')}: ${t(w.status)}` : null
+  return (
+    <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+      <div className="font-semibold text-amber-900">{t('Absence without a valid reason (Article 80)')}</div>
+      <p className="mt-1 text-sm text-amber-900">{t('A written warning is required after {0} days in a row or {1} days in a contract year; only then can the contract be ended without the award past {2} in a row or {3} in the year. Drafts are prepared automatically — issue them on time.')
+        .replace('{0}', th.consecutive_warning).replace('{1}', th.year_warning).replace('{2}', th.consecutive_limit).replace('{3}', th.year_limit)}</p>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-xs text-amber-900/70"><tr>
+            <th className="pb-1 text-start">{t('Employee')}</th><th className="pb-1 text-start">{t('In a row')}</th>
+            <th className="pb-1 text-start">{t('This contract year')}</th><th className="pb-1 text-start">{t('Warning')}</th>
+          </tr></thead>
+          <tbody className="divide-y divide-amber-200">
+            {q.data.rows.map((r: any) => (
+              <tr key={r.name}>
+                <td className="py-1.5 pe-3 font-medium">{r.employee_name}</td>
+                <td className={`py-1.5 pe-3 tabular-nums ${r.consecutive >= th.consecutive_warning ? 'font-semibold text-red-700' : ''}`}>{r.consecutive}{r.consecutive_from ? ` · ${t('since')} ${fmtDate(r.consecutive_from, lang)}` : ''}</td>
+                <td className={`py-1.5 pe-3 tabular-nums ${r.year_total >= th.year_warning ? 'font-semibold text-red-700' : ''}`}>{r.year_total} <span className="text-xs text-muted">({t('from')} {fmtDate(r.year_start, lang)})</span></td>
+                <td className="py-1.5 text-xs">{[state(r.warning_consecutive), state(r.warning_year)].filter(Boolean).join(' · ') || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 export default function Penalties() {
   const { t, lang } = useI18n()
   const qc = useQueryClient()
@@ -131,6 +164,7 @@ export default function Penalties() {
           </div>
           <Button onClick={() => { setSeed(null); setOpen(true) }}><Plus className="size-4" />{t('New penalty')}</Button>
         </div>} />
+      {tab === 'list' && <Article80 />}
       {tab !== 'schedule' && (
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <Button size="sm" variant="secondary" onClick={() => setMonth(shiftMonth(month, -1))}>‹</Button>

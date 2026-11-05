@@ -2,6 +2,18 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.26.0 — 2026-11-05
+
+- **Designations & Saudization** (new HR page, *People*):
+  - Standard profession catalogue (Saudi occupational classification titles, Arabic names, other titles) and every designation mapped to one; suggestions by matching the designation name (English or Arabic); accept one or all; merge duplicate designations (all records move); create designations from standard professions.
+  - Dated Saudization rules by profession group, shipped as checked on 05-11-2026 and editable: administrative support 100% (HR, personnel, secretarial, translation, data entry …), tourism front office 100%, marketing 60% (SAR 5,500), sales 60%, procurement 70%, project management 70% (from 14-02-2027), accounting 40% → 50% → 60% → 70%, engineering 30%, technical engineering 30%, pharmacy, dentistry — each with its start date, worker threshold and the wage from which a Saudi counts.
+  - Control: a non-Saudi cannot be given a Saudis-only profession (Block / Warn / Allow); existing cases are listed. *Counts as Saudi (Nitaqat)* on the employee for mothers of Saudis and children of Saudi women.
+  - Saudization by profession: workers, Saudis counted, required %, how many more Saudis are needed now and at the next phase.
+- **Nitaqat estimate:** follows the official schedule — Saudis count fully from SAR 4,000, SAR 5,000 from 25-04-2027 and SAR 6,000 from 25-04-2028; below SAR 3,000 a Saudi no longer counts (it was counted as half). Compliance shows who stops counting fully at each date, the ratio afterwards and the monthly cost of raising them.
+- **Resignations** are never rejected automatically by an approval policy; one left unanswered for 30 days is accepted automatically, as the law treats it.
+- **Article 80 watch:** absences without a valid reason from the attendance register; at 10 days in a row or 20 in the contract year a draft written warning is prepared and HR and the manager are told; past 15 / 30 HR is told whether a dismissal without award is possible (only if the warning was issued). Shown on *Warnings & penalties*.
+- **Final settlement:** notice under Art. 75 (30 days employee / 60 employer, indefinite contracts), notice pay under Art. 76 either way (the resignation request counts as the written notice), and Art. 77 compensation for ending a contract without a valid reason (15 days' wage per year, the rest of a fixed term, at least two months, or the amount set in the contract); on the statement PDF.
+
 ## 0.25.0 — 2026-11-05
 
 - **Holiday lists in AlphaX** (*Time & attendance → Holiday lists*), no desk needed:

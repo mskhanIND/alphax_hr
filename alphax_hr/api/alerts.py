@@ -25,6 +25,7 @@ DEFAULTS = {
 	"Approval escalation": (1, 1, 1, 0, 1, 1, 0),
 	"HR reminder": (1, 1, 1, 0, 1, 0, 0),
 	"Automatic rejection": (1, 1, 1, 1, 1, 0, 0),
+	"Absence warning": (1, 1, 1, 0, 1, 1, 0),
 	"Announcement": (1, 0, 1, 1, 0, 0, 0),
 }
 FLAGS = ("enabled", "email", "app", "to_employee", "to_manager", "to_hr", "minutes")
@@ -41,6 +42,7 @@ HELP = {
 	"Approval escalation": "To the approver's manager (and HR) after the escalation hours.",
 	"HR reminder": "To the approver, from HR (sent by an approval policy or from Approval delays).",
 	"Automatic rejection": "To the employee and the approver when an approval policy rejects a request nobody decided.",
+	"Absence warning": "To HR and the manager when an Article 80 warning is due (10 days in a row, 20 in a contract year) or a limit is passed.",
 	"Announcement": "When HR publishes an announcement.",
 }
 

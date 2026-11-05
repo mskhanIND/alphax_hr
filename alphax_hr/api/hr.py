@@ -25,7 +25,7 @@ SECTIONS = {
 						 "expense_approver", "shift_request_approver"],
 	"contact": ["cell_number", "personal_email", "company_email", "prefered_contact_email", "user_id",
 				"current_address", "permanent_address", "person_to_be_contacted", "emergency_phone_number", "relation"],
-	"saudi": ["alphax_is_saudi", "alphax_gosi_registration_date", "alphax_gosi_number", "alphax_iqama_number",
+	"saudi": ["alphax_is_saudi", "alphax_counts_as_saudi", "alphax_gosi_registration_date", "alphax_gosi_number", "alphax_iqama_number",
 			  "alphax_iqama_expiry", "alphax_work_permit_expiry",
 			  "alphax_medical_insurance_expiry", "passport_number", "valid_upto", "alphax_annual_leave_days"],
 	"bank": ["salary_mode", "bank_name", "bank_ac_no", "iban"],

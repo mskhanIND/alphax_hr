@@ -66,6 +66,7 @@ export function useNav(): { group: string; items: NavItem[] }[] {
       group: t('People'),
       items: [
         { to: '/people', label: t('Employees'), icon: <Users className="size-5" /> },
+        { to: '/designations', label: t('Designations & Saudization'), icon: <BadgePercent className="size-5" /> },
         { to: '/people?view=org', label: t('Org chart'), icon: <Network className="size-5" /> },
         { to: '/people/bulk-update', label: t('Bulk update'), icon: <Users className="size-5" /> },
         { to: '/announcements', label: t('Announcements'), icon: <Megaphone className="size-5" /> },

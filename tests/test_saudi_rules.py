@@ -132,6 +132,30 @@ class NitaqatTests(unittest.TestCase):
     def test_empty(self):
         self.assertEqual(nitaqat.ratio([])["saudization_percent"], 0.0)
 
+    def test_below_3000_does_not_count(self):
+        rows = [{"is_saudi": True, "wage": 2500}, {"is_saudi": True, "wage": 3500}, {"is_saudi": True, "wage": 4500},
+                {"is_saudi": False, "wage": 4000}]
+        r = nitaqat.ratio(rows)
+        self.assertEqual(r["saudi_weighted"], 1.5)
+        self.assertEqual((r["saudis_not_counted"], r["saudis_counted_partially"]), (1, 1))
+
+    def test_schedule(self):
+        self.assertEqual(nitaqat.full_count_wage_on(date(2026, 11, 5)), 4000)
+        self.assertEqual(nitaqat.full_count_wage_on(date(2027, 4, 24)), 4000)
+        self.assertEqual(nitaqat.full_count_wage_on(date(2027, 4, 25)), 5000)
+        self.assertEqual(nitaqat.full_count_wage_on(date(2028, 4, 25)), 6000)
+        self.assertEqual([w for _, w in nitaqat.upcoming(date(2026, 11, 5))], [5000, 6000])
+
+    def test_forecast(self):
+        rows = [{"is_saudi": True, "wage": 4500, "name": "A"}, {"is_saudi": True, "wage": 5500, "name": "B"},
+                {"is_saudi": False, "wage": 3000, "name": "C"}]
+        f = nitaqat.forecast(rows, nitaqat.NitaqatPolicy(), nitaqat.upcoming(date(2026, 11, 5)))
+        self.assertEqual([x["name"] for x in f[0]["stop_counting_fully"]], ["A"])
+        self.assertEqual(f[0]["stop_counting_fully"][0]["raise_needed"], 500)
+        self.assertEqual(f[0]["after"]["saudi_weighted"], 1.5)
+        self.assertEqual(sorted(x["name"] for x in f[1]["stop_counting_fully"]), ["A", "B"])
+        self.assertEqual(f[1]["monthly_cost_all_below"], 2000)
+
 
 class DocumentTests(unittest.TestCase):
     def test_buckets(self):
@@ -145,3 +169,51 @@ class DocumentTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Article80Tests(unittest.TestCase):
+    def test_contract_year(self):
+        from alphax_hr.saudi import absence
+        self.assertEqual(absence.contract_year_start(date(2021, 3, 10), date(2026, 11, 5)), date(2026, 3, 10))
+        self.assertEqual(absence.contract_year_start(date(2021, 12, 10), date(2026, 11, 5)), date(2025, 12, 10))
+        self.assertEqual(absence.contract_year_start(date(2020, 2, 29), date(2026, 11, 5)), date(2026, 2, 28))
+
+    def test_runs_bridge_holidays(self):
+        from datetime import timedelta
+        from alphax_hr.saudi import absence
+        start = date(2026, 10, 1)
+        codes = ["P", "A", "A", "H", "H", "A", "A", "A", "A", "A", "H", "A", "A", "A"]
+        days = [(start + timedelta(days=i), c) for i, c in enumerate(codes)]
+        s = absence.evaluate(days, date(2026, 1, 1))
+        self.assertEqual((s["consecutive"], s["consecutive_from"], s["year_total"]), (10, date(2026, 10, 2), 10))
+        self.assertEqual(absence.stage(s), ["consecutive_warning"])
+        days.append((start + timedelta(days=14), "L"))  # leave breaks the run
+        self.assertEqual(absence.evaluate(days, date(2026, 1, 1))["consecutive"], 0)
+
+    def test_unmarked_days_count_only_when_asked(self):
+        from alphax_hr.saudi import absence
+        days = [(date(2026, 10, i), "?") for i in range(1, 22)]
+        self.assertEqual(absence.evaluate(days, date(2026, 1, 1))["year_total"], 0)
+        s = absence.evaluate(days, date(2026, 1, 1), counts_unmarked=True)
+        self.assertEqual(absence.stage(s), ["consecutive_warning", "year_warning", "consecutive_limit"])
+
+
+class TerminationTests(unittest.TestCase):
+    def test_notice(self):
+        from alphax_hr.saudi import termination as t
+        self.assertEqual(t.notice_days(t.INDEFINITE, t.EMPLOYEE), 30)
+        self.assertEqual(t.notice_days(t.INDEFINITE, t.EMPLOYER), 60)
+        self.assertEqual(t.notice_days(t.INDEFINITE, t.EMPLOYER, monthly_paid=False), 30)
+        self.assertEqual(t.notice_days(t.FIXED, t.EMPLOYER), 0)
+        self.assertEqual(t.notice_shortfall(60, date(2026, 10, 1), date(2026, 10, 31)), 30)
+        self.assertEqual(t.notice_shortfall(30, None, date(2026, 10, 31)), 30)
+        self.assertEqual(t.notice_shortfall(30, date(2026, 9, 1), date(2026, 10, 31)), 0)
+        self.assertEqual(t.notice_pay(9000, 30), 9000.0)
+
+    def test_article77(self):
+        from alphax_hr.saudi import termination as t
+        self.assertEqual(t.article77(t.INDEFINITE, 6000, 10), 30000.0)       # 15 days x 10 years
+        self.assertEqual(t.article77(t.INDEFINITE, 6000, 1), 12000.0)        # at least two months
+        self.assertEqual(t.article77(t.FIXED, 6000, 2, remaining_days=270), 54000.0)
+        self.assertEqual(t.article77(t.FIXED, 6000, 2, remaining_days=20), 12000.0)
+        self.assertEqual(t.article77(t.INDEFINITE, 6000, 10, agreed=50000), 50000.0)

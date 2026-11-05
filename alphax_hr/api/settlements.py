@@ -11,6 +11,7 @@ from frappe.utils import cint, flt, getdate, now_datetime, nowdate
 
 from alphax_hr.api._common import require_hr, require_hr_manager, settings
 from alphax_hr.saudi import eosb as eosb_rules
+from alphax_hr.saudi import termination as term
 
 COMPONENTS = {
 	"eosb": ("End of Service Benefit", "EOSB", "Earning"),
@@ -20,7 +21,11 @@ COMPONENTS = {
 }
 FIELDS = ("name", "employee", "employee_name", "company", "reason", "exit_date", "mode", "status", "date_of_joining", "service_years",
 		  "monthly_wage", "wage_source", "eosb_amount", "eosb_factor", "leave_days", "leave_amount", "unpaid_days", "unpaid_salary",
-		  "other_earnings", "advances", "other_deductions", "net_amount", "additional_salaries", "approved_by", "approved_on", "paid_on", "notes")
+		  "other_earnings", "advances", "other_deductions", "net_amount", "additional_salaries", "approved_by", "approved_on", "paid_on", "notes",
+		  "contract_type", "monthly_paid", "notice_given_on", "notice_waived", "notice_required_days", "notice_shortfall_days",
+		  "notice_pay_to_employee", "notice_pay_by_employee", "unlawful_termination", "contract_end_date", "agreed_compensation", "art77_amount")
+NOTICE_FIELDS = ("contract_type", "monthly_paid", "notice_given_on", "notice_waived", "unlawful_termination", "contract_end_date",
+				 "agreed_compensation")
 
 
 def _component(key):
@@ -80,9 +85,42 @@ def compute(doc):
 	doc.unpaid_salary = flt(flt(doc.unpaid_days) * daily, 2) if doc.mode == "Separate payment" else 0
 	if doc.advances is None:
 		doc.advances = outstanding_advances(doc.employee)
+	_notice_and_compensation(doc, emp)
 	doc.net_amount = flt(flt(doc.eosb_amount) + flt(doc.leave_amount) + flt(doc.unpaid_salary) + flt(doc.other_earnings)
-						 - flt(doc.advances) - flt(doc.other_deductions), 2)
+						 + flt(doc.notice_pay_to_employee) + flt(doc.art77_amount)
+						 - flt(doc.advances) - flt(doc.other_deductions) - flt(doc.notice_pay_by_employee), 2)
 	return doc
+
+
+def _notice_and_compensation(doc, emp):
+	"""Art. 75/76 notice pay and Art. 77 compensation."""
+	if not doc.get("contract_type"):
+		doc.contract_type = term.FIXED if emp.get("contract_end_date") else term.INDEFINITE
+	if doc.contract_type == term.FIXED and not doc.get("contract_end_date") and emp.get("contract_end_date"):
+		doc.contract_end_date = emp.contract_end_date
+	by = {eosb_rules.RESIGNATION: term.EMPLOYEE, eosb_rules.RESIGNATION_ART87: term.EMPLOYEE,
+		  eosb_rules.TERMINATION: term.EMPLOYER}.get(doc.reason)  # Art. 80 dismissal and contract end: no notice
+	required = term.notice_days(doc.contract_type, by, bool(cint(doc.monthly_paid if doc.monthly_paid is not None else 1))) if by else 0
+	if by == term.EMPLOYEE and not doc.get("notice_given_on"):
+		# the resignation request is the written notice
+		sent = frappe.get_all("AlphaX Request", filters={"employee": doc.employee, "request_type": "Resignation",
+														 "status": ["not in", ["Rejected", "Cancelled"]]}, pluck="creation",
+							  order_by="creation desc", limit=1)
+		if sent:
+			doc.notice_given_on = getdate(sent[0])
+	# Without a notice date the notice is not judged (enter the exit date itself when no notice was given).
+	short = 0 if cint(doc.notice_waived) or not doc.get("notice_given_on") else term.notice_shortfall(
+		required, getdate(doc.notice_given_on), getdate(doc.exit_date))
+	pay = term.notice_pay(doc.monthly_wage, short)
+	doc.notice_required_days, doc.notice_shortfall_days = required, short
+	doc.notice_pay_to_employee = pay if by == term.EMPLOYER else 0
+	doc.notice_pay_by_employee = pay if by == term.EMPLOYEE else 0
+	doc.art77_amount = 0
+	if cint(doc.unlawful_termination):
+		if doc.reason == eosb_rules.DISMISSAL_ART80:
+			frappe.throw(_("A dismissal under Article 80 is for a valid reason: untick 'Ended without a valid reason', or change the reason."))
+		remaining = (getdate(doc.contract_end_date) - getdate(doc.exit_date)).days if doc.get("contract_end_date") else 0
+		doc.art77_amount = term.article77(doc.contract_type, doc.monthly_wage, flt(doc.service_years), remaining, flt(doc.agreed_compensation))
 
 
 def _out(doc):
@@ -94,7 +132,8 @@ def _out(doc):
 
 @frappe.whitelist(methods=["POST"])
 def prepare(employee: str, exit_date: str, reason: str, mode: str = "With payroll", monthly_wage: float | str | None = None, leave_days: float | str | None = None, unpaid_days: int | str = 0,
-			other_earnings: float | str = 0, other_deductions: float | str = 0, advances: str | dict | list | None = None, notes: str | None = None, name: str | None = None):
+			other_earnings: float | str = 0, other_deductions: float | str = 0, advances: str | dict | list | None = None, notes: str | None = None, name: str | None = None,
+			notice: str | dict | None = None):
 	"""Create or update a draft settlement and calculate it."""
 	require_hr()
 	frappe.get_doc("Employee", employee).check_permission("read")
@@ -114,6 +153,12 @@ def prepare(employee: str, exit_date: str, reason: str, mode: str = "With payrol
 				"leave_days": flt(leave_days) if leave_days not in (None, "") else None,
 				"unpaid_days": flt(unpaid_days), "other_earnings": flt(other_earnings), "other_deductions": flt(other_deductions),
 				"advances": flt(advances) if advances not in (None, "") else None, "notes": notes})
+	from alphax_hr.api._common import parse_json
+
+	n = parse_json(notice) or {}
+	for k in NOTICE_FIELDS:
+		if k in n:
+			doc.set(k, n[k] if n[k] not in ("",) else None)
 	if doc.monthly_wage is None:
 		doc.wage_source = None
 	compute(doc)
@@ -157,8 +202,9 @@ def approve(name: str):
 		from alphax_hr.api._common import require_salary_structure
 
 		require_salary_structure(doc.employee, doc.exit_date, _("Choose 'Separate payment' or assign a salary first."))
-		for key, amount in (("eosb", doc.eosb_amount), ("leave", doc.leave_amount), ("earn", doc.other_earnings),
-							("deduct", flt(doc.advances) + flt(doc.other_deductions))):
+		for key, amount in (("eosb", doc.eosb_amount), ("leave", doc.leave_amount),
+							("earn", flt(doc.other_earnings) + flt(doc.notice_pay_to_employee) + flt(doc.art77_amount)),
+							("deduct", flt(doc.advances) + flt(doc.other_deductions) + flt(doc.notice_pay_by_employee))):
 			if flt(amount) > 0:
 				created.append(_additional(doc, key, amount))
 	emp = frappe.get_doc("Employee", doc.employee)

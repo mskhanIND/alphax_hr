@@ -23,6 +23,9 @@
  {% if d.unpaid_salary %}<tr><td>Unpaid salary ({{ d.unpaid_days }} days)</td><td class="num">{{ fmt(d.unpaid_salary) }}</td><td class="ar">رواتب مستحقة</td></tr>{% endif %}
  {% if d.other_earnings %}<tr><td>Other earnings</td><td class="num">{{ fmt(d.other_earnings) }}</td><td class="ar">مستحقات أخرى</td></tr>{% endif %}
  {% if d.advances %}<tr><td>Less: advances / loans</td><td class="num">-{{ fmt(d.advances) }}</td><td class="ar">يخصم: السلف والقروض</td></tr>{% endif %}
+ {% if d.notice_pay_to_employee %}<tr><td>Notice pay — notice not given by the employer (Art. 76, {{ d.notice_shortfall_days }} days)</td><td class="num">{{ fmt(d.notice_pay_to_employee) }}</td><td class="ar">بدل مهلة الإشعار (المادة 76)</td></tr>{% endif %}
+ {% if d.art77_amount %}<tr><td>Compensation — ended without a valid reason (Art. 77)</td><td class="num">{{ fmt(d.art77_amount) }}</td><td class="ar">تعويض الإنهاء لغير سبب مشروع (المادة 77)</td></tr>{% endif %}
+ {% if d.notice_pay_by_employee %}<tr><td>Less: notice not given by the employee (Art. 76, {{ d.notice_shortfall_days }} days)</td><td class="num">-{{ fmt(d.notice_pay_by_employee) }}</td><td class="ar">يخصم: مهلة الإشعار غير المقدمة (المادة 76)</td></tr>{% endif %}
  {% if d.other_deductions %}<tr><td>Less: other deductions</td><td class="num">-{{ fmt(d.other_deductions) }}</td><td class="ar">يخصم: استقطاعات أخرى</td></tr>{% endif %}
  <tr class="total"><td>Net settlement</td><td class="num">{{ fmt(d.net_amount) }}</td><td class="ar">صافي المخالصة</td></tr>
 </table>

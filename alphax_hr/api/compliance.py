@@ -10,7 +10,7 @@ from alphax_hr.saudi import documents, nitaqat
 
 EMP_FIELDS = ["name", "employee_name", "department", "alphax_is_saudi", "alphax_gosi_registration_date",
 			  "alphax_iqama_number", "alphax_iqama_expiry", "alphax_work_permit_expiry", "valid_upto",
-			  "contract_end_date", "holiday_list", "leave_approver", "user_id", "date_of_joining"]
+			  "contract_end_date", "holiday_list", "leave_approver", "user_id", "date_of_joining", "alphax_counts_as_saudi", "designation"]
 
 
 def _active(company=None):
@@ -37,14 +37,21 @@ def overview(company: str | None = None):
 
 	# Nitaqat estimate
 	wage_map = wages([e.name for e in emps], get_first_day(today), get_last_day(today))
+	override = flt(conf.nitaqat_full_count_wage)
+	if override == 4000:  # the old default: follow the official schedule instead
+		override = 0
 	policy = nitaqat.NitaqatPolicy(
-		full_count_wage=flt(conf.nitaqat_full_count_wage) or 4000,
+		full_count_wage=override or nitaqat.full_count_wage_on(today),
 		partial_weight=flt(conf.nitaqat_partial_weight) if conf.nitaqat_partial_weight is not None else 0.5,
 		target_percent=flt(conf.nitaqat_target_percent) or None,
+		min_count_wage=flt(conf.get("nitaqat_min_count_wage")) or nitaqat.MIN_COUNT_WAGE,
 	)
-	nit = nitaqat.ratio(
-		[{"is_saudi": bool(e.get("alphax_is_saudi")), "wage": wage_map[e.name]["basic"] + wage_map[e.name]["housing"]}
-		 for e in emps], policy)
+	nit_rows = [{"is_saudi": bool(e.get("alphax_is_saudi")) or bool(e.get("alphax_counts_as_saudi")),
+				 "wage": wage_map[e.name]["basic"] + wage_map[e.name]["housing"], "name": e.name, "employee_name": e.employee_name}
+				for e in emps]
+	nit = nitaqat.ratio(nit_rows, policy)
+	nit["schedule_followed"] = not override
+	nit["forecast"] = [] if override else nitaqat.forecast(nit_rows, policy, nitaqat.upcoming(today))
 
 	def expiry(rows, field):
 		return documents.summarize(

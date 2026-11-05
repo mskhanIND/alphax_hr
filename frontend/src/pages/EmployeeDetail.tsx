@@ -50,7 +50,7 @@ function Editor({ field, value, onChange, spec }: { field: string; value: any; o
 }
 
 // Fields that only apply to non-Saudis (Iqama holders); hidden for Saudi nationals.
-const NON_SAUDI_ONLY = new Set(['alphax_iqama_expiry', 'alphax_border_number', 'alphax_work_permit_expiry', 'passport_number', 'valid_upto'])
+const NON_SAUDI_ONLY = new Set(['alphax_counts_as_saudi', 'alphax_iqama_expiry', 'alphax_border_number', 'alphax_work_permit_expiry', 'passport_number', 'valid_upto'])
 const COLLAPSE_KEY = 'alphax-profile-collapsed'
 
 function loadCollapsed(): Set<string> {

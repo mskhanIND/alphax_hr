@@ -292,6 +292,34 @@ def auto_reject(doc, comment):
 	notify.request_decided(doc)
 
 
+def accept_overdue_resignations():
+	"""Daily. A resignation without an answer 30 days after it was submitted counts as accepted (Saudi Labor Law)."""
+	from alphax_hr import approval_policy as ap
+
+	cutoff = add_days(now_datetime(), -ap.RESIGNATION_ACCEPT_DAYS)
+	for name in frappe.get_all("AlphaX Request", filters={"request_type": ["in", list(ap.NEVER_AUTO_REJECT)], "status": ["in", list(OPEN)],
+														  "creation": ["<=", cutoff]}, pluck="name"):
+		try:
+			doc = frappe.get_doc("AlphaX Request", name)
+			t = frappe.get_doc("AlphaX Request Type", doc.request_type)
+			note = _("Accepted automatically: no answer within {0} days of submission, so the resignation counts as accepted "
+					 "under the Saudi Labor Law.").format(ap.RESIGNATION_ACCEPT_DAYS)
+			doc.add_comment("Comment", frappe.utils.escape_html(note))
+			doc.status, doc.hr_note = "Approved", note
+			doc.decided_by, doc.decided_on = None, now_datetime()
+			doc.flags.alphax_engine = True
+			doc.save(ignore_permissions=True)
+			ap.close("AlphaX Request", name, "Approved")
+			_on_approved(doc, t)
+			from alphax_hr.api import notify
+
+			notify.request_decided(doc)
+			frappe.db.commit()
+		except Exception:  # noqa: BLE001 - one bad record must not stop the rest
+			frappe.db.rollback()
+			frappe.log_error(title=f"AlphaX resignation auto-accept: {name}")
+
+
 @frappe.whitelist()
 def raise_again(name: str):
 	"""What the form needs to raise a rejected request again (type, details, reason)."""
@@ -337,7 +365,8 @@ def _check_resignation(employee, data):
 	if lwd < getdate(nowdate()):
 		frappe.throw(_("The last working day cannot be in the past."))
 	if (lwd - getdate(nowdate())).days + 1 < notice:
-		data["short_notice"] = _("Shorter than the {0}-day notice period (Art. 75).").format(notice)
+		data["short_notice"] = _("Shorter than the {0}-day notice period (Art. 75): the days not given may be deducted from "
+								 "the final settlement (Art. 76) unless the company agrees.").format(notice)
 
 
 def _check_permission(employee, t, data):

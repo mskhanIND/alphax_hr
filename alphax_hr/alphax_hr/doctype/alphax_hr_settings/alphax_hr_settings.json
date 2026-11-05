@@ -32,6 +32,8 @@
   "component_map",
   "nitaqat_section",
   "nitaqat_full_count_wage",
+  "nitaqat_min_count_wage",
+  "saudi_only_control",
   "nitaqat_partial_weight",
   "nitaqat_target_percent",
   "leave_section",
@@ -243,8 +245,23 @@
   {
    "fieldname": "nitaqat_full_count_wage",
    "fieldtype": "Currency",
-   "label": "Saudi Counts Fully From Wage",
-   "default": "4000"
+   "label": "Saudi Counts Fully From Wage (override)",
+   "default": "0",
+   "description": "Leave 0 to follow the official schedule: SAR 4,000, SAR 5,000 from 25-04-2027, SAR 6,000 from 25-04-2028."
+  },
+  {
+   "fieldname": "nitaqat_min_count_wage",
+   "fieldtype": "Currency",
+   "label": "Saudi Not Counted Below Wage",
+   "default": "3000"
+  },
+  {
+   "fieldname": "saudi_only_control",
+   "fieldtype": "Select",
+   "label": "Saudis-only professions",
+   "options": "Block\nWarn\nOff",
+   "default": "Block",
+   "description": "When a non-Saudi is given a designation whose profession is reserved for Saudis."
   },
   {
    "fieldname": "nitaqat_partial_weight",
