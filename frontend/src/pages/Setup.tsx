@@ -51,7 +51,7 @@ function FixPanel({ check, onClose, onDone }: { check: any; onClose: () => void;
                   {q.data.suggestions?.length > 0 && <div className="mt-1 flex flex-wrap gap-1 text-xs">{q.data.suggestions.map((sg: string) => <button key={sg} className="rounded bg-white px-2 py-0.5 ring-1 ring-line hover:bg-brand-50" onClick={() => setValue(sg)}>{sg}</button>)}</div>}
                 </div>
                 <Button disabled={!sel.size || !value} loading={fix.isPending} onClick={() => fix.mutate()}>{t('Apply')}</Button>
-                {check.key === 'holiday_lists' && <a href="/app/holiday-list/new" target="_blank" rel="noreferrer" className="text-sm text-brand hover:underline">{t('Create a holiday list')}</a>}
+                {check.key === 'holiday_lists' && <Link to="/holiday-lists" className="text-sm font-medium text-brand hover:underline">{t('Extend or create a holiday list')}</Link>}
               </div>
             )}
             {fix.data && <p className="mb-3 text-sm text-emerald-700">{t('Updated')}: {fix.data.done.length}{fix.data.failed.length ? ` · ${t('Not updated')}: ${fix.data.failed.length}` : ''}</p>}
@@ -299,7 +299,7 @@ function SettingsForm() {
                 <Link to="/notifications-setup"><Button variant="secondary">{t('Notifications')}</Button></Link>
                 <Link to="/compliance"><Button variant="secondary">{t('Data readiness')}</Button></Link>
                 <a href="/app/gosi-contribution-rate" target="_blank" rel="noreferrer"><Button variant="secondary">{t('GOSI rates')}</Button></a>
-                <a href="/app/holiday-list" target="_blank" rel="noreferrer"><Button variant="secondary">{t('Holiday lists')}</Button></a>
+                <Link to="/holiday-lists"><Button variant="secondary">{t('Holiday lists')}</Button></Link>
                 <a href="/app/alphax-hr-settings" target="_blank" rel="noreferrer"><Button variant="secondary">{t('System health (Desk)')}</Button></a>
               </div>
             </Card>

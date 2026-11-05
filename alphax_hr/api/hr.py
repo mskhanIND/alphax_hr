@@ -63,6 +63,21 @@ def _site_required_fields(meta):
 	return out
 
 
+def _frappe_missing(doc):
+	"""Fields Frappe itself would refuse to save without, including those mandatory only under a condition
+	(mandatory_depends_on) or set by other apps. Top-level input fields only."""
+	out = []
+	try:
+		pairs = doc._get_missing_mandatory_fields()
+	except Exception:  # noqa: BLE001 - a broken condition on the site must not hide the profile
+		return out
+	for fieldname, _msg in pairs:
+		df = doc.meta.get_field(fieldname)
+		if df and df.fieldtype in INPUT_TYPES and df.fieldtype != "Check" and fieldname not in out:
+			out.append(fieldname)
+	return out
+
+
 def _field_spec(df):
 	spec = {"fieldname": df.fieldname, "label": _(df.label or df.fieldname), "fieldtype": df.fieldtype,
 			"reqd": cint(df.reqd), "default": df.default, "description": _(df.description) if df.description else None}
@@ -105,7 +120,9 @@ def saudi_value(df):
 
 def _editable(meta):
 	"""Curated sections + whatever this site makes mandatory."""
-	return EDITABLE | {df.fieldname for df in _site_required_fields(meta)}
+	conditional = {df.fieldname for df in meta.fields if df.get("mandatory_depends_on") and df.fieldtype in INPUT_TYPES
+				   and not cint(df.permlevel) and not df.fetch_from and df.fieldname not in NEVER_EDIT}
+	return EDITABLE | conditional | {df.fieldname for df in _site_required_fields(meta)}
 
 
 # Legacy (CentralHRMS / IRSAA) Employee fields that hold the same data as an
@@ -345,6 +362,8 @@ def employee(name: str):
 	curated = {f for names in SECTIONS.values() for f in names}
 	mirrors = _mirror_map(meta)
 	extra = [df for df in _site_required_fields(meta) if df.fieldname not in curated and df.fieldname not in mirrors]
+	conditional = [meta.get_field(f) for f in _frappe_missing(doc)]  # e.g. mandatory only for some employees
+	extra += [df for df in conditional if df.fieldname not in curated and df.fieldname not in mirrors and df not in extra]
 	if extra:
 		sections["company_required"] = {df.fieldname: doc.get(df.fieldname) for df in extra}
 	labels = {f: _(meta.get_label(f)) for names in SECTIONS.values() for f in _fields(meta, names)}
@@ -358,6 +377,10 @@ def employee(name: str):
 				continue  # ticked or not is an answer; the legacy field is filled from it when the employee is saved
 			if target not in missing_fields:
 				missing_fields.append(target)
+	for f in _frappe_missing(doc):
+		target = mirrors.get(f, f)
+		if target not in missing_fields:
+			missing_fields.append(target)
 	missing_required = [labels.get(f) or _(meta.get_label(f)) for f in missing_fields]
 	today = getdate(nowdate())
 	docs = {
@@ -502,8 +525,17 @@ def update_employee(name: str, data: str | dict | list, modified: str):
 	changes = {k: v for k, v in payload.items() if k in allowed and doc.meta.has_field(k)}
 	if not changes:
 		frappe.throw(_("Nothing to update."))
+	before = set(_frappe_missing(doc))
 	doc.update(changes)
 	_sync_legacy_saudi_flag(doc, changes)
+	after = _frappe_missing(doc)
+	emptied = [f for f in after if f not in before]
+	if emptied:
+		frappe.throw(_("Please fill in: {0}").format(", ".join(_(doc.meta.get_label(f)) for f in emptied)), title=_("Missing information"))
+	if after:
+		# Gaps that were already there (often in another section) must not block this edit; they stay flagged on the
+		# profile until filled.
+		doc.flags.ignore_mandatory = True
 	doc.save()
 	return employee(doc.name)
 

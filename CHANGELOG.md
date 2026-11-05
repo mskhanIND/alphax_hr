@@ -2,6 +2,16 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.25.0 — 2026-11-05
+
+- **Holiday lists in AlphaX** (*Time & attendance → Holiday lists*), no desk needed:
+  - Each list with its status (current, ends soon, ended), weekly off days, public holidays, employees and company defaults; problems explained in plain words with the fix next to them.
+  - **Extend** a list into next year in one click: same weekly offs and the Saudi public holidays; employees stay on the list and their own week-off lists (roster) are extended too.
+  - **New list** for a year with the weekly off days and the Saudi public holidays filled in (Founding Day, Eid al-Fitr, Day of Arafah, Eid al-Adha, National Day); Eid dates are estimates and can be moved when announced; set it as company default or on employees in the same step.
+  - Edit public holidays (weekly offs kept); set a list on employees or as company default.
+  - HR status: each employee's holiday-list problem is spelled out (ended on …, ends in N days, no list and no company default), with a link to Holiday lists instead of the desk.
+- **Employee profile:** gaps in other sections no longer block saving a section (no more jumping between sections); an edit that empties a mandatory field is still refused. *Fill now* opens one form with every missing mandatory field and saves them together.
+
 ## 0.24.0 — 2026-11-05
 
 - **Approval policies** (new HR page, *Administration → Approval policies*), switched on per policy, for all approvals or only some (requests, leave, expenses, attendance corrections, shift changes, compensatory leave, vacation plans), and optionally only for a request or leave type, company, department, branch, designation, amount or number of days. The most specific enabled policy wins; without one, the reminder/escalation hours in Settings apply as before.

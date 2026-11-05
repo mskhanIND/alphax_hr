@@ -90,9 +90,11 @@ def _hr_checks(rows):
 		elif end < add_days(today, 60):
 			ending.add(hl)
 	_check(rows, g, "holiday_lists", ERROR if outdated else WARN if ending else OK,
-		   f"{outdated} {_('employees on an outdated list')}" if outdated else (", ".join(sorted(ending)) if ending else _("Current")),
-		   _("Create the current year's holiday list in the desk, then set it on these employees here."), "/app/holiday-list/new",
-		   fix="employees")
+		   f"{outdated} {_('employees without a valid list')}" if outdated else (
+			   _("Ending within {0} days: {1}").format(60, ", ".join(sorted(ending))) if ending else _("Current")),
+		   _("Leave days, attendance and payroll use each employee's holiday list. When it ends, leave after that date cannot be "
+			 "applied for. Extend the list into next year (one click), or create a new list and set it on the employees, in Holiday lists.")
+		   if (outdated or ending) else None, "/holiday-lists", fix="employees")
 	for key, field, label in (("leave_approver", "leave_approver", "No leave approver"),
 							  ("shift_approver", "shift_request_approver", "No shift approver"),
 							  ("reports_to", "reports_to", "No reporting manager"),
@@ -268,10 +270,23 @@ def affected(key: str):
 		rows = _active_employees([field, "company"])
 		if key == "holiday_lists":
 			ends = {h.name: getdate(h.to_date) for h in frappe.get_all("Holiday List", fields=["name", "to_date"])}
-			def bad(e):
+			soon = getdate(add_days(today, 60))
+
+			def note(e):
+				"""What is wrong for this employee, in words; None when the list is fine."""
 				hl = e.holiday_list or frappe.get_cached_value("Company", e.company, "default_holiday_list")
-				return not hl or hl not in ends or ends[hl] < add_days(today, 60)
-			rows = [{**e, "note": e.holiday_list or _("Company default")} for e in rows if bad(e)]
+				via = "" if e.holiday_list else " (" + _("company default") + ")"
+				if not hl:
+					return _("No holiday list, and the company has no default")
+				if hl not in ends:
+					return _("Holiday list '{0}' no longer exists").format(hl)
+				if ends[hl] < today:
+					return _("'{0}'{1} ended on {2}").format(hl, via, frappe.utils.formatdate(ends[hl]))
+				if ends[hl] < soon:
+					return _("'{0}'{1} ends on {2}, in {3} days").format(hl, via, frappe.utils.formatdate(ends[hl]), (ends[hl] - today).days)
+				return None
+
+			rows = [{**e, "note": n} for e in rows if (n := note(e))]
 			current = [h.name for h in frappe.get_all("Holiday List", filters={"from_date": ["<=", today], "to_date": [">=", today]},
 														fields=["name"]) if not frappe.db.get_value("Holiday List", h.name, "alphax_employee")]
 		else:

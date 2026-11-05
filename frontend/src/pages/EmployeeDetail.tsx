@@ -89,6 +89,12 @@ export default function EmployeeDetail() {
   useEffect(() => {
     if (params.get('print') && q.data) setTimeout(() => window.print(), 300)
   }, [params, q.data])
+  const [fill, setFill] = useState<Record<string, any>>({})
+  const fillAll = useMutation({
+    mutationFn: () => api.updateEmployee(id, fill, q.data.modified),
+    onSuccess: (d: any) => { qc.setQueryData(['employee', id], d); setFill({}); if (!d.missing_fields?.length) setPopup(false) },
+    onError: (err: any) => { if (/changed this employee|TimestampMismatch/i.test(String(err?.message ?? err))) q.refetch() },
+  })
   const save = useMutation({
     mutationFn: () => api.updateEmployee(id, draft, q.data.modified),
     onSuccess: (d) => { qc.setQueryData(['employee', id], d); setEditing(null); setDraft({}) },
@@ -129,16 +135,31 @@ export default function EmployeeDetail() {
         <div className="mb-4 flex flex-wrap items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 print:hidden">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <span className="flex-1">{t('Saving this employee needs these mandatory fields first')}: {e.missing_required.join(', ')}</span>
-          {e.can_write && <Button size="sm" onClick={() => fillNow()}>{t('Fill now')}</Button>}
+          {e.can_write && <Button size="sm" onClick={() => { setFill({}); fillAll.reset(); setPopup(true) }}>{t('Fill now')}</Button>}
         </div>
       )}
-      <Modal open={popup} onClose={() => setPopup(false)} title={<span className="flex items-center gap-2"><AlertTriangle className="size-5 text-red-600" />{t('Mandatory fields missing')}</span>}>
-        <p className="mb-3 text-sm text-muted">{t('This employee cannot be saved until these are filled. Click one to fill it.')}</p>
-        <ul className="flex flex-col gap-1">
-          {[...missing].map((f) => (
-            <li key={f}><button onClick={() => fillNow(f)} className="w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-start text-sm text-red-800 hover:bg-red-100">{e.labels[f] ?? f}</button></li>
+      <Modal open={popup} onClose={() => setPopup(false)} wide
+        title={<span className="flex items-center gap-2"><AlertTriangle className="size-5 text-red-600" />{t('Mandatory fields missing')}</span>}
+        footer={<>
+          <Button variant="secondary" onClick={() => setPopup(false)}>{t('Later')}</Button>
+          <Button loading={fillAll.isPending} disabled={!Object.values(fill).some((x) => x !== '' && x != null)} onClick={() => fillAll.mutate()}>{t('Save')}</Button>
+        </>}>
+        <p className="mb-3 text-sm text-muted">{t('Fill them here and save once. You can also save what you have now and finish the rest later — other sections can still be edited meanwhile.')}</p>
+        <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+          {[...missing].filter((f) => visible(f) && e.fields?.[f]).map((f) => (
+            <Field key={f} label={label(f) + ' *'}>
+              <Editor field={f} spec={e.fields[f]} value={f in fill ? fill[f] : ''} onChange={(nv) => setFill((x) => ({ ...x, [f]: nv }))} />
+            </Field>
           ))}
-        </ul>
+        </div>
+        {[...missing].some((f) => !e.fields?.[f]) && (
+          <ul className="mt-3 flex flex-col gap-1">
+            {[...missing].filter((f) => !e.fields?.[f]).map((f) => (
+              <li key={f}><button onClick={() => fillNow(f)} className="w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-start text-sm text-red-800 hover:bg-red-100">{e.labels[f] ?? f}</button></li>
+            ))}
+          </ul>
+        )}
+        {fillAll.error && <div className="mt-3"><ErrorBox error={fillAll.error} /></div>}
       </Modal>
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="flex flex-col gap-5">

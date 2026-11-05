@@ -2734,6 +2734,104 @@ def run(site):
         check("attendance devices: ZKTeco ADMS push, unknown device approval, users and commands, push API with token, Hikvision events, log file, database pull",
               attendance_devices)
 
+        def mandatory_gaps_do_not_block_other_sections():
+            from frappe.custom.doctype.property_setter.property_setter import make_property_setter
+            from alphax_hr.api import hr as hr_api
+            frappe.set_user("Administrator")
+            emp = f["e_emp2"]
+            keep = frappe.db.get_value("Employee", emp, ["blood_group", "marital_status", "cell_number"], as_dict=True)
+            frappe.db.set_value("Employee", emp, {"blood_group": None, "marital_status": None})
+            made = []
+            try:
+                # two mandatory fields in the personal section left empty (as on customer sites)
+                make_property_setter("Employee", "blood_group", "reqd", 1, "Check")
+                make_property_setter("Employee", "marital_status", "reqd", 1, "Check")
+                made += ["Employee-blood_group-reqd", "Employee-marital_status-reqd"]
+                frappe.clear_cache(doctype="Employee")
+                frappe.set_user(f["hr"])
+                e = hr_api.employee(emp)
+                assert {"blood_group", "marital_status"} <= set(e["missing_fields"]), e["missing_fields"]
+                # editing the contact section is not blocked by the gaps in the personal section
+                e = hr_api.update_employee(emp, {"cell_number": "+966500000123"}, e["modified"])
+                assert frappe.db.get_value("Employee", emp, "cell_number") == "+966500000123"
+                assert {"blood_group", "marital_status"} <= set(e["missing_fields"])
+                # fill them all at once
+                e = hr_api.update_employee(emp, {"blood_group": "O+", "marital_status": "Single"}, e["modified"])
+                assert not {"blood_group", "marital_status"} & set(e["missing_fields"]), e["missing_fields"]
+                # an edit that empties a mandatory field is still refused
+                expect_error(lambda: hr_api.update_employee(emp, {"blood_group": ""}, e["modified"]), frappe.ValidationError)
+            finally:
+                frappe.set_user("Administrator")
+                for n in made:
+                    if frappe.db.exists("Property Setter", n):
+                        frappe.delete_doc("Property Setter", n, force=True)
+                frappe.clear_cache(doctype="Employee")
+                frappe.db.set_value("Employee", emp, dict(keep))
+        check("employee profile: mandatory gaps shown, gaps elsewhere do not block a section save, emptying a mandatory field refused",
+              mandatory_gaps_do_not_block_other_sections)
+
+        def holiday_lists():
+            from alphax_hr import week_off
+            from alphax_hr.api import holidays as hol, setup as setup_api
+            frappe.set_user("Administrator")
+            emp = f["e_emp2"]
+            old = frappe.db.get_value("Employee", emp, "holiday_list")
+            name = "AXT HL " + frappe.generate_hash(length=4)
+            y = getdate(nowdate()).year
+            try:
+                frappe.set_user(f["hr"])
+                sug = hol.suggest(f"{y}-01-01", f"{y}-12-31", ["Friday", "Saturday"])
+                assert sug["library"] and any("National Day" in h["description"] for h in sug["public"]), sug
+                hol.create({"name": name, "from_date": f"{y}-01-01", "to_date": f"{y}-12-31", "weekly_off": ["Friday", "Saturday"],
+                            "public": sug["public"], "assign": {"employees": [emp]}})
+                doc = frappe.get_doc("Holiday List", name)
+                fridays = [h for h in doc.holidays if h.weekly_off and getdate(h.holiday_date).weekday() == 4]
+                assert len(fridays) >= 50 and any(str(h.holiday_date) == f"{y}-09-23" and not h.weekly_off for h in doc.holidays)
+                assert frappe.db.get_value("Employee", emp, "holiday_list") == name
+                assert hol.weekly_pattern(doc) == [4, 5]
+                ov = hol.overview()
+                row = next(x for x in ov["lists"] if x["name"] == name)
+                assert row["employees"] >= 1 and row["status"] in ("Current", "Ends soon"), row
+                # roster week-offs: the employee gets a personal list made from this one
+                frappe.set_user("Administrator")
+                personal = week_off.personal_list(emp).name
+                frappe.set_user(f["hr"])
+                # extend into next year: weekly offs, public holidays, and the personal list follow
+                hol.extend(name, f"{y + 1}-12-31")
+                doc = frappe.get_doc("Holiday List", name)
+                assert str(doc.to_date) == f"{y + 1}-12-31"
+                assert any(str(h.holiday_date) == f"{y + 1}-09-23" and not h.weekly_off for h in doc.holidays)
+                assert sum(1 for h in doc.holidays if h.weekly_off and getdate(h.holiday_date).year == y + 1) >= 100
+                p = frappe.get_doc("Holiday List", personal)
+                assert str(p.to_date) == f"{y + 1}-12-31" and any(str(h.holiday_date) == f"{y + 1}-09-23" for h in p.holidays)
+                expect_error(lambda: hol.extend(name, f"{y}-06-01"), frappe.ValidationError)
+                # the Eid date is announced: HR moves it
+                rows = hol.holidays_of(name)["holidays"]
+                rows = [r for r in rows if not r["description"].startswith("Eid al-Fitr") or not r["date"].startswith(str(y + 1))]
+                rows.append({"date": f"{y + 1}-03-10", "description": "Eid al-Fitr (announced)"})
+                out = hol.save_public(name, rows)
+                assert any(r["description"] == "Eid al-Fitr (announced)" for r in out["holidays"])
+                assert hol.weekly_pattern(frappe.get_doc("Holiday List", name)) == [4, 5]  # weekly offs kept
+                expect_error(lambda: hol.save_public(name, [{"date": f"{y + 5}-01-01", "description": "x"}]), frappe.ValidationError)
+                # HR status explains the problem in words
+                frappe.db.set_value("Holiday List", name, "to_date", add_days(nowdate(), 20))
+                frappe.db.set_value("Holiday List", personal, "to_date", add_days(nowdate(), 20))
+                frappe.set_user("Administrator")
+                a = setup_api.affected("holiday_lists")
+                note = next(r["note"] for r in a["rows"] if r["name"] == emp)
+                assert "ends on" in note and "in 20 days" in note, note
+                frappe.set_user(f["hr"])
+                assert any(p_["list"] == name and p_["action"] == "extend" for p_ in hol.overview()["problems"])
+                frappe.set_user(f["emp"])
+                expect_error(lambda: hol.overview(), frappe.PermissionError)
+            finally:
+                frappe.set_user("Administrator")
+                frappe.db.set_value("Employee", emp, "holiday_list", old)
+                for n in frappe.get_all("Holiday List", filters={"name": ["like", f"{name}%"]}, pluck="name"):
+                    frappe.delete_doc("Holiday List", n, force=True, ignore_permissions=True)
+        check("holiday lists: new list with Saudi public holidays, extend into next year with personal week-off lists, move an Eid date, plain-language status",
+              holiday_lists)
+
         def approval_policies():
             from alphax_hr import approval_policy as ap
             from alphax_hr.api import approval_policies as apol, approvals, delays, requests as rq

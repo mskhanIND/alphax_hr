@@ -84,6 +84,7 @@ export function useNav(): { group: string; items: NavItem[] }[] {
         { to: '/checkins', label: t('Check-ins & movements'), icon: <MapPin className="size-5" /> },
         { to: '/work-locations', label: t('Work locations'), icon: <LocateFixed className="size-5" /> },
         { to: '/attendance-devices', label: t('Attendance devices'), icon: <Fingerprint className="size-5" /> },
+        { to: '/holiday-lists', label: t('Holiday lists'), icon: <CalendarDays className="size-5" /> },
         { to: '/approval-policies', label: t('Approval policies'), icon: <GitBranch className="size-5" /> },
         { to: '/attendance-policies', label: t('Attendance exceptions'), icon: <ShieldCheck className="size-5" /> },
       ],

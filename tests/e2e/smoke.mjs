@@ -632,6 +632,15 @@ try {
       await page.getByText('E2E Policy').first().waitFor()
       await page.screenshot({ path: `${OUT}/38b-approval-policies.png`, fullPage: true })
     })
+    await step('holiday lists: lists with status, new list filled with Saudi public holidays', async () => {
+      await page.goto(`${BASE}/alphax/holiday-lists`)
+      await page.getByRole('heading', { name: 'Holiday lists' }).waitFor()
+      await page.getByRole('button', { name: 'New holiday list' }).first().click()
+      const dialog = page.getByRole('dialog')
+      await dialog.locator('input[value*="National Day"], input[value*="Founding Day"]').first().waitFor()
+      await page.screenshot({ path: `${OUT}/39-holiday-new.png`, fullPage: true })
+      await dialog.getByRole('button', { name: 'Cancel' }).click()
+    })
     await step('GOSI register', async () => {
       await page.goto(`${BASE}/alphax/payroll/gosi`)
       await page.getByText('Employer share').first().waitFor()
