@@ -62,11 +62,15 @@
   "db_emp_id_column",
   "db_emp_key_column",
   "db_emp_name_column",
+  "db_emp_no_column",
   "cb_dev_tbl",
   "db_device_table",
   "db_device_sn_column",
   "db_device_name_column",
   "db_device_active_column",
+  "db_device_ip_column",
+  "db_device_location_column",
+  "db_device_model_column",
   "source_active",
   "db_last_time",
   "pull_every"
@@ -394,6 +398,11 @@
    "label": "Name column"
   },
   {
+   "fieldname": "db_emp_no_column",
+   "fieldtype": "Data",
+   "label": "Employee number column"
+  },
+  {
    "fieldname": "cb_dev_tbl",
    "fieldtype": "Column Break"
   },
@@ -416,6 +425,21 @@
    "fieldname": "db_device_active_column",
    "fieldtype": "Data",
    "label": "Active column"
+  },
+  {
+   "fieldname": "db_device_ip_column",
+   "fieldtype": "Data",
+   "label": "IP address column"
+  },
+  {
+   "fieldname": "db_device_location_column",
+   "fieldtype": "Data",
+   "label": "Location column"
+  },
+  {
+   "fieldname": "db_device_model_column",
+   "fieldtype": "Data",
+   "label": "Model column"
   },
   {
    "fieldname": "source_active",

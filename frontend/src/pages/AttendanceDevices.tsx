@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { Activity, AlertTriangle, CalendarCheck, Cpu, Database, Pencil, Plus, RefreshCw, Search, Trash2, Upload, Users } from 'lucide-react'
+import { Activity, AlertTriangle, UserCheck, CalendarCheck, Cpu, Database, Pencil, Plus, RefreshCw, Search, Trash2, Upload, Users } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { LinkInput } from '../components/LinkInput'
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, Table, Tabs, Textarea } from '../components/ui'
@@ -125,8 +125,8 @@ function Enrolment({ device, onClose, onQueued }: { device: any; onClose: () => 
 
 const MAP_GROUPS: { table: string; label: string; required?: boolean; cols: [string, string, boolean?][] }[] = [
   { table: 'db_table', label: 'Punch table', required: true, cols: [['db_user_column', 'User ID', true], ['db_time_column', 'Punch time', true], ['db_state_column', 'IN/OUT'], ['db_sn_column', 'Device serial number']] },
-  { table: 'db_emp_table', label: 'People table (optional)', cols: [['db_emp_id_column', 'ID used in punches'], ['db_emp_key_column', 'Value to match employees by'], ['db_emp_name_column', 'Name']] },
-  { table: 'db_device_table', label: 'Devices table (optional)', cols: [['db_device_sn_column', 'Serial number'], ['db_device_name_column', 'Device name'], ['db_device_active_column', 'Active']] },
+  { table: 'db_emp_table', label: 'People table (optional)', cols: [['db_emp_id_column', 'ID used in punches'], ['db_emp_key_column', 'Value to match employees by'], ['db_emp_name_column', 'Name'], ['db_emp_no_column', 'Employee number']] },
+  { table: 'db_device_table', label: 'Devices table (optional)', cols: [['db_device_sn_column', 'Serial number'], ['db_device_name_column', 'Device name'], ['db_device_active_column', 'Active'], ['db_device_ip_column', 'IP address'], ['db_device_location_column', 'Location'], ['db_device_model_column', 'Model']] },
 ]
 const MAP_KEYS = MAP_GROUPS.flatMap((g) => [g.table, ...g.cols.map((c) => c[0])])
 
@@ -261,6 +261,70 @@ function SyncPanel({ device, can }: { device: any; can: boolean }) {
   )
 }
 
+const REASON_TONE: Record<string, string> = { Iqama: 'green', 'Employee number': 'green', 'Device ID': 'blue', Name: 'amber' }
+
+function MatchPeople({ device, onClose }: { device: any; onClose: () => void }) {
+  const { t } = useI18n()
+  const qc = useQueryClient()
+  const q = useQuery<any>({ queryKey: ['device-people', device.name], queryFn: () => api.devicePeople(device.name) })
+  const [pick, setPick] = useState<Record<string, string>>({})
+  const [on, setOn] = useState<Record<string, boolean>>({})
+  const [show, setShow] = useState('todo')
+  const [find, setFind] = useState('')
+  const rows: any[] = q.data?.people ?? []
+  const choice = (r: any) => pick[r.device_user] ?? r.suggest ?? ''
+  const checked = (r: any) => on[r.device_user] ?? (!!r.suggest && r.reason !== 'Name')
+  const visible = rows.filter((r) => (show === 'all' || (show === 'todo' ? !r.employee : !!r.employee))
+    && (!find || `${r.name ?? ''} ${r.device_user} ${r.emp_no ?? ''}`.toLowerCase().includes(find.toLowerCase())))
+  const chosen = rows.filter((r) => !r.employee && checked(r) && choice(r))
+  const link = useMutation({
+    mutationFn: () => api.deviceLinkPeople(device.name, chosen.map((r) => ({ device_user: r.device_user, employee: choice(r) }))),
+    onSuccess: () => { setPick({}); setOn({}); q.refetch(); qc.invalidateQueries({ queryKey: ['devices'] }); qc.invalidateQueries({ queryKey: ['device-unmatched'] }) },
+  })
+  return (
+    <Modal open wide onClose={onClose} title={`${t('Match employees')} · ${device.device_name}`}
+      footer={<><Button variant="secondary" onClick={onClose}>{t('Close')}</Button>
+        <Button loading={link.isPending} disabled={!chosen.length} onClick={() => link.mutate()}><UserCheck className="size-4" />{t('Link selected')} ({chosen.length})</Button></>}>
+      {q.isLoading ? <Spinner /> : q.error ? <ErrorBox error={q.error} onRetry={() => q.refetch()} /> : (
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-xl border border-line p-2"><div className="text-lg font-semibold text-emerald-700">{q.data.matched}</div><div className="text-xs text-muted">{t('Matched')}</div></div>
+            <div className="rounded-xl border border-line p-2"><div className="text-lg font-semibold text-brand">{q.data.suggested}</div><div className="text-xs text-muted">{t('Suggested')}</div></div>
+            <div className="rounded-xl border border-line p-2"><div className="text-lg font-semibold text-amber-700">{q.data.unmatched}</div><div className="text-xs text-muted">{t('To choose')}</div></div>
+          </div>
+          <p className="rounded-xl bg-brand-50 p-3 text-xs text-brand">{t('Linking a national ID stores it as the employee\'s Iqama; people without a national ID in the attendance database are linked by their device user ID. Their waiting punches are imported at once. Suggestions by name are not ticked: check them first.')}</p>
+          {!q.data.has_people_table && <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900">{t('No people table is set, so only device users with waiting punches are listed. Set it in Tables & columns to see names.')}</p>}
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={show} onChange={(e) => setShow(e.target.value)} className="!w-44">
+              <option value="todo">{t('Not matched')}</option><option value="done">{t('Matched')}</option><option value="all">{t('All')}</option></Select>
+            <Input value={find} onChange={(e) => setFind(e.target.value)} placeholder={t('Search name or ID')} className="!w-60" />
+            {visible.some((r) => !r.employee && choice(r)) && <Button size="sm" variant="ghost" onClick={() => setOn(Object.fromEntries(visible.filter((r) => !r.employee && choice(r)).map((r) => [r.device_user, true])))}>{t('Tick all shown')}</Button>}
+          </div>
+          <Table head={['', t('In the attendance database'), t('IDs'), t('Waiting punches'), t('AlphaX employee'), '']}>
+            {visible.slice(0, 300).map((r) => (
+              <tr key={r.device_user}>
+                <td>{!r.employee && <input type="checkbox" className="size-4 accent-[var(--color-brand)]" checked={checked(r) && !!choice(r)} disabled={!choice(r)}
+                  onChange={(e) => setOn((o) => ({ ...o, [r.device_user]: e.target.checked }))} />}</td>
+                <td><div className="font-medium">{r.name ?? <span className="text-muted">{t('No name')}</span>}</div>
+                  {r.problem && r.problem !== 'Iqama format' && <div className="text-[11px] text-amber-700">{t(r.problem)}</div>}</td>
+                <td className="font-mono text-xs">{r.national_id ? <div>{t('ID')} {r.national_id}</div> : null}<div className="text-muted">{t('User')} {r.id}{r.emp_no ? ` · ${t('No.')} ${r.emp_no}` : ''}</div></td>
+                <td className={clsx(r.waiting && 'text-amber-700')}>{r.waiting || '—'}</td>
+                <td className="min-w-56">{r.employee ? <span className="text-emerald-700">{r.employee_name}</span>
+                  : <LinkInput doctype="Employee" value={choice(r)} onChange={(x) => { setPick((p) => ({ ...p, [r.device_user]: x })); setOn((o) => ({ ...o, [r.device_user]: !!x })) }} />}</td>
+                <td>{!r.employee && r.reason && choice(r) === r.suggest && <Badge tone={REASON_TONE[r.reason] ?? 'gray'}>{t('by')} {t(r.reason)}</Badge>}</td>
+              </tr>
+            ))}
+          </Table>
+          {visible.length > 300 && <p className="text-xs text-muted">{t('Showing 300; search to narrow.')}</p>}
+          {link.data && <div className="text-sm"><span className="text-emerald-700">{t('Linked')}: {link.data.linked} · {t('Imported')}: {link.data.imported ?? 0}</span>
+            {link.data.problems?.length > 0 && <ul className="mt-1 list-disc ps-5 text-amber-800">{link.data.problems.map((x: string) => <li key={x}>{x}</li>)}</ul>}</div>}
+          {link.error && <ErrorBox error={link.error} />}
+        </div>
+      )}
+    </Modal>
+  )
+}
+
 function DeviceCard({ d, can, onEdit, terminals = [], onEditTerminal }: { d: any; can: boolean; onEdit: () => void; terminals?: any[]; onEditTerminal?: (x: any) => void }) {
   const { t, lang } = useI18n()
   const qc = useQueryClient()
@@ -294,6 +358,7 @@ function DeviceCard({ d, can, onEdit, terminals = [], onEditTerminal }: { d: any
   const [enrol, setEnrol] = useState(false)
   const [setup, setSetup] = useState(false)
   const [sync, setSync] = useState(false)
+  const [match, setMatch] = useState(false)
   const include = useMutation({ mutationFn: (x: { name: string; on: boolean }) => api.saveDevice({ enabled: x.on ? 1 : 0 }, x.name), onSuccess: (r) => qc.setQueryData(['devices'], r) })
   return (
     <Card>
@@ -334,6 +399,7 @@ function DeviceCard({ d, can, onEdit, terminals = [], onEditTerminal }: { d: any
             <Button size="sm" variant="secondary" loading={act.isPending && act.variables === 'test'} onClick={() => act.mutate('test')}>{t('Test connection')}</Button>
             <Button size="sm" variant="secondary" onClick={() => setSetup(true)}><Database className="size-4" />{t('Tables & columns')}</Button>
             <Button size="sm" variant="secondary" loading={act.isPending && act.variables === 'discover'} onClick={() => act.mutate('discover')}><Search className="size-4" />{t('Find terminals')}</Button>
+            <Button size="sm" variant="secondary" onClick={() => setMatch(true)}><UserCheck className="size-4" />{t('Match employees')}</Button>
             <Button size="sm" variant={sync ? 'primary' : 'secondary'} onClick={() => setSync((x) => !x)}><Activity className="size-4" />{t('Sync status')}</Button>
             <Button size="sm" variant="secondary" loading={act.isPending && act.variables === 'pull'} onClick={() => act.mutate('pull')}><RefreshCw className="size-4" />{t('Pull now')}</Button>
           </>}
@@ -352,7 +418,7 @@ function DeviceCard({ d, can, onEdit, terminals = [], onEditTerminal }: { d: any
               <tr key={x.name} className={clsx(!Number(x.enabled) && 'opacity-60')}>
                 <td><input type="checkbox" className="size-4 accent-[var(--color-brand)]" disabled={!can || include.isPending} checked={!!Number(x.enabled)}
                   onChange={(e) => include.mutate({ name: x.name, on: e.target.checked })} aria-label={t('Include')} /></td>
-                <td><div className="font-medium">{x.location && x.location !== d.location ? x.location : x.device_name}</div><div className="text-xs text-muted">SN {x.serial_number}</div></td>
+                <td><div className="font-medium">{x.location && x.location !== d.location ? x.location : x.device_name}</div><div className="text-xs text-muted">SN {x.serial_number}{x.last_ip ? ` · ${x.last_ip}` : ''}{x.model ? ` · ${x.model}` : ''}</div></td>
                 <td><Badge tone={STATUS_TONE[x.status] ?? 'gray'}>{t(x.status)}</Badge>{!Number(x.source_active ?? 1) && <div className="mt-0.5 text-[11px] text-muted">{t('Inactive in the source')}</div>}</td>
                 <td>{x.branch || <span className="text-muted">—</span>}</td>
                 <td>{x.last_punch ? fmtDateTime(x.last_punch, lang) : '—'}</td>
@@ -365,6 +431,7 @@ function DeviceCard({ d, can, onEdit, terminals = [], onEditTerminal }: { d: any
         </div>
       )}
       {sync && <SyncPanel device={d} can={can} />}
+      {match && <MatchPeople device={d} onClose={() => setMatch(false)} />}
       {setup && <DbSetup device={d} onClose={() => setSetup(false)} />}
       {enrol && <Enrolment device={d} onClose={() => setEnrol(false)} onQueued={() => { setEnrol(false); setMsg(t('Command queued; the device picks it up within a minute.')) }} />}
       {token && <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{t('Token (shown once — copy it into the bridge now)')}: <code className="break-all font-mono">{token}</code></div>}

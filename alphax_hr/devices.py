@@ -108,7 +108,8 @@ def employee_for(dev, user):
 				name = frappe.db.get_value("Employee", {field: user}, "name")
 				if name:
 					return name
-		return None
+		# people with no national ID in the attendance database arrive under their device user ID
+		return frappe.db.get_value("Employee", {"attendance_device_id": user}, "name")
 	return frappe.db.get_value("Employee", {"attendance_device_id": user}, "name")
 
 
@@ -193,12 +194,13 @@ MAPS = {
 	"ADMS (CheckInOut + EmpDetails)": {
 		"db_table": "CheckInOut", "db_user_column": "UserId", "db_time_column": "CheckTime", "db_state_column": "CheckType",
 		"db_sn_column": "SN", "db_emp_table": "EmpDetails", "db_emp_id_column": "Id", "db_emp_key_column": "NationalId",
-		"db_emp_name_column": "EmpName", "db_device_table": "Devices", "db_device_sn_column": "SN",
+		"db_emp_name_column": "EmpName", "db_emp_no_column": "EmpNo", "db_device_table": "Devices", "db_device_sn_column": "SN",
 		"db_device_name_column": "DeviceName", "db_device_active_column": "IsActive"},
 }
 MAP_FIELDS = ("db_table", "db_user_column", "db_time_column", "db_state_column", "db_sn_column", "db_emp_table",
-			  "db_emp_id_column", "db_emp_key_column", "db_emp_name_column", "db_device_table", "db_device_sn_column",
-			  "db_device_name_column", "db_device_active_column")
+			  "db_emp_id_column", "db_emp_key_column", "db_emp_name_column", "db_emp_no_column", "db_device_table", "db_device_sn_column",
+			  "db_device_name_column", "db_device_active_column", "db_device_ip_column", "db_device_location_column",
+			  "db_device_model_column")
 COLUMN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -399,6 +401,28 @@ TERMINAL = "Via database source"
 COPY = ("match_by", "punch_rule", "time_offset_minutes", "company", "brand", "db_in_values", "db_out_values")
 
 
+def _free_name(base):
+	base, label, n = base[:135], base[:135], 2
+	while frappe.db.exists(DEVICE, label):
+		label, n = f"{base} ({n})", n + 1
+	return label
+
+
+def auto_discover(dev, every_hours=6):
+	"""List new terminals and refresh device details without anyone pressing Find terminals (after saving a connection,
+	and every few hours with the regular pull). Never raises: connection problems show on the card."""
+	key = f"alphax-discover-{dev.name}"
+	if every_hours and frappe.cache().get_value(key):
+		return None
+	try:
+		out = discover(dev)
+		frappe.cache().set_value(key, 1, expires_in_sec=int(every_hours * 3600) or 1)
+		return out
+	except Exception:  # noqa: BLE001
+		frappe.log_error(title=f"AlphaX find terminals: {dev.name}")
+		return None
+
+
 def terminal(source, sn, **values):
 	"""The device record for terminal ``sn`` of a database source; created the first time the terminal is seen.
 
@@ -407,43 +431,68 @@ def terminal(source, sn, **values):
 	sn = str(sn).strip()[:140]
 	name = frappe.db.get_value(DEVICE, {"serial_number": sn}, "name")
 	if name:
-		values.pop("label", None)
+		label = values.pop("label", None)
 		values.pop("enabled", None)  # HR's include / exclude choice is kept
+		place = values.pop("source_location", None)
 		doc = frappe.get_doc(DEVICE, name)
+		if place and (not doc.location or doc.location == source.location):
+			values["location"] = place  # the source's location, unless HR set their own
 		if values:
 			frappe.db.set_value(DEVICE, name, values, update_modified=False)
-		return doc
-	base = (values.pop("label", None) or f"{source.device_name} · {sn}")[:140]
-	label, n = base, 2
-	while frappe.db.exists(DEVICE, label):
-		label, n = f"{base} ({n})", n + 1
+		if label and doc.source_device == source.name and doc.device_name == f"{source.device_name} · {sn}"[:140] \
+				and label != doc.device_name:  # still the automatic name: use the source's device name
+			new = _free_name(label)
+			frappe.rename_doc(DEVICE, name, new, force=True)
+			doc = frappe.get_doc(DEVICE, new)
+		return frappe.get_doc(DEVICE, doc.name)
+	label = _free_name(values.pop("label", None) or f"{source.device_name} · {sn}")
+	place = values.pop("source_location", None)
 	values.setdefault("enabled", 1)
 	doc = frappe.get_doc({"doctype": DEVICE, "device_name": label, "serial_number": sn, "connection": TERMINAL,
-						  "source_device": source.name, "location": source.location, "branch": None,
+						  "source_device": source.name, "location": place or source.location, "branch": None,
 						  "offline_alert_hours": 72, "split_by_terminal": 0,
 						  **{k: source.get(k) for k in COPY}, **values})
 	doc.insert(ignore_permissions=True)
 	return doc
 
 
+DETAILS = ("db_device_ip_column", "db_device_location_column", "db_device_model_column")
+
+
 def _device_table(dev):
-	"""{serial: (name, active)} from the source's devices table, when it has one."""
+	"""{serial: {"name", "active", "ip", "location", "model"}} from the source's devices table, when it has one. Detail
+	columns not set by HR are recognised by name (IP address, location, model)."""
 	m = mapping(dev)
 	table, sn = _check(m.get("db_device_table"), True), _check(m.get("db_device_sn_column"))
 	if not (table and sn):
 		return {}
 	name, active = _check(m.get("db_device_name_column")), _check(m.get("db_device_active_column"))
+	extra = {k: _check(m.get(k)) for k in DETAILS}
+	if not all(extra.values()):
+		try:
+			cols = columns(dev, table)
+			taken = {sn, name, active}
+			for k in DETAILS:
+				if not extra[k]:
+					hit = guess(k, [c for c in cols if c not in taken])
+					extra[k] = hit
+					taken.add(hit)
+		except Exception:  # noqa: BLE001
+			pass
+	pick = [sn, name or "NULL", active or "1"] + [extra[k] or "NULL" for k in DETAILS]
 	try:
-		rows = _query(dev, f"SELECT {sn}, {name or 'NULL'}, {active or '1'} FROM {table}")
+		rows = _query(dev, f"SELECT {', '.join(pick)} FROM {table}")
 	except Exception:  # noqa: BLE001  a missing devices table must not stop discovery
 		frappe.log_error(title=f"AlphaX devices table: {dev.name}")
 		return {}
+	text = lambda v, n=140: (str(v).strip()[:n] or None) if v not in (None, "") else None  # noqa: E731
 	out = {}
-	for code, label, on in rows:
+	for code, label, on, ip, place, model in rows:
 		if code in (None, ""):
 			continue
 		flag = str(on).strip().lower() not in ("0", "false", "no", "n", "none", "") if on is not None else True
-		out[str(code).strip()] = ((str(label).strip() or None) if label else None, flag)
+		out[str(code).strip()] = {"name": text(label), "active": flag, "ip": text(ip, 60), "location": text(place),
+								  "model": text(model)}
 	return out
 
 
@@ -475,6 +524,120 @@ def _people(dev):
 	return n
 
 
+NATIONAL_ID = re.compile(r"^[12]\d{9}$")
+
+
+def _clean(text):
+	return " ".join(re.sub(r"[^\w\s]", " ", str(text or "").lower()).split())
+
+
+def people_matching(dev, limit=3000):
+	"""Everyone in the source's people table (plus device users with waiting punches who are not in it): the value AlphaX
+	matches by, the employee it matches today, and otherwise a suggested employee with the reason."""
+	import difflib
+
+	m = mapping(dev)
+	table, emp_id, key = _check(m.get("db_emp_table"), True), _check(m.get("db_emp_id_column")), _check(m.get("db_emp_key_column"))
+	name_col, no_col = _check(m.get("db_emp_name_column")), _check(m.get("db_emp_no_column"))
+	people = []
+	if table and emp_id:
+		cols = ", ".join([emp_id, key or "NULL", name_col or "NULL", no_col or "NULL"])
+		for pid, k, nm, no in _query(dev, f"SELECT {cols} FROM {table}"):
+			k = str(k or "").strip()
+			people.append({"id": str(pid or "").strip(), "national_id": k or None, "name": str(nm or "").strip() or None,
+						   "emp_no": str(no or "").strip() or None, "device_user": k or str(pid or "").strip()})
+	group = [dev.name] + frappe.get_all(DEVICE, filters={"source_device": dev.name}, pluck="name")
+	waiting = {r.device_user: r.n for r in frappe.db.sql(
+		"select device_user, count(*) n from `tabAlphaX Device Log` where status='Unmatched' and device in %(g)s group by device_user",
+		{"g": group}, as_dict=True)}
+	known = {p["device_user"] for p in people}
+	for u in waiting:
+		if u not in known:
+			people.append({"id": u, "national_id": u if NATIONAL_ID.match(u) else None, "name": None, "emp_no": None, "device_user": u})
+	emps = frappe.get_all("Employee", filters={"status": "Active"}, fields=["name", "employee_name", "employee_number",
+							"attendance_device_id", "alphax_iqama_number"] if frappe.get_meta("Employee").has_field("alphax_iqama_number")
+							else ["name", "employee_name", "employee_number", "attendance_device_id"])
+	digits = lambda v: re.sub(r"\D", "", str(v or ""))  # noqa: E731
+	by_iqama = {digits(e.get("alphax_iqama_number")): e for e in emps if digits(e.get("alphax_iqama_number"))}
+	by_device = {str(e.attendance_device_id).strip(): e for e in emps if e.attendance_device_id}
+	by_no = {}
+	for e in emps:
+		for v in (e.name, e.employee_number):
+			if v:
+				by_no[str(v).strip().lower()] = e
+	names = {e.name: _clean(e.employee_name) for e in emps}
+	linked = set()
+	out = []
+	for p in people[:limit]:
+		emp = employee_for(dev, p["device_user"])
+		row = {**p, "waiting": waiting.get(p["device_user"], 0), "employee": emp, "employee_name": None, "suggest": None,
+			   "reason": None, "problem": None}
+		if emp:
+			row["employee_name"] = frappe.db.get_value("Employee", emp, "employee_name")
+			linked.add(emp)
+			out.append(row)
+			continue
+		hit, reason = None, None
+		if p["national_id"] and digits(p["national_id"]) in by_iqama:
+			hit, reason = by_iqama[digits(p["national_id"])], "Iqama"
+		elif p["emp_no"] and p["emp_no"].lower() in by_no:
+			hit, reason = by_no[p["emp_no"].lower()], "Employee number"
+		elif p["id"] in by_device:
+			hit, reason = by_device[p["id"]], "Device ID"
+		elif p["name"]:
+			want = _clean(p["name"])
+			scored = sorted(((difflib.SequenceMatcher(None, want, v).ratio(), k) for k, v in names.items() if v), reverse=True)[:2]
+			if scored and scored[0][0] >= 0.86 and (len(scored) < 2 or scored[0][0] - scored[1][0] >= 0.05):
+				hit, reason = next(e for e in emps if e.name == scored[0][1]), "Name"
+		if hit:
+			row.update({"suggest": hit.name, "suggest_name": hit.employee_name, "reason": reason})
+			if reason == "Iqama":
+				row["problem"] = "Iqama format"  # same digits stored differently: linking stores it cleanly
+		elif not p["national_id"]:
+			row["problem"] = "No national ID in the attendance database"
+		out.append(row)
+	out.sort(key=lambda r: (bool(r["employee"]), not r["suggest"], -(r["waiting"] or 0), r["name"] or ""))
+	return {"people": out, "matched": sum(1 for r in out if r["employee"]), "suggested": sum(1 for r in out if r["suggest"]),
+			"unmatched": sum(1 for r in out if not r["employee"] and not r["suggest"]), "has_people_table": bool(table and emp_id)}
+
+
+def link_people(dev, pairs):
+	"""Link source people to employees: a national ID goes to the employee's Iqama (when empty), anything else to the
+	attendance device ID. Waiting punches of the connection's terminals are imported. Returns what was done."""
+	group = [dev.name] + frappe.get_all(DEVICE, filters={"source_device": dev.name}, pluck="name")
+	done, problems, users = 0, [], []
+	for p in pairs:
+		user, emp = str(p.get("device_user") or "").strip(), p.get("employee")
+		if not user or not emp or not frappe.db.exists("Employee", emp):
+			continue
+		label = frappe.db.get_value("Employee", emp, "employee_name")
+		current = employee_for(dev, user)
+		if current and current != emp:
+			problems.append(_("{0}: already linked to {1}").format(user, frappe.db.get_value("Employee", current, "employee_name")))
+			continue
+		if current == emp:
+			users.append(user)
+			continue
+		if dev.match_by == "National ID / Iqama" and NATIONAL_ID.match(user) and frappe.get_meta("Employee").has_field("alphax_iqama_number"):
+			have = str(frappe.db.get_value("Employee", emp, "alphax_iqama_number") or "").strip()
+			if have and have != user:
+				problems.append(_("{0} has Iqama {1}, the attendance database says {2}: correct the wrong one").format(label, have, user))
+				continue
+			frappe.db.set_value("Employee", emp, "alphax_iqama_number", user)
+		else:
+			have = str(frappe.db.get_value("Employee", emp, "attendance_device_id") or "").strip()
+			if have and have != user:
+				problems.append(_("{0} already has device ID {1}").format(label, have))
+				continue
+			frappe.db.set_value("Employee", emp, "attendance_device_id", user)
+		done += 1
+		users.append(user)
+	names = frappe.get_all(LOG, filters={"device": ["in", group], "device_user": ["in", users or ["-"]], "status": "Unmatched"},
+						   pluck="name")
+	result = process(names) if names else {"imported": 0}
+	return {"linked": done, "problems": problems, **result}
+
+
 def discover(dev):
 	"""Find every terminal (serial number) in the source database and list it as its own device. No punches are read."""
 	table, _u, when, _s, sn = _columns(dev)
@@ -496,18 +659,24 @@ def discover(dev):
 	for code, (count, last) in stats.items():
 		existed = frappe.db.exists(DEVICE, {"serial_number": code})
 		values = {"punch_count": cint(count)}
-		if code in listed:
-			label, active = listed[code]
-			values["source_active"] = 1 if active else 0
-			if label:
-				values["label"] = label
-			values["enabled"] = 1 if active else 0
+		info = listed.get(code)
+		if info:
+			values["source_active"] = 1 if info["active"] else 0
+			values["enabled"] = 1 if info["active"] else 0
+			if info["name"]:
+				values["label"] = info["name"]
+			if info["ip"]:
+				values["last_ip"] = info["ip"]
+			if info["model"]:
+				values["model"] = info["model"]
+			if info["location"]:
+				values["source_location"] = info["location"]
 		if last:
 			values["last_punch"] = values["last_contact"] = get_datetime(last).replace(microsecond=0, tzinfo=None)
 		doc = terminal(dev, code, **values)
 		new += 0 if existed else 1
-		found.append({"name": doc.name, "serial_number": code, "punches": cint(count), "label": listed.get(code, (None,))[0],
-					  "active": listed.get(code, (None, True))[1], "last": str(values.get("last_punch") or "") or None,
+		found.append({"name": doc.name, "serial_number": code, "punches": cint(count), "label": (info or {}).get("name"),
+					  "active": (info or {}).get("active", True), "last": str(values.get("last_punch") or "") or None,
 					  "new": not existed})
 	_people(dev)
 	if not cint(dev.get("split_by_terminal")):
@@ -526,10 +695,15 @@ GUESS = {
 	"db_sn_column": ["sn", "terminal_sn", "serialnumber", "serial_number", "sensorid", "deviceid", "device_sn", "machineno"],
 	"db_emp_id_column": ["id", "userid", "user_id", "empid", "emp_id"],
 	"db_emp_key_column": ["nationalid", "national_id", "iqama", "iqamano", "idno", "ssn", "empno", "emp_code", "badgenumber"],
+	"db_emp_no_column": ["empno", "emp_no", "employeeno", "employee_number", "empcode", "staffno"],
 	"db_emp_name_column": ["empname", "name", "fullname", "full_name", "employeename", "first_name"],
 	"db_device_sn_column": ["sn", "serialnumber", "serial_number", "terminal_sn"],
 	"db_device_name_column": ["devicename", "device_name", "alias", "machinealias", "terminal_name", "name"],
 	"db_device_active_column": ["isactive", "is_active", "active", "enabled", "state"],
+	"db_device_ip_column": ["ipaddress", "ip_address", "ip", "deviceip", "device_ip", "ipaddr"],
+	"db_device_location_column": ["location", "devicelocation", "area", "site", "place", "branch", "address", "description"],
+	"db_device_model_column": ["model", "devicemodel", "device_model", "devicetype", "device_type", "platform", "firmware",
+								"fwversion", "firmwareversion"],
 }
 
 
@@ -584,8 +758,9 @@ def suggest_mapping(dev):
 	names = tables(dev)
 	out = {"tables": names, "columns": {}, "mapping": {}}
 	for kind, cols in (("db_table", ("db_user_column", "db_time_column", "db_state_column", "db_sn_column")),
-					   ("db_emp_table", ("db_emp_id_column", "db_emp_key_column", "db_emp_name_column")),
-					   ("db_device_table", ("db_device_sn_column", "db_device_name_column", "db_device_active_column"))):
+					   ("db_emp_table", ("db_emp_id_column", "db_emp_key_column", "db_emp_name_column", "db_emp_no_column")),
+					   ("db_device_table", ("db_device_sn_column", "db_device_name_column", "db_device_active_column",
+									"db_device_ip_column", "db_device_location_column", "db_device_model_column"))):
 		table = guess(kind, names)
 		if not table:
 			continue
@@ -681,7 +856,10 @@ def scheduled():
 		if d.last_contact and get_datetime(d.last_contact) > now - timedelta(minutes=max(cint(d.pull_every) or 15, 5)):
 			continue
 		try:
-			pull(frappe.get_doc(DEVICE, d.name))
+			doc = frappe.get_doc(DEVICE, d.name)
+			if cint(doc.split_by_terminal):
+				auto_discover(doc)
+			pull(doc)
 		except Exception:  # noqa: BLE001
 			frappe.log_error(title=f"AlphaX device pull: {d.name}")
 	if frappe.db.count(LOG, {"status": "Pending"}):

@@ -16,8 +16,9 @@ FIELDS = ["device_name", "enabled", "brand", "connection", "serial_number", "com
 		  "match_by", "punch_rule",
 		  "time_offset_minutes", "allowed_ips", "db_type", "db_host", "db_port", "db_name", "db_user", "db_preset", "db_table",
 		  "db_user_column", "db_time_column", "db_state_column", "db_sn_column", "pull_every", "split_by_terminal",
-		  "db_in_values", "db_out_values", "db_emp_table", "db_emp_id_column", "db_emp_key_column", "db_emp_name_column",
-		  "db_device_table", "db_device_sn_column", "db_device_name_column", "db_device_active_column"]
+		  "db_in_values", "db_out_values", "db_emp_table", "db_emp_id_column", "db_emp_key_column", "db_emp_name_column", "db_emp_no_column",
+		  "db_device_table", "db_device_sn_column", "db_device_name_column", "db_device_active_column",
+		  "db_device_ip_column", "db_device_location_column", "db_device_model_column"]
 ONLINE_MINUTES = 10
 
 
@@ -97,6 +98,9 @@ def save(data: str | dict | list, name: str | None = None):
 		return overview()
 	doc.save()
 	_to_terminals(doc)
+	if (doc.connection or "").startswith("Database pull") and cint(doc.enabled) and cint(doc.split_by_terminal):
+		frappe.db.commit()
+		dv.auto_discover(doc, every_hours=0)  # terminals appear as soon as the connection is saved
 	return overview()
 
 
@@ -131,6 +135,24 @@ def schema(name: str, data: str | dict | None = None, table: str | None = None):
 def preview(name: str, data: str | dict | None = None):
 	require_hr_manager()
 	return dv.preview(_draft(name, data))
+
+
+def _source(name):
+	doc = frappe.get_doc(dv.DEVICE, name)
+	return frappe.get_doc(dv.DEVICE, doc.source_device) if doc.connection == dv.TERMINAL and doc.source_device else doc
+
+
+@frappe.whitelist()
+def people(name: str):
+	"""Everyone in the attendance database with the employee they match, or a suggestion."""
+	require_hr_manager()
+	return dv.people_matching(_source(name))
+
+
+@frappe.whitelist(methods=["POST"])
+def link_people(name: str, pairs: str | list):
+	require_hr_manager()
+	return dv.link_people(_source(name), parse_json(pairs) or [])
 
 
 @frappe.whitelist()
@@ -349,9 +371,9 @@ def link_user(device: str, device_user: str, employee: str):
 	if dev.match_by == "National ID / Iqama":  # the value is a national ID / Iqama: put it on the employee
 		import re
 
-		if not re.fullmatch(r"[12]\d{9}", str(device_user)):
-			frappe.throw(_("{0} is not a national ID / Iqama number: this person has none in the attendance database. Add it "
-						   "there, then their punches match automatically.").format(device_user))
+		if not re.fullmatch(r"[12]\d{9}", str(device_user)):  # no national ID in the source: link by device ID
+			return dv.link_people(frappe.get_doc(dv.DEVICE, dev.source_device) if dev.source_device else dev,
+								  [{"device_user": device_user, "employee": employee}])
 		other = frappe.db.get_value("Employee", {"alphax_iqama_number": device_user, "name": ["!=", employee]}, "employee_name")
 		if other:
 			frappe.throw(_("{0} is already the Iqama of {1}.").format(device_user, other))

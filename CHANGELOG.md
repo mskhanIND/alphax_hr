@@ -2,6 +2,13 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.30.0 — 2026-11-11
+
+- **Terminals are added automatically.** Saving a database connection lists its terminals at once, and the regular pull refreshes the list every 6 hours: new devices appear with their name, IP address, location and model from the source's devices table (detail columns recognised by name, or set in Tables & columns). Automatic names are replaced by the source's device names; a location HR typed is kept. *Find terminals* is now only for an immediate refresh.
+- **Match employees.** Lists everyone in the attendance database (name, national ID, user ID, employee number, waiting punches) with the AlphaX employee they match, or a suggestion by Iqama, employee number, device ID or name. Pick or correct, tick and *Link selected*: a national ID becomes the employee's Iqama, anyone without one is linked by device user ID, and waiting punches from all terminals are imported. Conflicts (an employee already holding another Iqama or device ID) are listed, not overwritten.
+- With *Match by National ID / Iqama*, people with no national ID in the source now match by attendance device ID.
+- People table: optional employee number column (ADMS: EmpNo).
+
 ## 0.29.0 — 2026-11-11
 
 - **Tables & columns, read from the database.** On a database connection, *Tables & columns* lists the database's tables and proposes the punch table (user, time, IN/OUT, device serial), the people table (ID, value to match by, name) and the devices table (serial, name, active), with a *suggest* chip wherever your choice differs. Works for any attendance software, not only the presets.

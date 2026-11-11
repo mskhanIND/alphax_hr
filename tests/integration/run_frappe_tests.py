@@ -2738,7 +2738,9 @@ def run(site):
             from alphax_hr import devices as dvm
             from alphax_hr.api import devices as dapi
             frappe.set_user("Administrator")
-            emp, emp2 = frappe.get_all("Employee", filters={"status": "Active"}, pluck="name", limit=2)
+            emp, emp2, emp3 = frappe.get_all("Employee", filters={"status": "Active"}, pluck="name", limit=3)
+            old_dev3 = frappe.db.get_value("Employee", emp3, "attendance_device_id")
+            frappe.db.set_value("Employee", emp3, "attendance_device_id", None)
             old_iqama = frappe.db.get_value("Employee", emp, "alphax_iqama_number")
             old_iqama2 = frappe.db.get_value("Employee", emp2, "alphax_iqama_number")
             frappe.db.set_value("Employee", emp2, "alphax_iqama_number", None)
@@ -2749,10 +2751,10 @@ def run(site):
             try:
                 frappe.db.sql_ddl("create table if not exists EmpDetails (Id int, NationalId varchar(20), EmpName varchar(80), EmpNo varchar(20))")
                 frappe.db.sql_ddl("create table if not exists CheckInOut (UserId int, CheckTime datetime, CheckType varchar(5), SN varchar(30))")
-                frappe.db.sql_ddl("create table if not exists Devices (SN varchar(30), DeviceName varchar(80), IsActive tinyint)")
+                frappe.db.sql_ddl("create table if not exists Devices (SN varchar(30), DeviceName varchar(80), IsActive tinyint, IpAddress varchar(40), Location varchar(80))")
                 frappe.db.sql("delete from EmpDetails"); frappe.db.sql("delete from CheckInOut"); frappe.db.sql("delete from Devices")
-                frappe.db.sql("insert into EmpDetails values (7, %s, 'Test Person', 'E7'), (50, '1987654321', 'Unlinked Person', 'E50')", (iqama,))
-                frappe.db.sql("insert into Devices values (%s, 'AXT Gate A', 1), (%s, 'AXT Gate B', 0)", (sns[0], sns[1]))
+                frappe.db.sql("insert into EmpDetails values (7, %s, 'Test Person', 'E7'), (50, '1987654321', 'Unlinked Person', %s)", (iqama, emp2))
+                frappe.db.sql("insert into Devices values (%s, 'AXT Gate A', 1, '10.0.0.21', NULL), (%s, 'AXT Gate B', 0, '10.0.0.22', 'Jeddah warehouse')", (sns[0], sns[1]))
                 frappe.db.sql("""insert into CheckInOut values (7, '2026-10-05 07:58:00', 'I', %s), (7, '2026-10-05 17:02:00', 'O', %s),
                                  (7, '2026-10-06 08:01:00', 'I', %s), (99, '2026-10-06 08:03:00', 'I', %s), (50, '2026-10-06 08:04:00', 'I', %s)""",
                               (sns[0], sns[0], sns[1], sns[1], sns[1]))
@@ -2773,12 +2775,15 @@ def run(site):
                 assert pv["states"] == ["I", "O"] and pv["rows"][0]["user"] == "1987654321", pv
                 assert {(r["time"][:16], r["log_type"]) for r in pv["rows"]} >= {("2026-10-05 07:58", "IN"), ("2026-10-05 17:02", "OUT")}
                 assert next(r for r in pv["rows"] if r["user"] == iqama)["employee"] == emp
+                ov = dapi.save({"pull_every": 15}, src)  # saving the connection lists its terminals by itself
+                assert len([d for d in ov["devices"] if d.source_device == src]) == 2
                 out = dapi.discover(src)
-                assert out["new"] == 2 and {x["serial_number"] for x in out["terminals"]} == set(sns), out
+                assert out["new"] == 0 and {x["serial_number"] for x in out["terminals"]} == set(sns), out
                 terms = {d.serial_number: d for d in out["devices"] if d.source_device == src}
                 assert len(terms) == 2 and terms[sns[0]].punch_count == 2 and terms[sns[0]].connection == dvm.TERMINAL
                 assert terms[sns[0]].device_name == "AXT Gate A" and terms[sns[1]].device_name == "AXT Gate B"  # names from Devices
                 assert terms[sns[0]].enabled and not terms[sns[1]].enabled and not terms[sns[1]].source_active  # inactive: excluded
+                assert terms[sns[0]].last_ip == "10.0.0.21" and terms[sns[1]].location == "Jeddah warehouse"  # details from Devices
                 assert terms[sns[0]].match_by == "National ID / Iqama" and terms[sns[0]].location == "Riyadh"
                 assert next(d for d in out["devices"] if d.name == src).terminals == 2
                 assert dapi.discover(src)["new"] == 0  # running it again finds the same terminals
@@ -2797,9 +2802,16 @@ def run(site):
                 assert frappe.db.count("Employee Checkin", {"employee": emp, "time": ["between", ["2026-10-05", "2026-10-06 23:59:59"]]}) == 3
                 um = {r.device_user: r for r in dapi.unmatched()}
                 assert um["1987654321"].user_name == "Unlinked Person"  # name from the people table
-                expect_error(lambda: dapi.link_user(terms[sns[1]].name, "99", emp2), frappe.ValidationError)
-                assert dapi.link_user(terms[sns[1]].name, "1987654321", emp2)["imported"] == 1
-                assert frappe.db.get_value("Employee", emp2, "alphax_iqama_number") == "1987654321"
+                pm = dapi.people(src)  # everyone in the attendance database, matched or with a suggestion
+                rows = {r["device_user"]: r for r in pm["people"]}
+                assert rows[iqama]["employee"] == emp and rows["1987654321"]["suggest"] == emp2 and rows["1987654321"]["reason"] == "Employee number"
+                assert rows["99"]["problem"] == "No national ID in the attendance database" and rows["99"]["waiting"] == 1
+                res = dapi.link_people(src, [{"device_user": "1987654321", "employee": emp2}, {"device_user": "99", "employee": emp3}])
+                assert res["linked"] == 2 and res["imported"] == 2 and not res["problems"], res
+                assert frappe.db.get_value("Employee", emp2, "alphax_iqama_number") == "1987654321"  # national ID -> Iqama
+                assert frappe.db.get_value("Employee", emp3, "attendance_device_id") == "99"  # no national ID -> device ID
+                assert dapi.link_people(src, [{"device_user": "99", "employee": emp2}])["problems"]  # already someone else's
+                assert dapi.people(src)["matched"] == 2  # both people-table rows; device user 99 has no waiting punches now
                 assert dapi.pull_now(src)["new"] == 0
                 assert dapi._status(frappe.get_doc(dvm.DEVICE, terms[sns[0]].name)) in ("Active", "Quiet")
                 expect_error(lambda: dapi.save({"device_name": "AXT stray", "connection": dvm.TERMINAL}), frappe.ValidationError)
@@ -2827,6 +2839,7 @@ def run(site):
                 frappe.db.sql_ddl("drop table if exists Devices")
                 frappe.db.delete("AlphaX Device User", {"device": src})
                 frappe.db.set_value("Employee", emp2, "alphax_iqama_number", old_iqama2)
+                frappe.db.set_value("Employee", emp3, "attendance_device_id", old_dev3)
                 names = frappe.get_all(dvm.DEVICE, filters={"source_device": src}, pluck="name") + [src]
                 for n in frappe.get_all(dvm.LOG, filters={"device": ["in", names]}, fields=["employee_checkin"]):
                     if n.employee_checkin and frappe.db.exists("Employee Checkin", n.employee_checkin):
