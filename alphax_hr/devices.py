@@ -212,6 +212,23 @@ def _host_port(host, port):
 	return host, cint(port)
 
 
+def _explain(e, host, port):
+	"""Turn a driver error into what HR / IT should check."""
+	text = str(e)
+	low = text.lower()
+	if "timed out" in low or "unavailable or does not exist" in low or "unreachable" in low:
+		frappe.throw(_("This server cannot reach {0} on port {1} (no answer). Check the port number, and ask the database "
+					   "owner to open that port in their firewall for this server's public IP address.").format(host, port),
+					 title=_("Database not reachable"))
+	if "login failed" in low or "18456" in low:
+		frappe.throw(_("The database answered but refused the user name or password. Check them, and that the user may open "
+					   "this database."), title=_("Login refused"))
+	if "cannot open database" in low or "4060" in low:
+		frappe.throw(_("Signed in, but the database name was not found or the user has no access to it."),
+					 title=_("Database not found"))
+	frappe.throw(_("Could not connect to the database: {0}").format(text[:300]))
+
+
 def _connect(dev):
 	from frappe.utils.password import get_decrypted_password
 
@@ -233,8 +250,11 @@ def _connect(dev):
 			import pymssql
 		except ImportError:
 			frappe.throw(_("SQL Server needs the pymssql package on the server: bench pip install pymssql"))
-		return pymssql.connect(server=host, port=str(port or 1433), user=dev.db_user, password=password,
-							   database=dev.db_name, login_timeout=10), "%s"
+		try:
+			return pymssql.connect(server=host, port=str(port or 1433), user=dev.db_user, password=password,
+								   database=dev.db_name, login_timeout=10), "%s"
+		except Exception as e:  # noqa: BLE001
+			_explain(e, host, port or 1433)
 	frappe.throw(_("Choose the database type."))
 
 

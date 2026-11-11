@@ -4,6 +4,8 @@ All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
 ## 0.28.0 — 2026-11-11
 
+- Database connection errors now say what to check (port / firewall, login, database name) instead of the raw driver message.
+
 - **One database connection for many devices.** Companies whose devices all write to one attendance server (an ADMS server, BioTime, ZKTime / ZKAccess, local or cloud) add that database once. *Find terminals* lists every device in it by serial number, with punch count and last punch, and punches are filed under the device they were made on. Each terminal shows its own status and takes its own branch and location. Terminals appear without a second login, and new devices are added as they show up in the data.
 - **ADMS server preset** (CheckInOut + EmpDetails): users are matched by the national ID in EmpDetails (Match by: National ID / Iqama). Punches of users missing from EmpDetails still arrive, under their device user ID, for HR to link.
 - National ID matching also reads the older `iqama_national_id` employee field.
