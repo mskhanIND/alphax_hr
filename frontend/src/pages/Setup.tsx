@@ -109,11 +109,11 @@ function StatusList({ onSettings }: { onSettings: () => void }) {
   const links = useMutation({ mutationFn: api.createMissingLinks, onSuccess: () => q.refetch() })
   const scripts = useMutation({ mutationFn: api.disableBrokenScripts, onSuccess: () => q.refetch() })
   const relax = useMutation({ mutationFn: api.relaxOrphanFields, onSuccess: () => q.refetch() })
+  const [only, setOnly] = useState('')
+  const pick = (k: string) => setOnly((x) => (x === k ? '' : k))
   if (q.isLoading) return <Spinner />
   if (q.error) return <ErrorBox error={q.error} onRetry={() => q.refetch()} />
   const d = q.data
-  const [only, setOnly] = useState('')
-  const pick = (k: string) => setOnly((x) => (x === k ? '' : k))
   const groups: string[] = [...new Set<string>(d.checks.filter((c: any) => !only || c.status === only).map((c: any) => c.group))]
   const order = (c: any) => ['error', 'warn', 'ok'].indexOf(c.status)
   const fixButton = (c: any) => {

@@ -2,6 +2,10 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.32.1 — 2026-11-11
+
+- Fix: the Setup & health page failed to open after 0.32.0 (tile filter set up in the wrong order).
+
 ## 0.32.0 — 2026-11-11
 
 - **Number tiles are filters.** Click a tile to see the employees or records behind it; click it again (or *Show all*) to go back. A bar shows what is filtered and how many.
