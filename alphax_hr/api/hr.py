@@ -634,6 +634,10 @@ def create_employee(data: str | dict | list):
 		frappe.throw(_("Please fill in: {0}").format(", ".join(m["label"] for m in missing)), title=_("Missing information"))
 	doc.insert()
 	_claim_attachments(doc, payload)
+	if payload.get("joiner"):  # created from a joiner's own form: close it and move its documents
+		from alphax_hr.api.joiners import on_employee_created
+
+		on_employee_created(doc.name, payload["joiner"])
 	package = payload.get("salary")
 	if isinstance(package, dict) and package.get("mode"):
 		from alphax_hr.api.salary import assign

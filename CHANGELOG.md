@@ -2,6 +2,11 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.34.0 — 2026-11-11
+
+- **New joiners fill in their own form.** *People → New joiners → Invite a new joiner* (name, mobile or e-mail, company, department, designation, joining date) makes a private link valid for 14 days, to copy, send by WhatsApp or e-mail. The joiner opens it on the phone without an account, in Arabic or English: personal details, national ID / Iqama, passport, contact and emergency contact, bank IBAN, qualification, and documents (photo, ID, passport, IBAN letter, certificate; PDF or photo, private). Drafts can be saved; ID, IBAN, phone and e-mail are checked before sending.
+- **HR reviews and creates the employee.** HR is told when a form arrives (*New joiner* notification). The form can be sent back with a note (the link opens again) or turned into an employee: *Create employee* opens the New employee screen filled in, and on create the form closes, the link stops working and the documents move to the employee (photo as the profile picture). Tiles filter by status.
+
 ## 0.33.0 — 2026-11-11
 
 - **Update past days.** On Attendance devices: *Last 10 days*, *This month so far*, *Previous month* or other dates (up to two months). For the period AlphaX reads punches again from every attendance database (nothing doubled), retries punches refused earlier (e.g. before a shift was assigned) and marks attendance. Up to 10 days runs at once; longer periods run in the background, and the last result is shown.

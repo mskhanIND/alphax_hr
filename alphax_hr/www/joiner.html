@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="{{ lang }}" dir="{{ 'rtl' if lang == 'ar' else 'ltr' }}">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<meta name="robots" content="noindex, nofollow" />
+	<meta name="referrer" content="no-referrer" />
+	<meta name="theme-color" content="#0f5132" />
+	<title>{{ title }}</title>
+	<link rel="icon" href="{{ brand.favicon }}" />
+	<style>
+		:root { --brand: #0f5132; --ink: #1c2421; --muted: #5f6b66; --line: #e3e7e4; --surface: #f6f7f4; --red: #b42318; }
+		* { box-sizing: border-box; }
+		body { margin: 0; font-family: "Segoe UI", system-ui, -apple-system, "Noto Sans Arabic", Tahoma, sans-serif; color: var(--ink); background: var(--surface); }
+		header { background: var(--brand); color: #fff; padding: 18px 20px; }
+		header .in { max-width: 760px; margin: 0 auto; display: flex; align-items: center; gap: 12px; }
+		header img { height: 40px; max-width: 120px; object-fit: contain; background: #fff; border-radius: 10px; padding: 4px; }
+		header b { font-size: 18px; flex: 1; }
+		header button { background: rgba(255,255,255,.15); color: #fff; border: 0; border-radius: 10px; padding: 8px 12px; cursor: pointer; font: inherit; }
+		main { max-width: 760px; margin: 0 auto; padding: 20px 16px 120px; }
+		.hello { background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 18px; margin-bottom: 16px; }
+		.hello h1 { font-size: 20px; margin: 0 0 6px; }
+		.hello p { margin: 0; color: var(--muted); line-height: 1.6; font-size: 14px; }
+		.note { background: #fff7e6; border: 1px solid #f5d48a; color: #7a4b00; border-radius: 14px; padding: 12px 14px; margin-bottom: 16px; font-size: 14px; }
+		section { background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 18px; margin-bottom: 14px; }
+		section h2 { font-size: 16px; margin: 0 0 12px; }
+		.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+		.full { grid-column: 1 / -1; }
+		label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+		label i { color: var(--red); font-style: normal; }
+		input, select, textarea { width: 100%; min-height: 44px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; font: inherit; font-size: 15px; background: #fff; }
+		textarea { min-height: 70px; }
+		input:focus, select:focus, textarea:focus { outline: 2px solid rgba(15,81,50,.25); border-color: var(--brand); }
+		.err input, .err select, .err textarea, .err .file { border-color: var(--red); }
+		.msg { color: var(--red); font-size: 12px; margin-top: 4px; min-height: 0; }
+		.file { border: 1px dashed var(--line); border-radius: 12px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; font-size: 14px; }
+		.file span { flex: 1; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+		.file span.ok { color: var(--brand); font-weight: 600; }
+		.file label { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; cursor: pointer; font-weight: 500; }
+		.file input { display: none; }
+		.bar { position: fixed; inset-inline: 0; bottom: 0; background: #fff; border-top: 1px solid var(--line); padding: 12px 16px; }
+		.bar .in { max-width: 760px; margin: 0 auto; display: flex; gap: 10px; align-items: center; }
+		.bar .status { flex: 1; font-size: 13px; color: var(--muted); }
+		.btn { border: 0; border-radius: 12px; padding: 12px 18px; font: inherit; font-weight: 600; cursor: pointer; }
+		.btn.main { background: var(--brand); color: #fff; }
+		.btn.soft { background: var(--surface); border: 1px solid var(--line); color: var(--ink); }
+		.btn:disabled { opacity: .6; cursor: wait; }
+		.done { text-align: center; padding: 40px 18px; }
+		.done .ic { font-size: 46px; }
+		@media (max-width: 620px) { .grid { grid-template-columns: 1fr; } }
+	</style>
+</head>
+<body>
+	<header><div class="in">
+		{% if brand.logo %}<img src="{{ brand.logo }}" alt="" />{% endif %}
+		<b>{{ title }}</b>
+		<button type="button" id="lang"></button>
+	</div></header>
+	<main id="app"><p style="text-align:center;color:#5f6b66">…</p></main>
+	<div class="bar" id="bar" hidden><div class="in">
+		<span class="status" id="status"></span>
+		<button class="btn soft" id="save" type="button"></button>
+		<button class="btn main" id="send" type="button"></button>
+	</div></div>
+	<script>
+	(function () {
+		var KEY = {{ key | tojson }}, lang = {{ lang | tojson }}, F = null, values = {}, errors = {};
+		var T = {
+			en: { lang: 'العربية', save: 'Save draft', send: 'Send to HR', saved: 'Draft saved', sending: 'Sending…', choose: 'Choose file', none: 'No file yet',
+				uploading: 'Uploading…', fix: 'Please correct the fields marked in red.', hello: 'Welcome', intro: 'Please fill in your details and upload your documents before your first day. You can save a draft and come back with the same link.',
+				joining: 'Joining date', role: 'Position', valid: 'Link valid until', sentT: 'Thank you!', sentP: 'Your form was sent to HR. They will contact you if anything is missing.',
+				closed: 'This form is closed', note: 'HR asked you to correct:', required: 'Required', id: 'Enter a valid 10-digit national ID or Iqama number', iban: 'IBAN starts with SA followed by 22 digits',
+				email: 'Enter a valid e-mail', phone: 'Enter a valid phone number', date: 'Enter a valid date', option: 'Choose from the list', opts: { Male: 'Male', Female: 'Female', Single: 'Single', Married: 'Married', Divorced: 'Divorced', Widowed: 'Widowed' } },
+			ar: { lang: 'English', save: 'حفظ كمسودة', send: 'إرسال للموارد البشرية', saved: 'تم حفظ المسودة', sending: 'جارٍ الإرسال…', choose: 'اختر ملفًا', none: 'لا يوجد ملف بعد',
+				uploading: 'جارٍ الرفع…', fix: 'يرجى تصحيح الحقول المحددة باللون الأحمر.', hello: 'أهلًا بك', intro: 'يرجى تعبئة بياناتك ورفع مستنداتك قبل يوم مباشرتك. يمكنك الحفظ كمسودة والعودة بنفس الرابط.',
+				joining: 'تاريخ المباشرة', role: 'المسمى الوظيفي', valid: 'الرابط صالح حتى', sentT: 'شكرًا لك!', sentP: 'تم إرسال النموذج للموارد البشرية، وسيتواصلون معك إذا كان هناك نقص.',
+				closed: 'هذا النموذج مغلق', note: 'طلبت الموارد البشرية تصحيح ما يلي:', required: 'مطلوب', id: 'أدخل رقم هوية أو إقامة صحيحًا من 10 أرقام', iban: 'يبدأ الآيبان بـ SA ثم 22 رقمًا',
+				email: 'أدخل بريدًا إلكترونيًا صحيحًا', phone: 'أدخل رقم جوال صحيحًا', date: 'أدخل تاريخًا صحيحًا', option: 'اختر من القائمة', opts: { Male: 'ذكر', Female: 'أنثى', Single: 'أعزب', Married: 'متزوج', Divorced: 'مطلق', Widowed: 'أرمل' } }
+		};
+		var api = '/api/method/alphax_hr.api.joiners.';
+		function t(k) { return T[lang][k]; }
+		function el(tag, attrs, kids) {
+			var e = document.createElement(tag);
+			Object.keys(attrs || {}).forEach(function (k) { if (k === 'text') e.textContent = attrs[k]; else if (k.slice(0, 2) === 'on') e.addEventListener(k.slice(2), attrs[k]); else e.setAttribute(k, attrs[k]); });
+			(kids || []).forEach(function (c) { if (c) e.appendChild(c); });
+			return e;
+		}
+		function errText(r) { try { var m = JSON.parse(JSON.parse(r._server_messages || '[]')[0] || '{}').message; return m || r.exception || 'Error'; } catch (e) { return r.exception || 'Error'; } }
+		function load() {
+			fetch(api + 'public_form?key=' + encodeURIComponent(KEY)).then(function (r) { return r.json(); }).then(function (r) {
+				if (!r.message) { show(errText(r)); return; }
+				F = r.message; values = F.values || {}; render();
+			}).catch(function () { show('Network error'); });
+		}
+		function show(text) { document.getElementById('app').innerHTML = ''; document.getElementById('app').appendChild(el('div', { 'class': 'hello done' }, [el('div', { 'class': 'ic', text: '⚠️' }), el('p', { text: text })])); document.getElementById('bar').hidden = true; }
+		function render() {
+			document.documentElement.lang = lang; document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+			document.getElementById('lang').textContent = t('lang');
+			var app = document.getElementById('app'); app.innerHTML = '';
+			if (!F.open) {
+				app.appendChild(el('div', { 'class': 'hello done' }, [el('div', { 'class': 'ic', text: F.status === 'Submitted' || F.status === 'Converted' ? '✅' : '🔒' }),
+					el('h1', { text: F.status === 'Submitted' || F.status === 'Converted' ? t('sentT') : t('closed') }), el('p', { text: F.status === 'Submitted' || F.status === 'Converted' ? t('sentP') : '' })]));
+				document.getElementById('bar').hidden = true; return;
+			}
+			var facts = [F.designation && (t('role') + ': ' + F.designation), F.date_of_joining && (t('joining') + ': ' + F.date_of_joining), F.expires_on && (t('valid') + ': ' + F.expires_on)].filter(Boolean).join(' · ');
+			app.appendChild(el('div', { 'class': 'hello' }, [el('h1', { text: t('hello') + (F.name ? (lang === 'ar' ? '، ' : ', ') + F.name : '') }), el('p', { text: t('intro') }), facts ? el('p', { text: facts, style: 'margin-top:8px' }) : null]));
+			if (F.hr_note) app.appendChild(el('div', { 'class': 'note' }, [el('b', { text: t('note') + ' ' }), el('span', { text: F.hr_note })]));
+			F.sections.forEach(function (s) {
+				var grid = el('div', { 'class': 'grid' });
+				F.fields.filter(function (f) { return f.section === s.key; }).forEach(function (f) { grid.appendChild(field(f)); });
+				app.appendChild(el('section', {}, [el('h2', { text: s[lang] }), grid]));
+			});
+			var bar = document.getElementById('bar'); bar.hidden = false;
+			document.getElementById('save').textContent = t('save'); document.getElementById('send').textContent = t('send');
+		}
+		function field(f) {
+			var wrap = el('div', { 'class': (f.type === 'textarea' ? 'full ' : '') + (errors[f.key] ? 'err' : ''), id: 'w-' + f.key });
+			wrap.appendChild(el('label', { 'for': 'f-' + f.key }, [document.createTextNode(f[lang] + ' '), f.required ? el('i', { text: '*' }) : null]));
+			var input, v = values[f.key] || '';
+			if (f.type === 'select') {
+				input = el('select', { id: 'f-' + f.key }, [el('option', { value: '', text: '—' })].concat(f.options.map(function (o) { var op = el('option', { value: o, text: t('opts')[o] || o }); if (o === v) op.selected = true; return op; })));
+			} else if (f.type === 'textarea') {
+				input = el('textarea', { id: 'f-' + f.key }); input.value = v;
+			} else if (f.type === 'file') {
+				var name = v ? decodeURIComponent(v.split('/').pop()) : t('none');
+				var span = el('span', { 'class': v ? 'ok' : '', text: (v ? '✓ ' : '') + name, id: 's-' + f.key });
+				var inp = el('input', { type: 'file', accept: '.pdf,.jpg,.jpeg,.png,.heic,.webp', id: 'f-' + f.key, onchange: function () { upload(f, inp, span); } });
+				wrap.appendChild(el('div', { 'class': 'file' }, [span, el('label', { 'for': 'f-' + f.key, text: t('choose') }), inp]));
+				wrap.appendChild(el('div', { 'class': 'msg', text: errors[f.key] ? (t(errors[f.key]) || errors[f.key]) : '' }));
+				return wrap;
+			} else {
+				var type = { date: 'date', email: 'email', phone: 'tel', id: 'text', iban: 'text' }[f.type] || 'text';
+				input = el('input', { id: 'f-' + f.key, type: type, inputmode: f.type === 'id' ? 'numeric' : f.type === 'phone' ? 'tel' : 'text', autocomplete: 'off' });
+				if (f.type === 'iban' && !v) input.placeholder = 'SA00 0000 0000 0000 0000 0000';
+				input.value = v;
+			}
+			input.addEventListener('input', function () { values[f.key] = input.value; });
+			input.addEventListener('change', function () { values[f.key] = input.value; });
+			wrap.appendChild(input);
+			wrap.appendChild(el('div', { 'class': 'msg', text: errors[f.key] ? (t(errors[f.key]) || errors[f.key]) : '' }));
+			return wrap;
+		}
+		function upload(f, inp, span) {
+			var file = inp.files[0]; if (!file) return;
+			span.textContent = t('uploading'); span.className = '';
+			var fd = new FormData(); fd.append('key', KEY); fd.append('field', f.key); fd.append('file', file, file.name);
+			fetch(api + 'public_upload', { method: 'POST', body: fd }).then(function (r) { return r.json(); }).then(function (r) {
+				if (r.message) { values[f.key] = r.message.file_url; span.textContent = '✓ ' + r.message.file_name; span.className = 'ok'; delete errors[f.key]; }
+				else { span.textContent = errText(r); span.className = ''; }
+			}).catch(function () { span.textContent = 'Network error'; });
+		}
+		function save(submit) {
+			var b1 = document.getElementById('save'), b2 = document.getElementById('send'), st = document.getElementById('status');
+			b1.disabled = b2.disabled = true; st.textContent = submit ? t('sending') : '…';
+			fetch(api + 'public_save', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+				body: JSON.stringify({ key: KEY, values: values, submit: submit ? 1 : 0 }) }).then(function (r) { return r.json(); }).then(function (r) {
+				b1.disabled = b2.disabled = false;
+				if (!r.message) { st.textContent = errText(r); return; }
+				if (!r.message.ok) { errors = r.message.errors; render(); st.textContent = t('fix'); var first = document.querySelector('.err'); if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+				errors = {};
+				if (submit) { F.open = false; F.status = 'Submitted'; render(); window.scrollTo(0, 0); }
+				else st.textContent = t('saved');
+			}).catch(function () { b1.disabled = b2.disabled = false; st.textContent = 'Network error'; });
+		}
+		document.getElementById('lang').addEventListener('click', function () { lang = lang === 'ar' ? 'en' : 'ar'; if (F) render(); });
+		document.getElementById('save').addEventListener('click', function () { save(false); });
+		document.getElementById('send').addEventListener('click', function () { save(true); });
+		load();
+	})();
+	</script>
+</body>
+</html>

@@ -2893,6 +2893,69 @@ def run(site):
         check("punches refused for a missing shift: listed per employee, shift assigned in bulk, refused punches imported",
               punches_refused_for_missing_shift)
 
+        def joiner_self_onboarding():
+            from alphax_hr.api import hr as hr_api, joiners as jn
+            frappe.set_user(f["hr"])
+            made = None
+            j = jn.invite({"full_name": "Axt Joiner", "mobile": "0500000001", "company": COMPANY, "date_of_joining": nowdate()})
+            try:
+                key = j["link"].split("key=")[1]
+                assert j["status"] == "Invited" and len(key) == 32
+                expect_error(lambda: jn.invite({"full_name": "No contact"}), frappe.ValidationError)
+                frappe.set_user("Guest")  # the joiner has no account
+                expect_error(lambda: jn.public_form("0" * 32), frappe.PermissionError)
+                pf = jn.public_form(key)
+                assert pf["open"] and pf["name"] == "Axt Joiner" and pf["fields"] and pf["sections"]
+                assert jn.public_save(key, {"first_name": "Sara"})["ok"]  # a draft keeps what is filled
+                bad = jn.public_save(key, {"alphax_iqama_number": "123", "iban": "SA12"}, submit=1)
+                assert not bad["ok"] and bad["errors"]["alphax_iqama_number"] == "id" and bad["errors"]["iban"] == "iban"
+                assert bad["errors"]["last_name"] == "required" and bad["errors"]["id_copy"] == "required"
+                f_ = frappe.get_doc({"doctype": "File", "file_name": "id_copy-id.txt", "content": b"id copy", "is_private": 1,
+                                     "attached_to_doctype": jn.DT, "attached_to_name": j["name"], "attached_to_field": "id_copy"})
+                f_.flags.ignore_permissions = True
+                f_.insert()
+                good = {"first_name": "Sara", "last_name": "Joiner", "gender": "Female", "date_of_birth": "1996-04-02",
+                        "nationality": "Saudi", "alphax_iqama_number": "1" + "0" * 8 + "5", "cell_number": "0551234567",
+                        "person_to_be_contacted": "Ali", "emergency_phone_number": "0559876543", "iban": "SA03 8000 0000 6080 1016 7519",
+                        "id_copy": f_.file_url, "marital_status": "Single"}
+                from alphax_hr.saudi import identity
+                if identity.classify_id(good["alphax_iqama_number"])[1]:  # pick a number the ID rules accept
+                    for n in range(1000000000, 1000000100):
+                        if not identity.classify_id(str(n))[1]:
+                            good["alphax_iqama_number"] = str(n)
+                            break
+                res = jn.public_save(key, good, submit=1)
+                assert res["ok"] and res["status"] == "Submitted", res
+                expect_error(lambda: jn.public_save(key, good), frappe.ValidationError)  # sent: closed for the joiner
+                frappe.set_user(f["hr"])
+                ov = jn.overview()
+                row = next(r for r in ov["rows"] if r["name"] == j["name"])
+                assert row["full_name"] == "Sara Joiner" and row["data"]["iban"] == "SA0380000000608010167519"
+                assert ov["counts"]["Submitted"] >= 1
+                jn.request_changes(j["name"], "Please add your passport")
+                frappe.set_user("Guest")
+                assert jn.public_form(key)["hr_note"] == "Please add your passport"
+                assert jn.public_save(key, good, submit=1)["ok"]
+                frappe.set_user(f["hr"])
+                pre = jn.prefill(j["name"])
+                assert pre["values"]["first_name"] == "Sara" and pre["values"]["company"] == COMPANY and pre["files"]["id_copy"]
+                emp = hr_api.create_employee({**pre["values"], "joiner": j["name"]})
+                made = emp["name"]
+                done = frappe.get_doc(jn.DT, j["name"])
+                assert done.status == "Converted" and done.employee == made and not done.token
+                assert frappe.db.get_value("File", f_.name, "attached_to_doctype") == "Employee"  # documents moved
+                frappe.set_user("Guest")
+                expect_error(lambda: jn.public_form(key), frappe.PermissionError)  # the link stops working
+            finally:
+                frappe.set_user("Administrator")
+                if made and frappe.db.exists("Employee", made):
+                    frappe.db.delete("File", {"attached_to_doctype": "Employee", "attached_to_name": made})
+                    frappe.delete_doc("Employee", made, force=True)
+                frappe.db.delete("File", {"attached_to_doctype": jn.DT, "attached_to_name": j["name"]})
+                frappe.delete_doc(jn.DT, j["name"], force=True)
+        check("new joiner self-onboarding: invite link, form without login (validated), changes requested, employee created from it",
+              joiner_self_onboarding)
+
         def mandatory_gaps_do_not_block_other_sections():
             from frappe.custom.doctype.property_setter.property_setter import make_property_setter
             from alphax_hr.api import hr as hr_api

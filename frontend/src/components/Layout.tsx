@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { Fingerprint, GitBranch,
-  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History, Network, CalendarCheck, Activity, ChevronDown, Inbox, Gavel, ShieldAlert, Receipt, Star, ArrowRightLeft, LayoutGrid, Folder, Download, Megaphone, MapPin, LocateFixed, LifeBuoy, BookOpen, BellRing, Hourglass, HandCoins, BadgePercent, BookOpenCheck } from 'lucide-react'
+  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History, Network, CalendarCheck, Activity, ChevronDown, Inbox, Gavel, ShieldAlert, Receipt, Star, ArrowRightLeft, LayoutGrid, Folder, Download, Megaphone, MapPin, LocateFixed, LifeBuoy, BookOpen, BellRing, Hourglass, HandCoins, BadgePercent, BookOpenCheck, UserPlus } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { NavLink, Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -66,6 +66,7 @@ export function useNav(): { group: string; items: NavItem[] }[] {
       group: t('People'),
       items: [
         { to: '/people', label: t('Employees'), icon: <Users className="size-5" /> },
+        { to: '/joiners', label: t('New joiners'), icon: <UserPlus className="size-5" /> },
         { to: '/designations', label: t('Designations & Saudization'), icon: <BadgePercent className="size-5" /> },
         { to: '/people?view=org', label: t('Org chart'), icon: <Network className="size-5" /> },
         { to: '/people/bulk-update', label: t('Bulk update'), icon: <Users className="size-5" /> },

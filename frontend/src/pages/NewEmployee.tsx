@@ -2,7 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { AlertTriangle, ArrowLeft, Check } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { FieldInput, isEmpty, type FieldSpec } from '../components/FieldInput'
 import { Button, Card, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner } from '../components/ui'
 import { SalaryEditor, packageReady, type SalaryPackage } from '../components/SalaryEditor'
@@ -60,10 +60,16 @@ export default function NewEmployee() {
       return next
     })
   }, [form.data])
+  // created from a joiner's own form: fill in what they sent
+  const [params] = useSearchParams()
+  const joiner = params.get('joiner')
+  const pre = useQuery<any>({ queryKey: ['joiner-prefill', joiner], queryFn: () => api.joinerPrefill(joiner!), enabled: !!joiner })
+  useEffect(() => { if (pre.data) setF((cur) => ({ ...cur, ...pre.data.values })) }, [pre.data])
   const set = (k: string, v: any) => setF((x) => ({ ...x, [k]: v }))
   const kind = idKind(f.alphax_iqama_number)
   const payload = () => {
     const out: Record<string, any> = { ...f, alphax_is_saudi: kind === 'saudi' ? 1 : 0 }
+    if (joiner) out.joiner = joiner
     if (!salaryLater && packageReady(salary)) out.salary = salary
     if (kind === 'saudi') for (const k of NON_SAUDI_ONLY) delete out[k]
     return out
@@ -208,6 +214,9 @@ export default function NewEmployee() {
     <div>
       <Link to="/people" className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-ink"><ArrowLeft className="size-4 flip-rtl" />{t('People')}</Link>
       <PageHeader title={t('New employee')} />
+      {pre.data && <div className="rounded-xl bg-brand-50 p-3 text-sm text-brand">{t('Filled in from the joining form of')} <b>{pre.data.full_name}</b>. {t('Check each step, add the job and salary, then create. Their documents move to the employee.')}
+        {Object.keys(pre.data.extra ?? {}).length > 0 && <div className="mt-1 text-xs">{t('Also sent (not employee fields)')}: {Object.entries(pre.data.extra).map(([k, v]) => `${k}: ${v}`).join(' · ')}</div>}</div>}
+      {pre.error && <ErrorBox error={pre.error} />}
       <ol className="mb-5 flex flex-wrap gap-2" aria-label={t('Steps')}>
         {steps.map((st, i) => {
           const done = i < step && missingIn(st.key).length === 0
