@@ -15,11 +15,15 @@ from alphax_hr.api._common import parse_json, require_hr, require_hr_manager
 FIELDS = ["device_name", "enabled", "brand", "connection", "serial_number", "company", "location", "branch", "offline_alert_hours",
 		  "match_by", "punch_rule",
 		  "time_offset_minutes", "allowed_ips", "db_type", "db_host", "db_port", "db_name", "db_user", "db_preset", "db_table",
-		  "db_user_column", "db_time_column", "db_state_column", "db_sn_column", "pull_every", "split_by_terminal"]
+		  "db_user_column", "db_time_column", "db_state_column", "db_sn_column", "pull_every", "split_by_terminal",
+		  "db_in_values", "db_out_values", "db_emp_table", "db_emp_id_column", "db_emp_key_column", "db_emp_name_column",
+		  "db_device_table", "db_device_sn_column", "db_device_name_column", "db_device_active_column"]
 ONLINE_MINUTES = 10
 
 
 def _status(d):
+	if not cint(d.enabled) and d.get("connection") == dv.TERMINAL:
+		return "Excluded"
 	if not cint(d.enabled):
 		return "Waiting for approval" if (d.device_name or "").startswith("New device ") else "Disabled"
 	if cint(d.get("failures")) and (d.connection or "").startswith("Database pull"):
@@ -37,7 +41,7 @@ def _status(d):
 def overview():
 	require_hr()
 	rows = frappe.get_all(dv.DEVICE, fields=["name", *FIELDS, "last_contact", "last_punch", "last_ip", "model", "user_count", "db_last_time",
-												  "source_device", "punch_count",
+												  "source_device", "punch_count", "source_active",
 												  "last_error", "last_error_on", "failures"],
 						  order_by="device_name asc")
 	since = now_datetime() - timedelta(days=1)
@@ -92,7 +96,62 @@ def save(data: str | dict | list, name: str | None = None):
 		frappe.rename_doc(dv.DEVICE, name, values["device_name"], force=True)
 		return overview()
 	doc.save()
+	_to_terminals(doc)
 	return overview()
+
+
+def _to_terminals(doc):
+	"""Reading rules set on a database connection apply to all its terminals."""
+	if not (doc.connection or "").startswith("Database pull"):
+		return
+	values = {k: doc.get(k) for k in dv.COPY if k not in ("company", "brand")}
+	for t in frappe.get_all(dv.DEVICE, filters={"source_device": doc.name}, pluck="name"):
+		frappe.db.set_value(dv.DEVICE, t, values, update_modified=False)
+
+
+def _draft(name, data=None):
+	"""The saved connection with unsaved mapping changes from the form applied (nothing is stored)."""
+	doc = frappe.get_doc(dv.DEVICE, name)
+	values = {k: v for k, v in (parse_json(data) or {}).items() if k in FIELDS}
+	doc.update(values)
+	return doc
+
+
+@frappe.whitelist(methods=["POST"])
+def schema(name: str, data: str | dict | None = None, table: str | None = None):
+	"""Tables of the attendance database and a proposed mapping; with ``table``, that table's columns."""
+	require_hr_manager()
+	doc = _draft(name, data)
+	if table:
+		return {"table": table, "columns": dv.columns(doc, table)}
+	return dv.suggest_mapping(doc)
+
+
+@frappe.whitelist(methods=["POST"])
+def preview(name: str, data: str | dict | None = None):
+	require_hr_manager()
+	return dv.preview(_draft(name, data))
+
+
+@frappe.whitelist()
+def sync_status(name: str, start: str | None = None, end: str | None = None):
+	require_hr()
+	return dv.sync_status(frappe.get_doc(dv.DEVICE, name), start or None, end or None)
+
+
+@frappe.whitelist(methods=["POST"])
+def backfill(name: str, start: str, end: str | None = None):
+	"""Read a period again. Small periods run now; larger ones in the background."""
+	require_hr_manager()
+	doc = frappe.get_doc(dv.DEVICE, name)
+	if doc.connection == dv.TERMINAL and doc.source_device:
+		doc = frappe.get_doc(dv.DEVICE, doc.source_device)
+	status = dv.sync_status(doc, start, end)
+	if status["available"] <= 5000:
+		return {"queued": False, **dv.backfill(doc, start, end)}
+	frappe.enqueue("alphax_hr.devices.backfill_job", queue="long", timeout=7200, job_id=f"alphax-backfill-{doc.name}",
+				   deduplicate=True, name=doc.name, start=start, end=end, enqueue_after_commit=True)
+	return {"queued": True, "available": status["available"]}
 
 
 @frappe.whitelist(methods=["POST"])
@@ -263,6 +322,10 @@ def unmatched():
 	for r in rows:
 		r.last = str(r.last)
 		r.user_name = frappe.db.get_value("AlphaX Device User", {"device": r.device, "device_user": r.device_user}, "user_name")
+		if not r.user_name:
+			src = frappe.db.get_value(dv.DEVICE, r.device, "source_device")
+			if src:
+				r.user_name = frappe.db.get_value("AlphaX Device User", {"device": src, "device_user": r.device_user}, "user_name")
 		r.suggest = None
 		if r.user_name:
 			first = r.user_name.split()[0]
@@ -280,6 +343,25 @@ def link_user(device: str, device_user: str, employee: str):
 	dev = frappe.get_doc(dv.DEVICE, device)
 	emp = frappe.get_doc("Employee", employee)
 	emp.check_permission("write")
+	group = [device]
+	if dev.source_device:
+		group += frappe.get_all(dv.DEVICE, filters={"source_device": dev.source_device}, pluck="name") + [dev.source_device]
+	if dev.match_by == "National ID / Iqama":  # the value is a national ID / Iqama: put it on the employee
+		import re
+
+		if not re.fullmatch(r"[12]\d{9}", str(device_user)):
+			frappe.throw(_("{0} is not a national ID / Iqama number: this person has none in the attendance database. Add it "
+						   "there, then their punches match automatically.").format(device_user))
+		other = frappe.db.get_value("Employee", {"alphax_iqama_number": device_user, "name": ["!=", employee]}, "employee_name")
+		if other:
+			frappe.throw(_("{0} is already the Iqama of {1}.").format(device_user, other))
+		if emp.get("alphax_iqama_number") and emp.alphax_iqama_number != device_user:
+			frappe.throw(_("{0} already has Iqama {1}; correct it on the profile if it is wrong.").format(
+				emp.employee_name, emp.alphax_iqama_number))
+		frappe.db.set_value("Employee", employee, "alphax_iqama_number", device_user)
+		names = frappe.get_all(dv.LOG, filters={"device": ["in", list(set(group))], "device_user": device_user,
+												 "status": "Unmatched"}, pluck="name")
+		return dv.process(names)
 	if (dev.match_by or "Attendance device ID") != "Attendance device ID":
 		frappe.throw(_("This device matches by {0}; fix that value on the employee instead.").format(_(dev.match_by)))
 	other = frappe.db.get_value("Employee", {"attendance_device_id": device_user, "name": ["!=", employee]}, "employee_name")

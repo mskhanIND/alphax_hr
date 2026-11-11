@@ -2,6 +2,15 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.29.0 — 2026-11-11
+
+- **Tables & columns, read from the database.** On a database connection, *Tables & columns* lists the database's tables and proposes the punch table (user, time, IN/OUT, device serial), the people table (ID, value to match by, name) and the devices table (serial, name, active), with a *suggest* chip wherever your choice differs. Works for any attendance software, not only the presets.
+- **IN / OUT values and preview.** Set which values mean IN and OUT (the values found in the data are shown), then see the latest punches exactly as AlphaX will read them: IN/OUT, terminal and the employee matched.
+- **Devices table.** *Find terminals* takes each device's name and active flag from the source. Inactive devices start excluded, and each terminal has an *Include* switch. Punches of excluded terminals are not imported.
+- **Sync status and backfill.** Per connection: how far AlphaX has read, the last successful read, connection state and the oldest punch in the database. For any period it shows punches in the database vs. in AlphaX and what is missing, per terminal, and *Read the missing punches* fills the gap (in the background for large periods) without moving the regular pull or doubling a punch.
+- **Names for unmatched punches.** Names come from the people table. With *Match by: National ID / Iqama*, linking an unmatched person sets the Iqama on the employee and imports their waiting punches from all terminals of the connection.
+- Reading rules (IN/OUT, matching, clock offset) set on a connection now apply to all its terminals.
+
 ## 0.28.1 — 2026-11-11
 
 - **Attendance database health.** Each failed read is recorded with its reason, the time it started failing and how many attempts have failed in a row. The card shows **Connection failed** with the reason, and the database's terminals show **Source not reachable**. HR is told once when it stays down past the alert hours (with the reason), and told again when it connects. Punches wait safely in the attendance database and are read when it is back. A terminal that is quiet (closed site, weekend) raises no alert; only its database is watched.

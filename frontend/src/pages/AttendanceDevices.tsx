@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { AlertTriangle, CalendarCheck, Cpu, Pencil, Plus, RefreshCw, Search, Trash2, Upload, Users } from 'lucide-react'
+import { Activity, AlertTriangle, CalendarCheck, Cpu, Database, Pencil, Plus, RefreshCw, Search, Trash2, Upload, Users } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { LinkInput } from '../components/LinkInput'
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, Table, Tabs, Textarea } from '../components/ui'
@@ -14,7 +14,7 @@ const DB = 'Database pull (BioTime / ZKTime)'
 const FILE = 'File upload'
 const TERMINAL = 'Via database source'
 const PRESETS = ['BioTime (iclock_transaction)', 'ZKTime / ZKAccess (CHECKINOUT)', 'ADMS (CheckInOut + EmpDetails)', 'Custom']
-const STATUS_TONE: Record<string, string> = { Online: 'green', Offline: 'red', 'Never connected': 'gray', 'Waiting for approval': 'amber', Disabled: 'gray', Active: 'green', Quiet: 'amber', 'Connection failed': 'red', 'Source not reachable': 'red' }
+const STATUS_TONE: Record<string, string> = { Online: 'green', Offline: 'red', 'Never connected': 'gray', 'Waiting for approval': 'amber', Disabled: 'gray', Active: 'green', Quiet: 'amber', 'Connection failed': 'red', 'Source not reachable': 'red', Excluded: 'gray' }
 const BLANK = { device_name: '', enabled: 1, brand: 'ZKTeco', connection: PUSH, serial_number: '', company: '', location: '', branch: '', offline_alert_hours: 2, match_by: 'Attendance device ID',
   punch_rule: 'From the device (0 = IN, 1 = OUT)', time_offset_minutes: 0, allowed_ips: '', db_type: '', db_host: '', db_port: '', db_name: '', db_user: '',
   db_password: '', db_preset: 'BioTime (iclock_transaction)', db_table: '', db_user_column: '', db_time_column: '', db_state_column: '', db_sn_column: '', pull_every: 15, split_by_terminal: 1 }
@@ -78,7 +78,7 @@ function DeviceForm({ device, onClose, server, pushUrl }: { device: any | null; 
             {text('pull_every', 'Pull every (minutes)', 'number')}
             <label className="flex items-center gap-2 self-end pb-2 text-sm"><input type="checkbox" className="size-4 accent-[var(--color-brand)]" checked={!!Number(v.split_by_terminal)} onChange={(e) => set('split_by_terminal', e.target.checked ? 1 : 0)} />{t('Show each terminal separately')}</label>
             {v.db_preset === 'ADMS (CheckInOut + EmpDetails)' && <p className="text-xs text-muted sm:col-span-2">{t('Users are matched by the national ID in EmpDetails: set Match device users by to National ID / Iqama.')}</p>}
-            {v.db_preset === 'Custom' && <>{text('db_table', 'Punch table')}{text('db_user_column', 'User column')}{text('db_time_column', 'Time column')}{text('db_state_column', 'IN/OUT column')}{text('db_sn_column', 'Device column')}</>}
+            {v.db_preset === 'Custom' && <p className="text-xs text-muted sm:col-span-2">{t('After saving, open Tables & columns on the card: AlphaX reads the database and proposes the tables and columns.')}</p>}
           </div>
         )}
         {save.error && <ErrorBox error={save.error} />}
@@ -122,6 +122,145 @@ function Enrolment({ device, onClose, onQueued }: { device: any; onClose: () => 
   )
 }
 
+
+const MAP_GROUPS: { table: string; label: string; required?: boolean; cols: [string, string, boolean?][] }[] = [
+  { table: 'db_table', label: 'Punch table', required: true, cols: [['db_user_column', 'User ID', true], ['db_time_column', 'Punch time', true], ['db_state_column', 'IN/OUT'], ['db_sn_column', 'Device serial number']] },
+  { table: 'db_emp_table', label: 'People table (optional)', cols: [['db_emp_id_column', 'ID used in punches'], ['db_emp_key_column', 'Value to match employees by'], ['db_emp_name_column', 'Name']] },
+  { table: 'db_device_table', label: 'Devices table (optional)', cols: [['db_device_sn_column', 'Serial number'], ['db_device_name_column', 'Device name'], ['db_device_active_column', 'Active']] },
+]
+const MAP_KEYS = MAP_GROUPS.flatMap((g) => [g.table, ...g.cols.map((c) => c[0])])
+
+function DbSetup({ device, onClose }: { device: any; onClose: () => void }) {
+  const { t, lang } = useI18n()
+  const qc = useQueryClient()
+  const [step, setStep] = useState('map')
+  const init: any = { punch_rule: device.punch_rule, db_in_values: device.db_in_values ?? '', db_out_values: device.db_out_values ?? '', match_by: device.match_by }
+  MAP_KEYS.forEach((k) => { init[k] = device[k] ?? '' })
+  // ADMS is a mapping preset (fields adjust it); BioTime / ZKTime are fixed queries, so mapping them by hand means Custom
+  const [v, setV] = useState<any>({ ...init, db_preset: device.db_preset === 'ADMS (CheckInOut + EmpDetails)' ? device.db_preset : 'Custom' })
+  const [tables, setTables] = useState<string[]>([])
+  const [cols, setCols] = useState<Record<string, string[]>>({})
+  const [sug, setSug] = useState<Record<string, string>>({})
+  const set = (k: string, x: any) => setV((s: any) => ({ ...s, [k]: x }))
+  const read = useMutation({
+    mutationFn: () => api.deviceSchema(device.name, { db_preset: device.db_preset }),
+    onSuccess: (r: any) => {
+      setTables(r.tables); setCols(r.columns); setSug(r.mapping)
+      setV((s: any) => { const n = { ...s }; MAP_KEYS.forEach((k) => { if (!n[k] && r.mapping[k]) n[k] = r.mapping[k] }); return n })
+    },
+  })
+  const loadCols = async (table: string) => {
+    if (!table || cols[table]) return
+    const r = await api.deviceSchema(device.name, undefined, table)
+    setCols((c) => ({ ...c, [table]: r.columns }))
+  }
+  const pv = useMutation({ mutationFn: () => api.devicePreview(device.name, v) })
+  const save = useMutation({ mutationFn: () => api.saveDevice(v, device.name), onSuccess: (d) => { qc.setQueryData(['devices'], d); onClose() } })
+  const pick = (k: string, options: string[], label: string, required = false) => (
+    <Field label={<span className="flex flex-wrap items-center gap-1.5">{t(label)}{required && <span className="text-red-600">*</span>}
+      {sug[k] && sug[k] !== v[k] && <button type="button" onClick={() => set(k, sug[k])} className="rounded-full bg-amber-50 px-2 text-[11px] text-amber-800">{t('suggest')}: {sug[k]}</button>}</span> as any}>
+      <Select value={v[k] ?? ''} onChange={(e) => set(k, e.target.value)}>
+        <option value="">—</option>
+        {v[k] && !options.includes(v[k]) && <option value={v[k]}>{v[k]}</option>}
+        {options.map((o) => <option key={o} value={o}>{o}</option>)}
+      </Select>
+    </Field>
+  )
+  return (
+    <Modal open wide onClose={onClose} title={`${t('Tables & columns')} · ${device.device_name}`}
+      footer={<><Button variant="secondary" onClick={onClose}>{t('Cancel')}</Button>
+        {step === 'map' ? <Button onClick={() => { setStep('values'); pv.mutate() }} disabled={!v.db_table || !v.db_user_column || !v.db_time_column}>{t('Next')}</Button>
+          : <Button loading={save.isPending} onClick={() => save.mutate()}>{t('Save')}</Button>}</>}>
+      <div className="flex flex-col gap-4">
+        <Tabs value={step} onChange={setStep} tabs={[{ value: 'map', label: `1. ${t('Tables & columns')}` }, { value: 'values', label: `2. ${t('IN / OUT and preview')}` }]} />
+        {step === 'map' && <>
+          <div className="flex flex-wrap items-center gap-2 rounded-xl bg-brand-50 p-3 text-sm text-brand">
+            <Database className="size-4" />{t('AlphaX reads the table and column names from the database and proposes them. Check and adjust.')}
+            <Button size="sm" className="ms-auto" loading={read.isPending} onClick={() => read.mutate()}><Search className="size-4" />{tables.length ? t('Read again') : t('Read the database')}</Button>
+          </div>
+          {read.error && <ErrorBox error={read.error} />}
+          {MAP_GROUPS.map((g) => (
+            <div key={g.table} className="rounded-xl border border-line p-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label={<span className="flex flex-wrap items-center gap-1.5 font-medium">{t(g.label)}{g.required && <span className="text-red-600">*</span>}
+                  {sug[g.table] && sug[g.table] !== v[g.table] && <button type="button" onClick={() => { set(g.table, sug[g.table]); loadCols(sug[g.table]) }} className="rounded-full bg-amber-50 px-2 text-[11px] text-amber-800">{t('suggest')}: {sug[g.table]}</button>}</span> as any}>
+                  {tables.length ? <Select value={v[g.table] ?? ''} onChange={(e) => { set(g.table, e.target.value); loadCols(e.target.value) }}>
+                    <option value="">—</option>{v[g.table] && !tables.includes(v[g.table]) && <option value={v[g.table]}>{v[g.table]}</option>}
+                    {tables.map((o) => <option key={o} value={o}>{o}</option>)}</Select>
+                    : <Input value={v[g.table] ?? ''} onChange={(e) => set(g.table, e.target.value)} placeholder={t('Read the database to choose')} />}
+                </Field>
+              </div>
+              {v[g.table] && <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                {g.cols.map(([k, label, req]) => cols[v[g.table]]
+                  ? <div key={k}>{pick(k, cols[v[g.table]], label, !!req)}</div>
+                  : <Field key={k} label={t(label)}><Input value={v[k] ?? ''} onChange={(e) => set(k, e.target.value)} /></Field>)}
+              </div>}
+            </div>
+          ))}
+        </>}
+        {step === 'values' && <>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label={t('IN / OUT')}><Select value={v.punch_rule ?? ''} onChange={(e) => set('punch_rule', e.target.value)}>
+              {['From the device (0 = IN, 1 = OUT)', 'First IN, last OUT (ignore the keys)', 'Alternate (shift decides)', 'All IN', 'All OUT'].map((o) => <option key={o} value={o}>{t(o)}</option>)}</Select></Field>
+            <Field label={t('Values meaning IN')} hint={pv.data?.states?.length ? `${t('Found')}: ${pv.data.states.join(', ')}` : undefined}><Input value={v.db_in_values} onChange={(e) => set('db_in_values', e.target.value)} placeholder="0" /></Field>
+            <Field label={t('Values meaning OUT')}><Input value={v.db_out_values} onChange={(e) => set('db_out_values', e.target.value)} placeholder="1" /></Field>
+          </div>
+          <div className="flex items-center gap-2"><span className="text-sm font-medium">{t('Latest punches as AlphaX reads them')}</span>
+            <Button size="sm" variant="secondary" className="ms-auto" loading={pv.isPending} onClick={() => pv.mutate()}><RefreshCw className="size-4" />{t('Preview')}</Button></div>
+          {pv.error && <ErrorBox error={pv.error} />}
+          {pv.data && <Table head={[t('User'), t('Time'), t('Value'), t('IN / OUT'), t('Terminal'), t('Employee')]}>
+            {pv.data.rows.map((r: any, i: number) => (
+              <tr key={i}><td className="font-mono text-xs">{r.user}</td><td>{fmtDateTime(r.time, lang)}</td><td className="font-mono text-xs">{r.state ?? '—'}</td>
+                <td>{r.log_type ? <Badge tone={r.log_type === 'IN' ? 'green' : 'blue'}>{t(r.log_type)}</Badge> : <span className="text-xs text-muted">{t('by the day')}</span>}</td>
+                <td className="font-mono text-xs">{r.terminal ?? '—'}</td>
+                <td>{r.employee_name ?? <span className="text-amber-700">{t('Not matched')}</span>}</td></tr>))}
+          </Table>}
+          {save.error && <ErrorBox error={save.error} />}
+        </>}
+      </div>
+    </Modal>
+  )
+}
+
+function SyncPanel({ device, can }: { device: any; can: boolean }) {
+  const { t, lang } = useI18n()
+  const qc = useQueryClient()
+  const first = new Date(); first.setDate(1)
+  const [start, setStart] = useState(first.toISOString().slice(0, 10))
+  const q = useQuery<any>({ queryKey: ['device-sync', device.name, start], queryFn: () => api.deviceSyncStatus(device.name, start) })
+  const bf = useMutation({ mutationFn: () => api.deviceBackfill(device.name, start), onSuccess: () => { qc.invalidateQueries({ queryKey: ['device-sync', device.name] }); qc.invalidateQueries({ queryKey: ['devices'] }) } })
+  const s = q.data
+  const tile = (label: string, value: ReactNode, tone = '') => <div className="rounded-xl border border-line p-2.5"><div className={clsx('text-sm font-semibold', tone)}>{value}</div><div className="text-[11px] uppercase text-muted">{t(label)}</div></div>
+  return (
+    <div className="mt-3 flex flex-col gap-3 border-t border-line pt-3">
+      <div className="flex flex-wrap items-end gap-2">
+        <Field label={t('From')}><Input type="date" value={start} onChange={(e) => setStart(e.target.value)} className="!w-44" /></Field>
+        {s?.oldest && <Button size="sm" variant="ghost" onClick={() => setStart(s.oldest.slice(0, 10))}>{t('Use oldest')} ({s.oldest.slice(0, 10)})</Button>}
+        {can && <Button size="sm" className="ms-auto" loading={bf.isPending} disabled={!s?.gap} onClick={() => bf.mutate()}><RefreshCw className="size-4" />{t('Read the missing punches')}</Button>}
+      </div>
+      {q.isLoading ? <Spinner /> : q.error ? <ErrorBox error={q.error} /> : s && <>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {tile('Read up to', s.watermark ? fmtDateTime(s.watermark, lang) : '—')}
+          {tile('Last successful read', s.last_success ? fmtDateTime(s.last_success, lang) : '—')}
+          {tile('Connection', s.connected ? t('Connected') : t('Connection failed'), s.connected ? 'text-emerald-700' : 'text-red-700')}
+          {tile('Oldest punch in the database', s.oldest ? s.oldest.slice(0, 10) : '—')}
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {tile('In the database', s.available)}{tile('In AlphaX', s.synced)}{tile('Missing', s.gap, s.gap ? 'text-amber-700' : 'text-emerald-700')}
+        </div>
+        {s.terminals.length > 0 && <Table head={[t('Terminal'), t('In the database'), t('In AlphaX'), t('Missing')]}>
+          {s.terminals.map((r: any) => <tr key={r.device + (r.serial_number ?? '')}>
+            <td>{r.device_name}{!r.included && <span className="ms-2 text-xs text-muted">({t('excluded')})</span>}<div className="text-xs text-muted">{r.serial_number ? `SN ${r.serial_number}` : ''}</div></td>
+            <td>{r.available}</td><td>{r.synced}</td><td className={clsx(r.available > r.synced && 'text-amber-700')}>{Math.max(r.available - r.synced, 0)}</td></tr>)}
+        </Table>}
+        <p className="text-xs text-muted">{t('Reading again never doubles a punch. A terminal you include later: include it, then read the missing punches from the date you need.')}</p>
+      </>}
+      {bf.data && <p className="text-sm text-emerald-700">{bf.data.queued ? t('Reading in the background; refresh in a few minutes.') : `${t('New punches')}: ${bf.data.new} · ${t('Imported')}: ${bf.data.imported} · ${t('Unmatched')}: ${bf.data.unmatched}`}</p>}
+      {bf.error && <ErrorBox error={bf.error} />}
+    </div>
+  )
+}
+
 function DeviceCard({ d, can, onEdit, terminals = [], onEditTerminal }: { d: any; can: boolean; onEdit: () => void; terminals?: any[]; onEditTerminal?: (x: any) => void }) {
   const { t, lang } = useI18n()
   const qc = useQueryClient()
@@ -153,13 +292,16 @@ function DeviceCard({ d, can, onEdit, terminals = [], onEditTerminal }: { d: any
   })
   const kind = d.connection === PUSH ? 'push' : d.connection === DB ? 'db' : d.connection === API ? 'api' : 'file'
   const [enrol, setEnrol] = useState(false)
+  const [setup, setSetup] = useState(false)
+  const [sync, setSync] = useState(false)
+  const include = useMutation({ mutationFn: (x: { name: string; on: boolean }) => api.saveDevice({ enabled: x.on ? 1 : 0 }, x.name), onSuccess: (r) => qc.setQueryData(['devices'], r) })
   return (
     <Card>
       <div className="flex flex-wrap items-start gap-3">
         <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand/10 text-brand"><Cpu className="size-5" /></span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2"><span className="font-semibold">{d.device_name}</span><Badge tone={STATUS_TONE[d.status] ?? 'gray'}>{t(d.status)}</Badge></div>
-          <div className="text-xs text-muted">{kind === 'db' ? `${t('Attendance database')} · ${d.db_name ?? ''}${d.db_host ? ` @ ${d.db_host}` : ''}` : t(d.brand)} · {t(d.connection)}{d.serial_number ? ` · SN ${d.serial_number}` : ''}{d.location ? ` · ${d.location}` : ''}{d.model ? ` · ${d.model}` : ''}</div>
+          <div className="text-xs text-muted">{kind === 'db' ? `${t('Attendance database')} · ${d.db_name ?? ''}${d.db_host ? ` @ ${d.db_host}` : ''}` : `${t(d.brand)} · ${t(d.connection)}`}{d.serial_number ? ` · SN ${d.serial_number}` : ''}{d.location ? ` · ${d.location}` : ''}{d.model ? ` · ${d.model}` : ''}</div>
           <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
             <span><span className="text-muted">{t('Last contact')}:</span> {d.last_contact ? fmtDateTime(d.last_contact, lang) : '—'}</span>
             <span><span className="text-muted">{t('Last punch')}:</span> {d.last_punch ? fmtDateTime(d.last_punch, lang) : '—'}</span>
@@ -190,7 +332,9 @@ function DeviceCard({ d, can, onEdit, terminals = [], onEditTerminal }: { d: any
           </>}
           {kind === 'db' && <>
             <Button size="sm" variant="secondary" loading={act.isPending && act.variables === 'test'} onClick={() => act.mutate('test')}>{t('Test connection')}</Button>
+            <Button size="sm" variant="secondary" onClick={() => setSetup(true)}><Database className="size-4" />{t('Tables & columns')}</Button>
             <Button size="sm" variant="secondary" loading={act.isPending && act.variables === 'discover'} onClick={() => act.mutate('discover')}><Search className="size-4" />{t('Find terminals')}</Button>
+            <Button size="sm" variant={sync ? 'primary' : 'secondary'} onClick={() => setSync((x) => !x)}><Activity className="size-4" />{t('Sync status')}</Button>
             <Button size="sm" variant="secondary" loading={act.isPending && act.variables === 'pull'} onClick={() => act.mutate('pull')}><RefreshCw className="size-4" />{t('Pull now')}</Button>
           </>}
           {kind === 'api' && <Button size="sm" variant="secondary" onClick={() => act.mutate('token')}>{d.has_token ? t('New token') : t('Create token')}</Button>}
@@ -203,11 +347,13 @@ function DeviceCard({ d, can, onEdit, terminals = [], onEditTerminal }: { d: any
       {terminals.length > 0 && (
         <div className="mt-3 border-t border-line pt-3">
           <div className="mb-2 text-sm font-medium">{t('Terminals')} ({terminals.length})</div>
-          <Table head={[t('Terminal'), t('Status'), t('Branch'), t('Last punch'), t('Punches (24 h)'), t('Unmatched'), '']}>
+          <Table head={[t('Include'), t('Terminal'), t('Status'), t('Branch'), t('Last punch'), t('Punches (24 h)'), t('Unmatched'), '']}>
             {terminals.map((x) => (
-              <tr key={x.name}>
+              <tr key={x.name} className={clsx(!Number(x.enabled) && 'opacity-60')}>
+                <td><input type="checkbox" className="size-4 accent-[var(--color-brand)]" disabled={!can || include.isPending} checked={!!Number(x.enabled)}
+                  onChange={(e) => include.mutate({ name: x.name, on: e.target.checked })} aria-label={t('Include')} /></td>
                 <td><div className="font-medium">{x.location && x.location !== d.location ? x.location : x.device_name}</div><div className="text-xs text-muted">SN {x.serial_number}</div></td>
-                <td><Badge tone={STATUS_TONE[x.status] ?? 'gray'}>{t(x.status)}</Badge></td>
+                <td><Badge tone={STATUS_TONE[x.status] ?? 'gray'}>{t(x.status)}</Badge>{!Number(x.source_active ?? 1) && <div className="mt-0.5 text-[11px] text-muted">{t('Inactive in the source')}</div>}</td>
                 <td>{x.branch || <span className="text-muted">—</span>}</td>
                 <td>{x.last_punch ? fmtDateTime(x.last_punch, lang) : '—'}</td>
                 <td>{x.punches_24h}</td>
@@ -218,6 +364,8 @@ function DeviceCard({ d, can, onEdit, terminals = [], onEditTerminal }: { d: any
           </Table>
         </div>
       )}
+      {sync && <SyncPanel device={d} can={can} />}
+      {setup && <DbSetup device={d} onClose={() => setSetup(false)} />}
       {enrol && <Enrolment device={d} onClose={() => setEnrol(false)} onQueued={() => { setEnrol(false); setMsg(t('Command queued; the device picks it up within a minute.')) }} />}
       {token && <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{t('Token (shown once — copy it into the bridge now)')}: <code className="break-all font-mono">{token}</code></div>}
       {msg && <p className="mt-3 text-sm text-emerald-700">{msg}</p>}

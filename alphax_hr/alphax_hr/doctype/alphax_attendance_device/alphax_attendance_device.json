@@ -55,6 +55,19 @@
   "db_time_column",
   "db_state_column",
   "db_sn_column",
+  "db_in_values",
+  "db_out_values",
+  "db_people_section",
+  "db_emp_table",
+  "db_emp_id_column",
+  "db_emp_key_column",
+  "db_emp_name_column",
+  "cb_dev_tbl",
+  "db_device_table",
+  "db_device_sn_column",
+  "db_device_name_column",
+  "db_device_active_column",
+  "source_active",
   "db_last_time",
   "pull_every"
  ],
@@ -340,6 +353,76 @@
    "fieldname": "db_sn_column",
    "fieldtype": "Data",
    "label": "Device column"
+  },
+  {
+   "fieldname": "db_in_values",
+   "fieldtype": "Data",
+   "label": "Values meaning IN",
+   "description": "Comma separated, e.g. 0, I. Empty = the usual codes."
+  },
+  {
+   "fieldname": "db_out_values",
+   "fieldtype": "Data",
+   "label": "Values meaning OUT",
+   "description": "Comma separated, e.g. 1, O."
+  },
+  {
+   "fieldname": "db_people_section",
+   "fieldtype": "Section Break",
+   "label": "People table (optional)",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "db_emp_table",
+   "fieldtype": "Data",
+   "label": "People table"
+  },
+  {
+   "fieldname": "db_emp_id_column",
+   "fieldtype": "Data",
+   "label": "ID used in punches"
+  },
+  {
+   "fieldname": "db_emp_key_column",
+   "fieldtype": "Data",
+   "label": "Value to match employees by",
+   "description": "e.g. national ID or employee number"
+  },
+  {
+   "fieldname": "db_emp_name_column",
+   "fieldtype": "Data",
+   "label": "Name column"
+  },
+  {
+   "fieldname": "cb_dev_tbl",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "db_device_table",
+   "fieldtype": "Data",
+   "label": "Devices table (optional)"
+  },
+  {
+   "fieldname": "db_device_sn_column",
+   "fieldtype": "Data",
+   "label": "Serial number column"
+  },
+  {
+   "fieldname": "db_device_name_column",
+   "fieldtype": "Data",
+   "label": "Device name column"
+  },
+  {
+   "fieldname": "db_device_active_column",
+   "fieldtype": "Data",
+   "label": "Active column"
+  },
+  {
+   "fieldname": "source_active",
+   "fieldtype": "Check",
+   "label": "Active in the source",
+   "read_only": 1,
+   "default": "1"
   },
   {
    "fieldname": "db_last_time",

@@ -52,7 +52,12 @@ def log_type(dev, state):
 		return "OUT"
 	if rule.startswith("Alternate") or rule.startswith("First IN"):
 		return None  # the register reads the day: first punch IN, last punch OUT
-	s = re.sub(r"[\s_]", "", str(state if state is not None else "").strip().lower())
+	raw = str(state if state is not None else "").strip().lower()
+	ins = {x.strip().lower() for x in (dev.get("db_in_values") or "").split(",") if x.strip()}
+	outs = {x.strip().lower() for x in (dev.get("db_out_values") or "").split(",") if x.strip()}
+	if ins or outs:
+		return "IN" if raw in ins else "OUT" if raw in outs else None
+	s = re.sub(r"[\s_]", "", raw)
 	if s in IN_STATES:
 		return "IN"
 	if s in OUT_STATES:
@@ -181,24 +186,54 @@ PRESETS = {
 	"BioTime (iclock_transaction)": ("iclock_transaction", "emp_code", "punch_time", "punch_state", "terminal_sn"),
 	"ZKTime / ZKAccess (CHECKINOUT)": ("CHECKINOUT c JOIN USERINFO u ON u.USERID = c.USERID", "u.BADGENUMBER", "c.CHECKTIME",
 									   "c.CHECKTYPE", "c.SENSORID"),
-	# ADMS server database (CheckInOut + EmpDetails). Users missing from EmpDetails still come in, under their device user ID.
-	"ADMS (CheckInOut + EmpDetails)": ("CheckInOut c LEFT JOIN EmpDetails e ON e.Id = c.UserId",
-									   "COALESCE(NULLIF(e.NationalId, ''), CONCAT('', c.UserId))", "c.CheckTime",
-									   "c.CheckType", "c.SN"),
 }
+# Presets described as a mapping (punch table c, optional people table e and devices table d), the same shape HR fills in
+# for Custom. ADMS server database: users missing from EmpDetails still come in, under their device user ID.
+MAPS = {
+	"ADMS (CheckInOut + EmpDetails)": {
+		"db_table": "CheckInOut", "db_user_column": "UserId", "db_time_column": "CheckTime", "db_state_column": "CheckType",
+		"db_sn_column": "SN", "db_emp_table": "EmpDetails", "db_emp_id_column": "Id", "db_emp_key_column": "NationalId",
+		"db_emp_name_column": "EmpName", "db_device_table": "Devices", "db_device_sn_column": "SN",
+		"db_device_name_column": "DeviceName", "db_device_active_column": "IsActive"},
+}
+MAP_FIELDS = ("db_table", "db_user_column", "db_time_column", "db_state_column", "db_sn_column", "db_emp_table",
+			  "db_emp_id_column", "db_emp_key_column", "db_emp_name_column", "db_device_table", "db_device_sn_column",
+			  "db_device_name_column", "db_device_active_column")
+COLUMN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def mapping(dev):
+	"""Table and column names in use: the preset's, with anything HR filled in on top (so a preset can be adjusted)."""
+	base = dict(MAPS.get(dev.db_preset) or {})
+	for k in MAP_FIELDS:
+		if dev.get(k):
+			base[k] = dev.get(k).strip()
+	return base
+
+
+def _check(name, table=False):
+	if not name:
+		return None
+	if not (IDENT if table else COLUMN).match(name):
+		frappe.throw(_("Check the table and column names (letters, numbers and _ only): {0}").format(name))
+	return name
 
 
 def _columns(dev):
+	"""(table expression, user, time, state, device serial) for the punch query."""
 	if dev.db_preset in PRESETS:
 		return PRESETS[dev.db_preset]
-	cols = (dev.db_table, dev.db_user_column, dev.db_time_column, dev.db_state_column, dev.db_sn_column)
-	for c in cols[:3]:
-		if not c or not IDENT.match(c):
-			frappe.throw(_("Check the table and column names (letters, numbers and _ only)."))
-	for c in cols[3:]:
-		if c and not IDENT.match(c):
-			frappe.throw(_("Check the table and column names (letters, numbers and _ only)."))
-	return cols
+	m = mapping(dev)
+	table, user, when = _check(m.get("db_table"), True), _check(m.get("db_user_column")), _check(m.get("db_time_column"))
+	if not (table and user and when):
+		frappe.throw(_("Choose the punch table and its user and time columns."))
+	state, sn = _check(m.get("db_state_column")), _check(m.get("db_sn_column"))
+	emp, emp_id, key = _check(m.get("db_emp_table"), True), _check(m.get("db_emp_id_column")), _check(m.get("db_emp_key_column"))
+	if emp and emp_id and key:  # match by a value from the people table; users missing there keep their punch user ID
+		return (f"{table} c LEFT JOIN {emp} e ON e.{emp_id} = c.{user}",
+				f"COALESCE(NULLIF(CONCAT('', e.{key}), ''), CONCAT('', c.{user}))", f"c.{when}",
+				f"c.{state}" if state else None, f"c.{sn}" if sn else None)
+	return (f"{table} c", f"c.{user}", f"c.{when}", f"c.{state}" if state else None, f"c.{sn}" if sn else None)
 
 
 def _host_port(host, port):
@@ -258,12 +293,23 @@ def _connect(dev):
 	frappe.throw(_("Choose the database type."))
 
 
-def _select(dev, since, limit=5000):
+def _select(dev, since, limit=5000, until=False, inclusive=False):
 	table, user, when, state, sn = _columns(dev)
 	top = f"TOP {int(limit)} " if dev.db_type == "SQL Server" else ""
 	tail = "" if dev.db_type == "SQL Server" else f" LIMIT {int(limit)}"
+	upper = f" AND {when} <= %s" if until else ""
 	return (f"SELECT {top}{user}, {when}, {state or 'NULL'}, {sn or 'NULL'} FROM {table} "  # identifiers checked by IDENT / presets
-			f"WHERE {when} > %s ORDER BY {when}{tail}")
+			f"WHERE {when} {'>=' if inclusive else '>'} %s{upper} ORDER BY {when}{tail}")
+
+
+def _query(dev, sql, params=()):
+	conn, _param = _connect(dev)
+	try:
+		cur = conn.cursor()
+		cur.execute(sql, params)  # nosemgrep  # identifiers checked by IDENT / presets, values as parameters
+		return cur.fetchall()
+	finally:
+		conn.close()
 
 
 def pull(dev, since=None):
@@ -293,38 +339,64 @@ def pull(dev, since=None):
 
 def _pull(dev, since=None):
 	since = since or dev.db_last_time or "2000-01-01 00:00:00"
-	conn, _param = _connect(dev)
-	try:
-		cur = conn.cursor()
-		cur.execute(_select(dev, since), (str(since),))  # nosemgrep
-		data = cur.fetchall()
-	finally:
-		conn.close()
+	data = _query(dev, _select(dev, since), (str(since),))
 	touch(dev)
-	if cint(dev.get("split_by_terminal")) and _columns(dev)[4]:
-		groups = {}
-		for r in data:
-			groups.setdefault(str(r[3]).strip() if r[3] not in (None, "") else "", []).append(
-				{"user": r[0], "time": r[1], "state": r[2]})
-		out = {}
-		for sn, rows in groups.items():
-			target = terminal(dev, sn) if sn else dev
-			if target.name != dev.name:
-				latest = max(get_datetime(x["time"]) for x in rows).replace(microsecond=0, tzinfo=None)
-				frappe.db.set_value(DEVICE, target.name, "last_contact", latest, update_modified=False)
-			for k, v in ingest(target, rows, "Database pull").items():
-				out[k] = out.get(k, 0) + v
-		out = out or ingest(dev, [], "Database pull")
-	else:
-		out = ingest(dev, [{"user": r[0], "time": r[1], "state": r[2]} for r in data], "Database pull")
+	out = _file(dev, data)
 	if data:
 		frappe.db.set_value(DEVICE, dev.name, "db_last_time", get_datetime(data[-1][1]).replace(microsecond=0, tzinfo=None),
 							update_modified=False)
 	return out
 
 
+def _file(dev, data):
+	"""Ingest rows (user, time, state, serial) under the terminal each was made on. Punches of terminals HR excluded
+	(disabled) are skipped; read them later with a backfill."""
+	if cint(dev.get("split_by_terminal")) and _columns(dev)[4]:
+		groups = {}
+		for r in data:
+			groups.setdefault(str(r[3]).strip() if r[3] not in (None, "") else "", []).append(
+				{"user": r[0], "time": r[1], "state": r[2]})
+		out = {"skipped": 0}
+		for sn, rows in groups.items():
+			target = terminal(dev, sn) if sn else dev
+			if target.name != dev.name and not cint(target.enabled):
+				out["skipped"] += len(rows)
+				continue
+			if target.name != dev.name:
+				latest = max(get_datetime(x["time"]) for x in rows).replace(microsecond=0, tzinfo=None)
+				frappe.db.set_value(DEVICE, target.name, "last_contact", latest, update_modified=False)
+			for k, v in ingest(target, rows, "Database pull").items():
+				out[k] = out.get(k, 0) + v
+		if len(out) == 1:
+			out.update(ingest(dev, [], "Database pull"))
+		return out
+	return ingest(dev, [{"user": r[0], "time": r[1], "state": r[2]} for r in data], "Database pull")
+
+
+def backfill(dev, start, end=None, chunk=5000):
+	"""Read punches between ``start`` and ``end`` again (for history, or a terminal included later). Already imported
+	punches are skipped; the regular pull position is not moved."""
+	since, total = str(get_datetime(start)), {}
+	end = str(get_datetime(end)) if end else None
+	first = True
+	while True:
+		params = (since, end) if end else (since,)
+		data = _query(dev, _select(dev, since, chunk, until=bool(end), inclusive=first), params)
+		first = False
+		for k, v in _file(dev, data).items():
+			total[k] = total.get(k, 0) + v
+		frappe.db.commit()
+		if len(data) < chunk:
+			break
+		last = str(get_datetime(data[-1][1]).replace(microsecond=0, tzinfo=None))
+		if last == since:
+			break
+		since = last
+	return total
+
+
 TERMINAL = "Via database source"
-COPY = ("match_by", "punch_rule", "time_offset_minutes", "company", "brand")
+COPY = ("match_by", "punch_rule", "time_offset_minutes", "company", "brand", "db_in_values", "db_out_values")
 
 
 def terminal(source, sn, **values):
@@ -335,20 +407,72 @@ def terminal(source, sn, **values):
 	sn = str(sn).strip()[:140]
 	name = frappe.db.get_value(DEVICE, {"serial_number": sn}, "name")
 	if name:
+		values.pop("label", None)
+		values.pop("enabled", None)  # HR's include / exclude choice is kept
 		doc = frappe.get_doc(DEVICE, name)
 		if values:
 			frappe.db.set_value(DEVICE, name, values, update_modified=False)
 		return doc
-	base = f"{source.device_name} · {sn}"[:140]
+	base = (values.pop("label", None) or f"{source.device_name} · {sn}")[:140]
 	label, n = base, 2
 	while frappe.db.exists(DEVICE, label):
 		label, n = f"{base} ({n})", n + 1
+	values.setdefault("enabled", 1)
 	doc = frappe.get_doc({"doctype": DEVICE, "device_name": label, "serial_number": sn, "connection": TERMINAL,
-						  "source_device": source.name, "enabled": 1, "location": source.location, "branch": None,
+						  "source_device": source.name, "location": source.location, "branch": None,
 						  "offline_alert_hours": 72, "split_by_terminal": 0,
 						  **{k: source.get(k) for k in COPY}, **values})
 	doc.insert(ignore_permissions=True)
 	return doc
+
+
+def _device_table(dev):
+	"""{serial: (name, active)} from the source's devices table, when it has one."""
+	m = mapping(dev)
+	table, sn = _check(m.get("db_device_table"), True), _check(m.get("db_device_sn_column"))
+	if not (table and sn):
+		return {}
+	name, active = _check(m.get("db_device_name_column")), _check(m.get("db_device_active_column"))
+	try:
+		rows = _query(dev, f"SELECT {sn}, {name or 'NULL'}, {active or '1'} FROM {table}")
+	except Exception:  # noqa: BLE001  a missing devices table must not stop discovery
+		frappe.log_error(title=f"AlphaX devices table: {dev.name}")
+		return {}
+	out = {}
+	for code, label, on in rows:
+		if code in (None, ""):
+			continue
+		flag = str(on).strip().lower() not in ("0", "false", "no", "n", "none", "") if on is not None else True
+		out[str(code).strip()] = ((str(label).strip() or None) if label else None, flag)
+	return out
+
+
+def _people(dev):
+	"""Names from the source's people table, kept as device users so unmatched punches show who they are."""
+	m = mapping(dev)
+	table, key, name = _check(m.get("db_emp_table"), True), _check(m.get("db_emp_key_column")), _check(m.get("db_emp_name_column"))
+	if not (table and key and name):
+		return 0
+	try:
+		rows = _query(dev, f"SELECT {key}, {name} FROM {table}")
+	except Exception:  # noqa: BLE001
+		frappe.log_error(title=f"AlphaX people table: {dev.name}")
+		return 0
+	have = {r.device_user: r for r in frappe.get_all("AlphaX Device User", filters={"device": dev.name},
+													  fields=["name", "device_user", "user_name"])}
+	n = 0
+	for code, label in rows:
+		code, label = str(code or "").strip(), str(label or "").strip()[:140]
+		if not code or not label:
+			continue
+		if code in have:
+			if have[code].user_name != label:
+				frappe.db.set_value("AlphaX Device User", have[code].name, "user_name", label, update_modified=False)
+			continue
+		frappe.get_doc({"doctype": "AlphaX Device User", "device": dev.name, "device_user": code, "user_name": label}).insert(
+			ignore_permissions=True)
+		n += 1
+	return n
 
 
 def discover(dev):
@@ -364,21 +488,170 @@ def discover(dev):
 	finally:
 		conn.close()
 	touch(dev)
+	listed = _device_table(dev)
+	stats = {str(code).strip(): (count, last) for code, count, last in data if code not in (None, "")}
+	for code in listed:
+		stats.setdefault(code, (0, None))
 	found, new = [], 0
-	for code, count, last in data:
-		if code in (None, ""):
-			continue
-		existed = frappe.db.exists(DEVICE, {"serial_number": str(code).strip()})
+	for code, (count, last) in stats.items():
+		existed = frappe.db.exists(DEVICE, {"serial_number": code})
 		values = {"punch_count": cint(count)}
+		if code in listed:
+			label, active = listed[code]
+			values["source_active"] = 1 if active else 0
+			if label:
+				values["label"] = label
+			values["enabled"] = 1 if active else 0
 		if last:
 			values["last_punch"] = values["last_contact"] = get_datetime(last).replace(microsecond=0, tzinfo=None)
 		doc = terminal(dev, code, **values)
 		new += 0 if existed else 1
-		found.append({"name": doc.name, "serial_number": str(code).strip(), "punches": cint(count),
-					  "last": str(values.get("last_punch") or "") or None, "new": not existed})
+		found.append({"name": doc.name, "serial_number": code, "punches": cint(count), "label": listed.get(code, (None,))[0],
+					  "active": listed.get(code, (None, True))[1], "last": str(values.get("last_punch") or "") or None,
+					  "new": not existed})
+	_people(dev)
 	if not cint(dev.get("split_by_terminal")):
 		frappe.db.set_value(DEVICE, dev.name, "split_by_terminal", 1, update_modified=False)
 	return {"terminals": found, "new": new}
+
+
+# ------------------------------------------------------------------ schema: tables, columns, suggestions, preview
+GUESS = {
+	"db_table": ["checkinout", "iclock_transaction", "transaction", "punch", "attlog", "attendance", "checkinout_log"],
+	"db_emp_table": ["empdetails", "userinfo", "personnel_employee", "employee", "employees", "users", "emp"],
+	"db_device_table": ["devices", "machines", "iclock_terminal", "terminal", "terminals", "device"],
+	"db_user_column": ["userid", "user_id", "emp_code", "empid", "emp_id", "badgenumber", "pin", "enrollnumber"],
+	"db_time_column": ["checktime", "punch_time", "punchtime", "checkdatetime", "logtime", "datetime", "time"],
+	"db_state_column": ["checktype", "punch_state", "punchstate", "state", "inoutmode", "type", "status"],
+	"db_sn_column": ["sn", "terminal_sn", "serialnumber", "serial_number", "sensorid", "deviceid", "device_sn", "machineno"],
+	"db_emp_id_column": ["id", "userid", "user_id", "empid", "emp_id"],
+	"db_emp_key_column": ["nationalid", "national_id", "iqama", "iqamano", "idno", "ssn", "empno", "emp_code", "badgenumber"],
+	"db_emp_name_column": ["empname", "name", "fullname", "full_name", "employeename", "first_name"],
+	"db_device_sn_column": ["sn", "serialnumber", "serial_number", "terminal_sn"],
+	"db_device_name_column": ["devicename", "device_name", "alias", "machinealias", "terminal_name", "name"],
+	"db_device_active_column": ["isactive", "is_active", "active", "enabled", "state"],
+}
+
+
+def _norm(name):
+	return re.sub(r"[^a-z0-9_]", "", (name or "").split(".")[-1].lower())
+
+
+def guess(kind, names):
+	"""The best of ``names`` for ``kind``: exact matches first, in the order of GUESS, then names containing a hint."""
+	norm = {n: _norm(n) for n in names}
+	for hint in GUESS.get(kind, []):
+		for n, v in norm.items():
+			if v == hint:
+				return n
+	for hint in GUESS.get(kind, []):
+		if len(hint) < 4:
+			continue
+		for n, v in norm.items():
+			if hint in v:
+				return n
+	return None
+
+
+def tables(dev):
+	kind = dev.db_type or ""
+	if kind.startswith("MySQL"):
+		rows = _query(dev, "SELECT table_name FROM information_schema.tables WHERE table_schema = %s ORDER BY table_name",
+					  (dev.db_name,))
+		return [r[0] for r in rows]
+	rows = _query(dev, "SELECT table_schema, table_name FROM information_schema.tables "
+					   "WHERE table_schema NOT IN ('information_schema', 'pg_catalog', 'sys') ORDER BY table_schema, table_name")
+	return [f"{a}.{b}" for a, b in rows]
+
+
+def columns(dev, table):
+	_check(table, True)
+	schema, _sep, name = table.rpartition(".")
+	if (dev.db_type or "").startswith("MySQL"):
+		rows = _query(dev, "SELECT column_name FROM information_schema.columns WHERE table_schema = %s AND table_name = %s "
+						   "ORDER BY ordinal_position", (dev.db_name, name))
+	elif schema:
+		rows = _query(dev, "SELECT column_name FROM information_schema.columns WHERE table_schema = %s AND table_name = %s "
+						   "ORDER BY ordinal_position", (schema, name))
+	else:
+		rows = _query(dev, "SELECT column_name FROM information_schema.columns WHERE table_name = %s ORDER BY ordinal_position",
+					  (name,))
+	return [r[0] for r in rows]
+
+
+def suggest_mapping(dev):
+	"""Read the database and propose the whole mapping: tables, then columns in each."""
+	names = tables(dev)
+	out = {"tables": names, "columns": {}, "mapping": {}}
+	for kind, cols in (("db_table", ("db_user_column", "db_time_column", "db_state_column", "db_sn_column")),
+					   ("db_emp_table", ("db_emp_id_column", "db_emp_key_column", "db_emp_name_column")),
+					   ("db_device_table", ("db_device_sn_column", "db_device_name_column", "db_device_active_column"))):
+		table = guess(kind, names)
+		if not table:
+			continue
+		out["mapping"][kind] = table
+		cs = columns(dev, table)
+		out["columns"][table] = cs
+		for c in cols:
+			hit = guess(c, cs)
+			if hit:
+				out["mapping"][c] = hit
+	return out
+
+
+def preview(dev, limit=10):
+	"""The latest punches as AlphaX will read them: user, time, IN/OUT, terminal, and the employee found."""
+	table, user, when, state, sn = _columns(dev)
+	top = f"TOP {int(limit)} " if dev.db_type == "SQL Server" else ""
+	tail = "" if dev.db_type == "SQL Server" else f" LIMIT {int(limit)}"
+	rows = _query(dev, f"SELECT {top}{user}, {when}, {state or 'NULL'}, {sn or 'NULL'} FROM {table} ORDER BY {when} DESC{tail}")
+	out, states = [], set()
+	for u, t, st, code in rows:
+		emp = employee_for(dev, str(u or "").strip())
+		states.add(None if st is None else str(st))
+		out.append({"user": str(u), "time": str(t), "state": None if st is None else str(st), "terminal": code,
+					"log_type": log_type(dev, st),
+					"employee": emp, "employee_name": frappe.db.get_value("Employee", emp, "employee_name") if emp else None})
+	return {"rows": out, "states": sorted(x for x in states if x is not None)}
+
+
+def sync_status(dev, start=None, end=None):
+	"""How far AlphaX has read and how complete it is: punches in the source vs. imported, per terminal, for a window."""
+	table, _u, when, _s, sn = _columns(dev)
+	start = get_datetime(start or getdate().replace(day=1))
+	end = get_datetime(end) if end else None
+	params = (str(start), str(end)) if end else (str(start),)
+	cond = f"{when} >= %s" + (f" AND {when} <= %s" if end else "")
+	oldest = _query(dev, f"SELECT MIN({when}) FROM {table}")[0][0]
+	if sn:
+		per = _query(dev, f"SELECT {sn}, COUNT(*) FROM {table} WHERE {cond} GROUP BY {sn}", params)
+	else:
+		per = [(None, _query(dev, f"SELECT COUNT(*) FROM {table} WHERE {cond}", params)[0][0])]
+	offset = timedelta(minutes=cint(dev.time_offset_minutes))
+	window = {"punch_time": [">=", start + offset]} if not end else {"punch_time": ["between", [start + offset, end + offset]]}
+	terms = {}
+	for t in frappe.get_all(DEVICE, filters={"source_device": dev.name}, fields=["name", "serial_number", "device_name", "enabled"]):
+		terms[str(t.serial_number)] = t
+	rows, available, synced = [], 0, 0
+	for code, count in per:
+		code = str(code).strip() if code not in (None, "") else ""
+		t = terms.get(code)
+		target = t.name if t else dev.name
+		have = frappe.db.count(LOG, {"device": target, **window})
+		if not t or cint(t.enabled):  # excluded terminals are not expected in AlphaX
+			available += cint(count)
+			synced += have
+		rows.append({"serial_number": code or None, "device": target, "device_name": t.device_name if t else dev.device_name,
+					 "included": bool(cint(t.enabled)) if t else True, "available": cint(count), "synced": have})
+	return {"from": str(start), "to": str(end) if end else None, "oldest": str(oldest) if oldest else None,
+			"watermark": str(dev.db_last_time) if dev.db_last_time else None,
+			"last_success": str(dev.last_contact) if dev.last_contact else None, "connected": not cint(dev.get("failures")),
+			"last_error": dev.get("last_error"), "available": available, "synced": synced,
+			"gap": max(available - synced, 0), "terminals": sorted(rows, key=lambda r: -r["available"])}
+
+
+def backfill_job(name, start, end=None):
+	return backfill(frappe.get_doc(DEVICE, name), start, end)
 
 
 def test_connection(dev):
