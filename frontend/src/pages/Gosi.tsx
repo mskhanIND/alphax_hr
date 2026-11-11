@@ -45,7 +45,7 @@ export default function Gosi() {
             <Stat label={t('Employee share')} value={fmtMoney(q.data.totals.employee, lang)} />
             <Stat label={t('Employer share')} value={fmtMoney(q.data.totals.employer, lang)} />
             <Stat label={t('Total')} value={fmtMoney(q.data.totals.total, lang)} tone="blue" />
-            <Stat label={t('Needs attention')} value={fmtNumber(q.data.needs_attention, lang)} tone={q.data.needs_attention ? 'amber' : 'brand'} />
+            <Stat label={t('Needs attention')} value={fmtNumber(q.data.needs_attention, lang)} tone={q.data.needs_attention ? 'amber' : 'brand'} onClick={() => setAttention((x) => !x)} active={attention} />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {[['', q.data.rows.length], ...Object.entries(q.data.systems)].map(([s, n]: any) => (

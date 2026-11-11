@@ -2,6 +2,15 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.32.0 — 2026-11-11
+
+- **Number tiles are filters.** Click a tile to see the employees or records behind it; click it again (or *Show all*) to go back. A bar shows what is filtered and how many.
+  - Attendance register: Absent days, Late arrivals, Missing punches, Leave days, Overtime hours. Only employees with that measure, most first, with their matching days highlighted. Plus an employee search.
+  - Check-ins & movements: Checked in, Checked out, Not checked in, On leave, Outside a work location (also as buttons), plus search.
+  - My team: Checked in / Not checked in / On leave; *Leave requests waiting* opens Approvals.
+  - Approval delays: Waiting / Reminded / Overdue / Escalated.
+  - Loans: Being repaid / Approved, to pay out. Designations: all / standardized / suggestions / Saudis-only issues. Vacation planner: plan status. Setup: healthy / warnings / problems. GOSI: Needs attention.
+
 ## 0.31.0 — 2026-11-11
 
 - **Punches refused for a missing shift.** When the site refuses check-ins without a shift assignment, Attendance devices now shows how many employees and punches are waiting. *Assign shifts* lists them (department, refused punches since, default shift, current shift) and assigns one shift, or each employee's default shift, from the first refused day with no end date. Their punches are imported at once.

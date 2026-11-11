@@ -69,9 +69,13 @@ export function StatusBadge({ status }: { status?: string | null }) {
   return <Badge tone={statusTone(status)}>{t(status)}</Badge>
 }
 
-export function Stat({ label, value, hint, icon, tone = 'brand' }: { label: string; value: ReactNode; hint?: ReactNode; icon?: ReactNode; tone?: 'brand' | 'amber' | 'red' | 'blue' }) {
+/** A number tile. With ``onClick`` it is a filter: clicking shows the records behind the number (click again to clear). */
+export function Stat({ label, value, hint, icon, tone = 'brand', onClick, active }: { label: string; value: ReactNode; hint?: ReactNode; icon?: ReactNode; tone?: 'brand' | 'amber' | 'red' | 'blue'; onClick?: () => void; active?: boolean }) {
+  const Tag: any = onClick ? 'button' : 'div'
   return (
-    <div className="rounded-2xl border border-line bg-white p-4 shadow-sm">
+    <Tag type={onClick ? 'button' : undefined} onClick={onClick} aria-pressed={onClick ? !!active : undefined}
+      className={clsx('rounded-2xl border bg-white p-4 text-start shadow-sm', onClick && 'cursor-pointer transition hover:border-brand/40 hover:shadow-md',
+        active ? 'border-brand ring-2 ring-brand/30' : 'border-line')}>
       <div className="flex items-center justify-between">
         <span className="text-sm text-muted">{label}</span>
         {icon && (
@@ -82,6 +86,17 @@ export function Stat({ label, value, hint, icon, tone = 'brand' }: { label: stri
       </div>
       <div className="mt-2 text-2xl font-semibold tabular-nums text-ink">{value}</div>
       {hint && <div className="mt-1 text-xs text-muted">{hint}</div>}
+    </Tag>
+  )
+}
+
+/** The bar under filter tiles: what is shown and a way back to everything. */
+export function FilterNote({ label, count, onClear }: { label: ReactNode; count: number; onClear: () => void }) {
+  const { t } = useI18n()
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl bg-brand-50 px-3 py-2 text-sm text-brand">
+      <span><b>{label}</b> · {count} {t(count === 1 ? 'employee' : 'employees')}</span>
+      <button type="button" onClick={onClear} className="ms-auto rounded-lg px-2 py-0.5 text-xs font-medium hover:bg-white">{t('Show all')}</button>
     </div>
   )
 }

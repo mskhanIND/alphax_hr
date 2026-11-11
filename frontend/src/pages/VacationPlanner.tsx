@@ -27,6 +27,8 @@ export default function VacationPlanner() {
     onSuccess: () => { setAct(null); setNote(''); qc.invalidateQueries({ queryKey: ['vacation-planner'] }); qc.invalidateQueries({ queryKey: ['inbox'] }) } })
   const d = q.data
   const counts = (s: string) => d?.plans.filter((p: any) => p.status === s).length ?? 0
+  const [pstatus, setPstatus] = useState('')
+  const pick = (k: string) => setPstatus((x) => (x === k ? '' : k))
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title={t('Vacation planner')} subtitle={t('Annual vacation plans and how many people are away each week')}
@@ -38,9 +40,9 @@ export default function VacationPlanner() {
       {q.isLoading ? <Spinner /> : q.error ? <ErrorBox error={q.error} /> : d && (
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Stat label={t('Waiting for approval')} value={counts('Submitted')} tone="amber" />
-            <Stat label={t('Approved')} value={counts('Approved')} tone="brand" />
-            <Stat label={t('Changes requested')} value={counts('Changes requested')} tone="blue" />
+            <Stat label={t('Waiting for approval')} value={counts('Submitted')} tone="amber" onClick={() => pick('Submitted')} active={pstatus === 'Submitted'} />
+            <Stat label={t('Approved')} value={counts('Approved')} tone="brand" onClick={() => pick('Approved')} active={pstatus === 'Approved'} />
+            <Stat label={t('Changes requested')} value={counts('Changes requested')} tone="blue" onClick={() => pick('Changes requested')} active={pstatus === 'Changes requested'} />
             {d.not_planned !== null && <Stat label={t('Not planned yet')} value={d.not_planned} tone="red" />}
           </div>
           {d.departments.length > 0 && (
@@ -68,7 +70,7 @@ export default function VacationPlanner() {
           <Card title={t('Plans')}>
             {!d.plans.length ? <Empty title={t('No plans yet')} icon={<CalendarRange />}>{t('Employees plan their vacation from Services → Vacation plan.')}</Empty> : (
               <ul className="divide-y divide-line">
-                {d.plans.map((p: any) => (
+                {d.plans.filter((p: any) => !pstatus || p.status === pstatus).map((p: any) => (
                   <li key={p.name} className="flex flex-wrap items-center gap-3 py-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2"><span className="font-medium">{p.employee_name}</span><StatusBadge status={p.status} />

@@ -22,16 +22,15 @@ function ProfessionSelect({ value, professions, onChange }: { value: string; pro
   )
 }
 
-function DesignationsTab({ d, onData }: { d: any; onData: (x: any) => void }) {
+function DesignationsTab({ d, onData, filter, setFilter }: { d: any; onData: (x: any) => void; filter: string; setFilter: (f: any) => void }) {
   const { t } = useI18n()
   const [sel, setSel] = useState<Set<string>>(new Set())
-  const [filter, setFilter] = useState<'all' | 'unmapped' | 'violations'>('all')
   const [merge, setMerge] = useState<string>('')
   const [mapTo, setMapTo] = useState<string>('')
   const ok = { onSuccess: (x: any) => { onData(x); setSel(new Set()); setMerge(''); setMapTo('') } }
   const map = useMutation({ mutationFn: (m: Record<string, string>) => api.mapDesignations(m), ...ok })
   const doMerge = useMutation({ mutationFn: () => api.mergeDesignations([...sel], merge), ...ok })
-  const rows = d.designations.filter((r: any) => filter === 'all' || (filter === 'unmapped' ? !r.profession : r.violation))
+  const rows = d.designations.filter((r: any) => filter === 'all' || (filter === 'unmapped' ? !r.profession : filter === 'suggested' ? !r.profession && r.suggestion : filter === 'mapped' ? !!r.profession : r.violation))
   const suggested = d.designations.filter((r: any) => !r.profession && r.suggestion)
   const toggle = (n: string) => { const s = new Set(sel); if (s.has(n)) s.delete(n); else s.add(n); setSel(s) }
   return (
@@ -253,18 +252,20 @@ export default function Designations() {
   const [tab, setTab] = useState('designations')
   const onData = (x: any) => qc.setQueryData(['designations'], x)
   const control = useMutation({ mutationFn: api.saveSaudiControl, onSuccess: onData })
+  const [dfilter, setDfilter] = useState<string>('all')
   if (q.isLoading) return <Spinner />
   if (q.error) return <ErrorBox error={q.error} onRetry={() => q.refetch()} />
   const d = q.data
+  const show = (f: string) => { setTab('designations'); setDfilter((x) => (x === f && f !== 'all' ? 'all' : f)) }
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title={t('Designations & Saudization')}
         subtitle={t('One standard profession behind every designation, so Saudization rules by profession can be checked and enforced.')} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label={t('Designations')} value={d.counts.total} />
-        <Stat label={t('Standardized')} value={`${d.counts.mapped} / ${d.counts.total}`} />
-        <Stat label={t('Suggestions ready')} value={d.counts.suggested} tone="blue" />
-        <Stat label={t('Saudis-only issues')} value={d.counts.violations} tone={d.counts.violations ? 'red' : 'brand'} />
+        <Stat label={t('Designations')} value={d.counts.total} onClick={() => show('all')} active={tab === 'designations' && dfilter === 'all'} />
+        <Stat label={t('Standardized')} value={`${d.counts.mapped} / ${d.counts.total}`} onClick={() => show('mapped')} active={tab === 'designations' && dfilter === 'mapped'} />
+        <Stat label={t('Suggestions ready')} value={d.counts.suggested} tone="blue" onClick={() => show('suggested')} active={tab === 'designations' && dfilter === 'suggested'} />
+        <Stat label={t('Saudis-only issues')} value={d.counts.violations} tone={d.counts.violations ? 'red' : 'brand'} onClick={() => show('violations')} active={tab === 'designations' && dfilter === 'violations'} />
       </div>
       {d.can_edit && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-white p-3 text-sm">
@@ -277,7 +278,7 @@ export default function Designations() {
       )}
       <Tabs value={tab} onChange={setTab} tabs={[{ value: 'designations', label: t('Designations') }, { value: 'report', label: t('Saudization by profession') },
         { value: 'rules', label: t('Rules & professions') }]} />
-      {tab === 'designations' && <DesignationsTab d={d} onData={onData} />}
+      {tab === 'designations' && <DesignationsTab d={d} onData={onData} filter={dfilter} setFilter={setDfilter} />}
       {tab === 'report' && <ReportTab d={d} />}
       {tab === 'rules' && <RulesTab d={d} onData={onData} />}
     </div>

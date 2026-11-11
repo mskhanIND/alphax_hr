@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BellRing } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { Badge, Button, Card, Empty, ErrorBox, PageHeader, Spinner, Stat } from '../components/ui'
+import { useState } from 'react'
+import { Badge, Button, Card, Empty, ErrorBox, PageHeader, Spinner, Stat, FilterNote } from '../components/ui'
 import { api } from '../lib/api'
 import { fmtDate } from '../lib/format'
 import { useI18n } from '../lib/i18n'
@@ -16,10 +17,13 @@ export default function ApprovalDelays() {
   const { t } = useI18n()
   const q = useQuery<any>({ queryKey: ['approvalDelays'], queryFn: api.approvalDelays, refetchInterval: 300_000 })
   const qc = useQueryClient()
+  const [stage, setStage] = useState<string>('')
+  const pick = (k: string) => setStage((x: string) => (x === k ? '' : k))
   const remind = useMutation({ mutationFn: (r: any) => api.remindApprover(r.doctype, r.name), onSuccess: () => qc.invalidateQueries({ queryKey: ['approvalDelays'] }) })
   if (q.isLoading) return <Spinner />
   if (q.error) return <ErrorBox error={q.error} onRetry={() => q.refetch()} />
   const d = q.data
+  const rows = d.rows.filter((r: any) => !stage || r.stage === stage)
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title={t('Approval delays')}
@@ -28,10 +32,10 @@ export default function ApprovalDelays() {
           : t('Reminders and escalation are off. Set them in Leave setup → Approval delays.')}
         actions={d.is_hr ? <Link to="/approval-policies"><Button variant="secondary">{t('Approval policies')}{d.policies ? ` (${d.policies})` : ''}</Button></Link> : undefined} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label={t('Waiting')} value={d.rows.length} />
-        <Stat label={t('Reminded')} value={d.counts.Reminded} tone="amber" />
-        <Stat label={t('Overdue')} value={d.counts.Overdue} tone="red" />
-        <Stat label={t('Escalated')} value={d.counts.Escalated} tone="red" />
+        <Stat label={t('Waiting')} value={d.rows.length} onClick={() => setStage('')} active={!stage} />
+        <Stat label={t('Reminded')} value={d.counts.Reminded} tone="amber" onClick={() => pick('Reminded')} active={stage === 'Reminded'} />
+        <Stat label={t('Overdue')} value={d.counts.Overdue} tone="red" onClick={() => pick('Overdue')} active={stage === 'Overdue'} />
+        <Stat label={t('Escalated')} value={d.counts.Escalated} tone="red" onClick={() => pick('Escalated')} active={stage === 'Escalated'} />
       </div>
       {d.is_hr && d.approvers.length > 0 && (
         <Card title={t('By approver')} subtitle={t('Pending now, and average time to decide over the last 90 days.')}>
@@ -59,8 +63,9 @@ export default function ApprovalDelays() {
       )}
       {remind.error && <ErrorBox error={remind.error} />}
       {remind.data && <p className="rounded-xl bg-brand-50 p-3 text-sm text-brand">{t('Reminder sent.')}{remind.data.reject_on ? ` ${t('Rejected automatically on')} ${fmtDate(remind.data.reject_on)} ${t('if nobody decides.')}` : ''}</p>}
+      {stage && <FilterNote label={t(stage)} count={rows.length} onClear={() => setStage('')} />}
       <Card title={t('Waiting for a decision')}>
-        {d.rows.length === 0 ? <Empty title={t('Nothing is waiting.')} /> : (
+        {rows.length === 0 ? <Empty title={t('Nothing is waiting.')} /> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm" data-testid="delay-rows">
               <thead className="text-xs text-muted"><tr>
@@ -70,7 +75,7 @@ export default function ApprovalDelays() {
                 <th className="pb-2 text-start">{t('Next')}</th>{d.is_hr && <th className="pb-2" />}
               </tr></thead>
               <tbody className="divide-y divide-line">
-                {d.rows.map((r: any) => (
+                {rows.map((r: any) => (
                   <tr key={r.doctype + r.name}>
                     <td className="py-2 pe-3">{r.employee_name}</td>
                     <td className="py-2 pe-3"><Link className="text-brand-700 hover:underline" to="/approvals">{t(r.kind)}: {r.what}</Link></td>

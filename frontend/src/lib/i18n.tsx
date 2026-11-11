@@ -289,6 +289,8 @@ const ar: Record<string, string> = {
   'Reboot': 'إعادة التشغيل',
   'Test connection': 'اختبار الاتصال',
   'Pull now': 'سحب الآن',
+  'employee': 'موظف',
+  'most first': 'الأكثر أولًا',
   "employees have no shift": 'موظفون بدون وردية',
   "punches were refused and wait for a shift": 'بصمة مرفوضة بانتظار تعيين وردية',
   "Assign a shift and their waiting punches are imported at once; later shift assignments import them by themselves.": 'عيّن وردية وستُستورد بصماتهم المنتظرة فورًا؛ وأي تعيين وردية لاحق يستوردها تلقائيًا.',

@@ -175,9 +175,9 @@ export default function Loans() {
       {q.isLoading ? <Spinner /> : q.error ? <ErrorBox error={q.error} /> : (
         <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Stat label={t('Outstanding')} value={fmtMoney(q.data.summary.outstanding, lang)} tone="amber" />
-            <Stat label={t('Being repaid')} value={q.data.summary.repaying} />
-            <Stat label={t('Approved, to pay out')} value={q.data.summary.to_pay} tone="blue" />
+            <Stat label={t('Outstanding')} value={fmtMoney(q.data.summary.outstanding, lang)} tone="amber" onClick={() => setStatus('')} active={!status} />
+            <Stat label={t('Being repaid')} value={q.data.summary.repaying} onClick={() => setStatus((x) => (x === 'Repaying' ? '' : 'Repaying'))} active={status === 'Repaying'} />
+            <Stat label={t('Approved, to pay out')} value={q.data.summary.to_pay} tone="blue" onClick={() => setStatus((x) => (x === 'Approved' ? '' : 'Approved'))} active={status === 'Approved'} />
           </div>
           <Card action={<Select className="w-44" value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">{t('All')}</option>{['Approved', 'Disbursed', 'Repaying', 'Settled', 'Cancelled'].map((s) => <option key={s} value={s}>{t(s)}</option>)}</Select>}>

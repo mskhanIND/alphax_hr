@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { MapPin, Users } from 'lucide-react'
 import { useState } from 'react'
-import { Avatar, Badge, Card, Empty, ErrorBox, Input, PageHeader, Select, Spinner, Stat } from '../components/ui'
+import { Avatar, Badge, Card, Empty, ErrorBox, FilterNote, Input, PageHeader, Select, Spinner, Stat } from '../components/ui'
 import { api } from '../lib/api'
 import { fmtTime, todayISO } from '../lib/format'
 import { useI18n } from '../lib/i18n'
@@ -17,10 +17,14 @@ export default function Checkins() {
   const { t } = useI18n()
   const [date, setDate] = useState(todayISO())
   const [dept, setDept] = useState('')
-  const [filter, setFilter] = useState<'all' | 'outside' | 'not_in'>('all')
+  const [filter, setFilter] = useState<string>('all')
+  const [find, setFind] = useState('')
+  const pick = (f: string) => setFilter((x) => (x === f ? 'all' : f))
   const q = useQuery({ queryKey: ['live-checkins', date, dept], queryFn: () => api.liveCheckins(date, dept || undefined), refetchInterval: 60_000 })
   const d = q.data
-  const rows = (d?.rows ?? []).filter((r: any) => filter === 'all' || (filter === 'outside' ? r.outside > 0 : r.state === 'not_in'))
+  const rows = (d?.rows ?? []).filter((r: any) => (filter === 'all' || (filter === 'outside' ? r.outside > 0 : r.state === filter))
+    && (!find || `${r.employee_name} ${r.department ?? ''}`.toLowerCase().includes(find.toLowerCase())))
+  const LABEL: Record<string, string> = { all: 'All', in: 'Checked in', out: 'Checked out', not_in: 'Not checked in', on_leave: 'On leave', outside: 'Outside a work location' }
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title={t('Check-ins & movements')} subtitle={t('Who is in, where they checked in, and punches outside work locations')}
@@ -32,18 +36,20 @@ export default function Checkins() {
       {q.isLoading ? <Spinner /> : q.error ? <ErrorBox error={q.error} onRetry={() => q.refetch()} /> : d && (
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-            <Stat label={t('Checked in')} value={d.summary.in} tone="brand" />
-            <Stat label={t('Checked out')} value={d.summary.out} />
-            <Stat label={t('Not checked in')} value={d.summary.not_in} tone="amber" />
-            <Stat label={t('On leave')} value={d.summary.on_leave} tone="blue" />
-            <Stat label={t('Outside a work location')} value={d.summary.outside} tone="red" />
+            <Stat label={t('Checked in')} value={d.summary.in} tone="brand" onClick={() => pick('in')} active={filter === 'in'} />
+            <Stat label={t('Checked out')} value={d.summary.out} onClick={() => pick('out')} active={filter === 'out'} />
+            <Stat label={t('Not checked in')} value={d.summary.not_in} tone="amber" onClick={() => pick('not_in')} active={filter === 'not_in'} />
+            <Stat label={t('On leave')} value={d.summary.on_leave} tone="blue" onClick={() => pick('on_leave')} active={filter === 'on_leave'} />
+            <Stat label={t('Outside a work location')} value={d.summary.outside} tone="red" onClick={() => pick('outside')} active={filter === 'outside'} />
           </div>
-          <div className="flex gap-2">
-            {(['all', 'outside', 'not_in'] as const).map((f) => (
+          <div className="flex flex-wrap items-center gap-2">
+            {Object.keys(LABEL).map((f) => (
               <button key={f} onClick={() => setFilter(f)} className={clsx('rounded-lg px-3 py-1.5 text-sm', filter === f ? 'bg-brand text-white' : 'border border-line bg-white')}>
-                {t(f === 'all' ? 'All' : f === 'outside' ? 'Outside a work location' : 'Not checked in')}</button>
+                {t(LABEL[f])}</button>
             ))}
+            <Input value={find} onChange={(e) => setFind(e.target.value)} placeholder={t('Search employee')} className="ms-auto !w-60" />
           </div>
+          {filter !== 'all' && <FilterNote label={t(LABEL[filter])} count={rows.length} onClear={() => setFilter('all')} />}
           <Card>
             {!rows.length ? <Empty title={t('Nobody here')} icon={<Users />} /> : (
               <ul className="divide-y divide-line">

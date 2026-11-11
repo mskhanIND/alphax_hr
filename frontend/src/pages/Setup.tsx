@@ -112,7 +112,9 @@ function StatusList({ onSettings }: { onSettings: () => void }) {
   if (q.isLoading) return <Spinner />
   if (q.error) return <ErrorBox error={q.error} onRetry={() => q.refetch()} />
   const d = q.data
-  const groups: string[] = [...new Set<string>(d.checks.map((c: any) => c.group))]
+  const [only, setOnly] = useState('')
+  const pick = (k: string) => setOnly((x) => (x === k ? '' : k))
+  const groups: string[] = [...new Set<string>(d.checks.filter((c: any) => !only || c.status === only).map((c: any) => c.group))]
   const order = (c: any) => ['error', 'warn', 'ok'].indexOf(c.status)
   const fixButton = (c: any) => {
     if (c.status === 'ok') return null
@@ -129,16 +131,16 @@ function StatusList({ onSettings }: { onSettings: () => void }) {
   return (
     <div className="flex flex-col gap-5">
       <div className="grid grid-cols-3 gap-3">
-        <Stat label={t('Healthy')} value={d.counts.ok} />
-        <Stat label={t('Warnings')} value={d.counts.warn} tone="amber" />
-        <Stat label={t('Problems')} value={d.counts.error} tone="red" />
+        <Stat label={t('Healthy')} value={d.counts.ok} onClick={() => pick('ok')} active={only === 'ok'} />
+        <Stat label={t('Warnings')} value={d.counts.warn} tone="amber" onClick={() => pick('warn')} active={only === 'warn'} />
+        <Stat label={t('Problems')} value={d.counts.error} tone="red" onClick={() => pick('error')} active={only === 'error'} />
       </div>
       {links.data && <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{t('Created')}: {links.data.created.join(', ') || '—'}{links.data.skipped.length ? ` · ${t('Needs the desk')}: ${links.data.skipped.join(', ')}` : ''}</p>}
       {(links.error || scripts.error || relax.error) && <ErrorBox error={links.error || scripts.error || relax.error} />}
       {groups.map((g) => (
         <Card key={g} title={t(g)} action={<Button size="sm" variant="ghost" loading={q.isFetching} onClick={() => q.refetch()}><RefreshCw className="size-4" />{t('Re-check')}</Button>}>
           <ul className="divide-y divide-line">
-            {d.checks.filter((c: any) => c.group === g).sort((a: any, b: any) => order(a) - order(b)).map((c: any) => (
+            {d.checks.filter((c: any) => c.group === g && (!only || c.status === only)).sort((a: any, b: any) => order(a) - order(b)).map((c: any) => (
               <li key={c.key} className="flex items-start gap-3 py-3">
                 {ICON[c.status as keyof typeof ICON]}
                 <div className="min-w-0 flex-1">
