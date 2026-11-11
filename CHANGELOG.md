@@ -2,6 +2,13 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.28.0 — 2026-11-11
+
+- **One database connection for many devices.** Companies whose devices all write to one attendance server (an ADMS server, BioTime, ZKTime / ZKAccess, local or cloud) add that database once. *Find terminals* lists every device in it by serial number, with punch count and last punch, and punches are filed under the device they were made on. Each terminal shows its own status and takes its own branch and location. Terminals appear without a second login, and new devices are added as they show up in the data.
+- **ADMS server preset** (CheckInOut + EmpDetails): users are matched by the national ID in EmpDetails (Match by: National ID / Iqama). Punches of users missing from EmpDetails still arrive, under their device user ID, for HR to link.
+- National ID matching also reads the older `iqama_national_id` employee field.
+- The Host field accepts `server:port` or `server,port` (SQL Server style). *Test connection* also reports how many terminals the database holds.
+
 ## 0.27.0 — 2026-11-11
 
 - **Punches become HRMS attendance.** Every night (and when a device sends punches for earlier days) the register's result for employees who punch is submitted as Attendance: present (late entry / early exit flagged), half day or absent by the shift's hour thresholds, absent on a working day with no punch, a missing punch left open for correction within the re-check window. Attendance from HR, attendance requests or leave is never changed; AlphaX's own records are corrected when punches arrive late (the old one cancelled with a comment). Settings → Attendance & check-in; *Mark now* and last run on Attendance devices.

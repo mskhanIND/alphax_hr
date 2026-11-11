@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { AlertTriangle, CalendarCheck, Cpu, Pencil, Plus, RefreshCw, Trash2, Upload, Users } from 'lucide-react'
+import { AlertTriangle, CalendarCheck, Cpu, Pencil, Plus, RefreshCw, Search, Trash2, Upload, Users } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
 import { LinkInput } from '../components/LinkInput'
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, Table, Tabs, Textarea } from '../components/ui'
@@ -12,10 +12,12 @@ const PUSH = 'Device push (ZKTeco ADMS / iClock)'
 const API = 'Push API (bridge or other brands)'
 const DB = 'Database pull (BioTime / ZKTime)'
 const FILE = 'File upload'
-const STATUS_TONE: Record<string, string> = { Online: 'green', Offline: 'red', 'Never connected': 'gray', 'Waiting for approval': 'amber', Disabled: 'gray' }
+const TERMINAL = 'Via database source'
+const PRESETS = ['BioTime (iclock_transaction)', 'ZKTime / ZKAccess (CHECKINOUT)', 'ADMS (CheckInOut + EmpDetails)', 'Custom']
+const STATUS_TONE: Record<string, string> = { Online: 'green', Offline: 'red', 'Never connected': 'gray', 'Waiting for approval': 'amber', Disabled: 'gray', Active: 'green', Quiet: 'amber' }
 const BLANK = { device_name: '', enabled: 1, brand: 'ZKTeco', connection: PUSH, serial_number: '', company: '', location: '', branch: '', offline_alert_hours: 2, match_by: 'Attendance device ID',
   punch_rule: 'From the device (0 = IN, 1 = OUT)', time_offset_minutes: 0, allowed_ips: '', db_type: '', db_host: '', db_port: '', db_name: '', db_user: '',
-  db_password: '', db_preset: 'BioTime (iclock_transaction)', db_table: '', db_user_column: '', db_time_column: '', db_state_column: '', db_sn_column: '', pull_every: 15 }
+  db_password: '', db_preset: 'BioTime (iclock_transaction)', db_table: '', db_user_column: '', db_time_column: '', db_state_column: '', db_sn_column: '', pull_every: 15, split_by_terminal: 1 }
 
 function Guide({ connection, server, pushUrl }: { connection: string; server: string; pushUrl: string }) {
   const { t } = useI18n()
@@ -34,7 +36,8 @@ function Guide({ connection, server, pushUrl }: { connection: string; server: st
       {t('with the header X-AlphaX-Device-Token and a JSON body')}: <code className="font-mono">{'{"device": "SN", "punches": [{"user": "12", "time": "2026-11-05 08:01:00", "state": "0"}]}'}</code>
     </div>
   )
-  if (connection === DB) return <div className={box}>{t('AlphaX reads new punches from the attendance software database (ZKTeco BioTime, ZKTime / ZKAccess or your own tables) every few minutes. The database must be reachable from this server.')}</div>
+  if (connection === DB) return <div className={box}>{t('AlphaX reads new punches from the attendance software database (ZKTeco BioTime, ZKTime / ZKAccess, an ADMS server or your own tables) every few minutes. The database must be reachable from this server.')}<br />{t('One connection covers every device that writes to this database: after saving, use Find terminals and each device is listed on its own.')}</div>
+  if (connection === TERMINAL) return <div className={box}>{t('This terminal was found in a central attendance database; its punches arrive through that connection. Set its branch and location here.')}</div>
   return <div className={box}>{t('Upload the attendance log exported from the device (attlog.dat from USB) or a CSV file: user, time, state.')}</div>
 }
 
@@ -52,9 +55,9 @@ function DeviceForm({ device, onClose, server, pushUrl }: { device: any | null; 
       <div className="flex flex-col gap-4">
         <div className="grid gap-3 sm:grid-cols-2">
           {text('device_name', 'Device name')}
-          {sel('connection', 'Connection', [PUSH, API, DB, FILE])}
+          {v.connection === TERMINAL ? <Field label={t('Connection')}><Input value={`${t(TERMINAL)}: ${v.source_device}`} disabled /></Field> : sel('connection', 'Connection', [PUSH, API, DB, FILE])}
           {sel('brand', 'Brand', ['ZKTeco', 'Hikvision', 'Suprema', 'Anviz', 'Dahua', 'Other'])}
-          {v.connection !== DB && v.connection !== FILE ? text('serial_number', 'Serial number (SN)') : null}
+          {v.connection !== DB && v.connection !== FILE && v.connection !== TERMINAL ? text('serial_number', 'Serial number (SN)') : null}
           <Field label={t('Company')}><LinkInput doctype="Company" value={v.company ?? ''} onChange={(x) => set('company', x)} /></Field>
           {text('location', 'Location / site')}
           {sel('match_by', 'Match device users by', ['Attendance device ID', 'Employee ID', 'National ID / Iqama'])}
@@ -69,10 +72,12 @@ function DeviceForm({ device, onClose, server, pushUrl }: { device: any | null; 
         {v.connection === DB && (
           <div className="grid gap-3 sm:grid-cols-2">
             {sel('db_type', 'Database', ['', 'MySQL / MariaDB', 'PostgreSQL', 'SQL Server'])}
-            {sel('db_preset', 'Software', ['BioTime (iclock_transaction)', 'ZKTime / ZKAccess (CHECKINOUT)', 'Custom'])}
-            {text('db_host', 'Host')}{text('db_port', 'Port', 'number')}{text('db_name', 'Database name')}{text('db_user', 'User')}
+            {sel('db_preset', 'Software', PRESETS)}
+            <Field label={t('Host')} hint={t('Server name or IP only; the port goes in Port.')}><Input value={v.db_host ?? ''} onChange={(e) => set('db_host', e.target.value)} /></Field>{text('db_port', 'Port', 'number')}{text('db_name', 'Database name')}{text('db_user', 'User')}
             <Field label={t('Password')} hint={device ? t('Leave empty to keep the saved password.') : undefined}><Input type="password" value={v.db_password} onChange={(e) => set('db_password', e.target.value)} /></Field>
             {text('pull_every', 'Pull every (minutes)', 'number')}
+            <label className="flex items-center gap-2 self-end pb-2 text-sm"><input type="checkbox" className="size-4 accent-[var(--color-brand)]" checked={!!Number(v.split_by_terminal)} onChange={(e) => set('split_by_terminal', e.target.checked ? 1 : 0)} />{t('Show each terminal separately')}</label>
+            {v.db_preset === 'ADMS (CheckInOut + EmpDetails)' && <p className="text-xs text-muted sm:col-span-2">{t('Users are matched by the national ID in EmpDetails: set Match device users by to National ID / Iqama.')}</p>}
             {v.db_preset === 'Custom' && <>{text('db_table', 'Punch table')}{text('db_user_column', 'User column')}{text('db_time_column', 'Time column')}{text('db_state_column', 'IN/OUT column')}{text('db_sn_column', 'Device column')}</>}
           </div>
         )}
@@ -117,7 +122,7 @@ function Enrolment({ device, onClose, onQueued }: { device: any; onClose: () => 
   )
 }
 
-function DeviceCard({ d, can, onEdit }: { d: any; can: boolean; onEdit: () => void }) {
+function DeviceCard({ d, can, onEdit, terminals = [], onEditTerminal }: { d: any; can: boolean; onEdit: () => void; terminals?: any[]; onEditTerminal?: (x: any) => void }) {
   const { t, lang } = useI18n()
   const qc = useQueryClient()
   const [msg, setMsg] = useState<string | null>(null)
@@ -127,6 +132,7 @@ function DeviceCard({ d, can, onEdit }: { d: any; can: boolean; onEdit: () => vo
     mutationFn: async (what: string) => {
       if (what === 'pull') return api.devicePull(d.name)
       if (what === 'test') return api.deviceTest(d.name)
+      if (what === 'discover') return api.deviceDiscover(d.name)
       if (what === 'token') return api.deviceToken(d.name)
       if (what === 'delete') return api.deleteDevice(d.name)
       if (what === 'enable') return api.saveDevice({ enabled: 1 }, d.name)
@@ -135,7 +141,8 @@ function DeviceCard({ d, can, onEdit }: { d: any; can: boolean; onEdit: () => vo
     onSuccess: (r: any, what) => {
       refresh()
       if (what === 'token') setToken(r.token)
-      else if (what === 'test') setMsg(`${t('Connected')}: ${r.punches} ${t('punches')}${r.last ? ` · ${t('last')} ${r.last}` : ''}`)
+      else if (what === 'discover') { qc.setQueryData(['devices'], r); setMsg(`${t('Terminals found')}: ${r.terminals.length} · ${t('new')}: ${r.new}`) }
+      else if (what === 'test') setMsg(`${t('Connected')}: ${r.punches} ${t('punches')}${r.terminals != null ? ` · ${r.terminals} ${t('terminals')}` : ''}${r.last ? ` · ${t('last')} ${r.last}` : ''}`)
       else if (what === 'pull') setMsg(`${t('New punches')}: ${r.new} · ${t('Imported')}: ${r.imported} · ${t('Unmatched')}: ${r.unmatched}`)
       else if (what !== 'delete' && what !== 'enable') setMsg(t('Command queued; the device picks it up within a minute.'))
     },
@@ -180,6 +187,7 @@ function DeviceCard({ d, can, onEdit }: { d: any; can: boolean; onEdit: () => vo
           </>}
           {kind === 'db' && <>
             <Button size="sm" variant="secondary" loading={act.isPending && act.variables === 'test'} onClick={() => act.mutate('test')}>{t('Test connection')}</Button>
+            <Button size="sm" variant="secondary" loading={act.isPending && act.variables === 'discover'} onClick={() => act.mutate('discover')}><Search className="size-4" />{t('Find terminals')}</Button>
             <Button size="sm" variant="secondary" loading={act.isPending && act.variables === 'pull'} onClick={() => act.mutate('pull')}><RefreshCw className="size-4" />{t('Pull now')}</Button>
           </>}
           {kind === 'api' && <Button size="sm" variant="secondary" onClick={() => act.mutate('token')}>{d.has_token ? t('New token') : t('Create token')}</Button>}
@@ -187,6 +195,24 @@ function DeviceCard({ d, can, onEdit }: { d: any; can: boolean; onEdit: () => vo
             <Upload className="size-4" />{up.isPending ? t('Importing…') : t('Import log file')}
             <input type="file" className="hidden" accept=".dat,.txt,.csv" onChange={(e) => { const f = e.target.files?.[0]; if (f) up.mutate(f); e.target.value = '' }} />
           </label>
+        </div>
+      )}
+      {terminals.length > 0 && (
+        <div className="mt-3 border-t border-line pt-3">
+          <div className="mb-2 text-sm font-medium">{t('Terminals')} ({terminals.length})</div>
+          <Table head={[t('Terminal'), t('Status'), t('Branch'), t('Last punch'), t('Punches (24 h)'), t('Unmatched'), '']}>
+            {terminals.map((x) => (
+              <tr key={x.name}>
+                <td><div className="font-medium">{x.location && x.location !== d.location ? x.location : x.device_name}</div><div className="text-xs text-muted">SN {x.serial_number}</div></td>
+                <td><Badge tone={STATUS_TONE[x.status] ?? 'gray'}>{t(x.status)}</Badge></td>
+                <td>{x.branch || <span className="text-muted">—</span>}</td>
+                <td>{x.last_punch ? fmtDateTime(x.last_punch, lang) : '—'}</td>
+                <td>{x.punches_24h}</td>
+                <td className={clsx(x.unmatched && 'text-amber-700')}>{x.unmatched}</td>
+                <td>{can && onEditTerminal && <Button size="sm" variant="ghost" onClick={() => onEditTerminal(x)} aria-label={t('Edit')}><Pencil className="size-4" /></Button>}</td>
+              </tr>
+            ))}
+          </Table>
         </div>
       )}
       {enrol && <Enrolment device={d} onClose={() => setEnrol(false)} onQueued={() => { setEnrol(false); setMsg(t('Command queued; the device picks it up within a minute.')) }} />}
@@ -298,7 +324,9 @@ export default function AttendanceDevices() {
         { value: 'punches', label: t('Punches') },
         { value: 'unmatched', label: t('Unmatched users'), badge: d.totals.Unmatched ? <span className="rounded-full bg-amber-100 px-1.5 text-xs text-amber-800">{d.totals.Unmatched}</span> : undefined }]} />
       {tab === 'devices' && (!d.devices.length ? <Card><Empty title={t('No devices yet')} icon={<Cpu />}>{t('Add a device, or point a ZKTeco device to this server: it appears here to enable.')}</Empty></Card>
-        : d.devices.map((x: any) => <DeviceCard key={x.name} d={x} can={d.can_edit} onEdit={() => setEdit(x)} />))}
+        : d.devices.filter((x: any) => !x.source_device || !d.devices.some((s: any) => s.name === x.source_device)).map((x: any) => (
+          <DeviceCard key={x.name} d={x} can={d.can_edit} onEdit={() => setEdit(x)} onEditTerminal={setEdit}
+            terminals={d.devices.filter((y: any) => y.source_device === x.name)} />)))}
       {tab === 'punches' && <Punches devices={d.devices} />}
       {tab === 'unmatched' && <Unmatched can={d.can_edit} />}
       {edit !== undefined && <DeviceForm device={edit} server={d.server} pushUrl={d.push_url} onClose={() => setEdit(undefined)} />}

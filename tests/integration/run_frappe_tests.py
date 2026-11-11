@@ -2734,6 +2734,66 @@ def run(site):
         check("attendance devices: ZKTeco ADMS push, unknown device approval, users and commands, push API with token, Hikvision events, log file, database pull",
               attendance_devices)
 
+        def central_database_terminals():
+            from alphax_hr import devices as dvm
+            from alphax_hr.api import devices as dapi
+            frappe.set_user("Administrator")
+            emp = frappe.get_all("Employee", filters={"status": "Active"}, pluck="name", limit=1)[0]
+            old_iqama = frappe.db.get_value("Employee", emp, "alphax_iqama_number")
+            iqama = "2" + frappe.generate_hash(length=9).translate(str.maketrans("abcdef", "123456"))[:9]
+            frappe.db.set_value("Employee", emp, "alphax_iqama_number", iqama)
+            src = "AXT Central"
+            sns = ["AXT-SN-" + frappe.generate_hash(length=6) for _ in range(2)]
+            try:
+                frappe.db.sql_ddl("create table if not exists EmpDetails (Id int, NationalId varchar(20), EmpName varchar(80), EmpNo varchar(20))")
+                frappe.db.sql_ddl("create table if not exists CheckInOut (UserId int, CheckTime datetime, CheckType varchar(5), SN varchar(30))")
+                frappe.db.sql("delete from EmpDetails"); frappe.db.sql("delete from CheckInOut")
+                frappe.db.sql("insert into EmpDetails values (7, %s, 'Test Person', 'E7')", (iqama,))
+                frappe.db.sql("""insert into CheckInOut values (7, '2026-10-05 07:58:00', 'I', %s), (7, '2026-10-05 17:02:00', 'O', %s),
+                                 (7, '2026-10-06 08:01:00', 'I', %s), (99, '2026-10-06 08:03:00', 'I', %s)""", (sns[0], sns[0], sns[1], sns[1]))
+                frappe.db.commit()
+                conf = frappe.conf
+                dev = frappe.get_doc({"doctype": dvm.DEVICE, "device_name": src, "connection": "Database pull (BioTime / ZKTime)",
+                                      "db_type": "MySQL / MariaDB", "db_host": conf.db_host or "127.0.0.1", "db_port": cint_(conf.db_port) or 3306,
+                                      "db_name": conf.db_name, "db_user": conf.db_name, "db_password": conf.db_password,
+                                      "db_preset": "ADMS (CheckInOut + EmpDetails)", "match_by": "National ID / Iqama",
+                                      "punch_rule": "First IN, last OUT (ignore the keys)", "location": "Riyadh"}).insert()
+                t = dvm.test_connection(dev)
+                assert t["punches"] == 4 and t["terminals"] == 2, t
+                out = dapi.discover(src)
+                assert out["new"] == 2 and {x["serial_number"] for x in out["terminals"]} == set(sns), out
+                terms = {d.serial_number: d for d in out["devices"] if d.source_device == src}
+                assert len(terms) == 2 and terms[sns[0]].punch_count == 2 and terms[sns[0]].connection == dvm.TERMINAL
+                assert terms[sns[0]].match_by == "National ID / Iqama" and terms[sns[0]].location == "Riyadh"
+                assert next(d for d in out["devices"] if d.name == src).terminals == 2
+                assert dapi.discover(src)["new"] == 0  # running it again finds the same terminals
+                res = dapi.pull_now(terms[sns[1]].name)  # a terminal pulls through its source
+                assert res["new"] == 4 and res["imported"] == 3 and res["unmatched"] == 1, res
+                logs = frappe.get_all(dvm.LOG, filters={"device": ["in", [terms[s].name for s in sns]]}, fields=["device", "device_user", "status"])
+                assert {(l.device, l.status) for l in logs} == {(terms[sns[0]].name, "Imported"), (terms[sns[1]].name, "Imported"),
+                                                               (terms[sns[1]].name, "Unmatched")}, logs
+                assert {"99"} == {l.device_user for l in logs if l.status == "Unmatched"}  # no national ID: its device user ID
+                assert not frappe.db.count(dvm.LOG, {"device": src})
+                assert frappe.db.count("Employee Checkin", {"employee": emp, "time": ["between", ["2026-10-05", "2026-10-06 23:59:59"]]}) == 3
+                assert dapi.pull_now(src)["new"] == 0
+                assert dapi._status(frappe.get_doc(dvm.DEVICE, terms[sns[0]].name)) in ("Active", "Quiet")
+                expect_error(lambda: dapi.save({"device_name": "AXT stray", "connection": dvm.TERMINAL}), frappe.ValidationError)
+            finally:
+                frappe.set_user("Administrator")
+                frappe.db.sql_ddl("drop table if exists CheckInOut")
+                frappe.db.sql_ddl("drop table if exists EmpDetails")
+                names = frappe.get_all(dvm.DEVICE, filters={"source_device": src}, pluck="name") + [src]
+                for n in frappe.get_all(dvm.LOG, filters={"device": ["in", names]}, fields=["employee_checkin"]):
+                    if n.employee_checkin and frappe.db.exists("Employee Checkin", n.employee_checkin):
+                        frappe.delete_doc("Employee Checkin", n.employee_checkin, force=True)
+                frappe.db.delete(dvm.LOG, {"device": ["in", names]})
+                for n in names:
+                    if frappe.db.exists(dvm.DEVICE, n):
+                        frappe.delete_doc(dvm.DEVICE, n, force=True)
+                frappe.db.set_value("Employee", emp, "alphax_iqama_number", old_iqama)
+        check("central attendance database: find terminals, file punches per terminal, match by national ID (ADMS preset)",
+              central_database_terminals)
+
         def mandatory_gaps_do_not_block_other_sections():
             from frappe.custom.doctype.property_setter.property_setter import make_property_setter
             from alphax_hr.api import hr as hr_api

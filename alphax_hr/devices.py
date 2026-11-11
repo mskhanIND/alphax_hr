@@ -97,8 +97,13 @@ def employee_for(dev, user):
 	if match == "Employee ID":
 		return user if frappe.db.exists("Employee", user) else None
 	if match == "National ID / Iqama":
-		field = "alphax_iqama_number" if frappe.get_meta("Employee").has_field("alphax_iqama_number") else None
-		return frappe.db.get_value("Employee", {field: user}, "name") if field else None
+		meta = frappe.get_meta("Employee")
+		for field in ("alphax_iqama_number", "iqama_national_id"):  # AlphaX field, then the older custom field
+			if meta.has_field(field):
+				name = frappe.db.get_value("Employee", {field: user}, "name")
+				if name:
+					return name
+		return None
 	return frappe.db.get_value("Employee", {"attendance_device_id": user}, "name")
 
 
@@ -176,6 +181,10 @@ PRESETS = {
 	"BioTime (iclock_transaction)": ("iclock_transaction", "emp_code", "punch_time", "punch_state", "terminal_sn"),
 	"ZKTime / ZKAccess (CHECKINOUT)": ("CHECKINOUT c JOIN USERINFO u ON u.USERID = c.USERID", "u.BADGENUMBER", "c.CHECKTIME",
 									   "c.CHECKTYPE", "c.SENSORID"),
+	# ADMS server database (CheckInOut + EmpDetails). Users missing from EmpDetails still come in, under their device user ID.
+	"ADMS (CheckInOut + EmpDetails)": ("CheckInOut c LEFT JOIN EmpDetails e ON e.Id = c.UserId",
+									   "COALESCE(NULLIF(e.NationalId, ''), CONCAT('', c.UserId))", "c.CheckTime",
+									   "c.CheckType", "c.SN"),
 }
 
 
@@ -192,27 +201,39 @@ def _columns(dev):
 	return cols
 
 
+def _host_port(host, port):
+	"""'server:1441', 'server,1441' (SQL Server style) or 'tcp:server' are read as host and port."""
+	host = (host or "").strip()
+	if host.lower().startswith("tcp:"):
+		host = host[4:]
+	m = re.match(r"^(.+?)[:,](\d{2,5})$", host)
+	if m and "]" not in host:
+		host, port = m.group(1), cint(port) or cint(m.group(2))
+	return host, cint(port)
+
+
 def _connect(dev):
 	from frappe.utils.password import get_decrypted_password
 
 	password = get_decrypted_password(DEVICE, dev.name, "db_password", raise_exception=False) or ""
 	kind = dev.db_type or ""
+	host, port = _host_port(dev.db_host, dev.db_port)
 	if kind.startswith("MySQL"):
 		import pymysql
 
-		return pymysql.connect(host=dev.db_host, port=cint(dev.db_port) or 3306, user=dev.db_user, password=password,
+		return pymysql.connect(host=host, port=port or 3306, user=dev.db_user, password=password,
 							   database=dev.db_name, connect_timeout=10), "%s"
 	if kind == "PostgreSQL":
 		import psycopg2
 
-		return psycopg2.connect(host=dev.db_host, port=cint(dev.db_port) or 5432, user=dev.db_user, password=password,
+		return psycopg2.connect(host=host, port=port or 5432, user=dev.db_user, password=password,
 								dbname=dev.db_name, connect_timeout=10), "%s"
 	if kind == "SQL Server":
 		try:
 			import pymssql
 		except ImportError:
 			frappe.throw(_("SQL Server needs the pymssql package on the server: bench pip install pymssql"))
-		return pymssql.connect(server=dev.db_host, port=str(cint(dev.db_port) or 1433), user=dev.db_user, password=password,
+		return pymssql.connect(server=host, port=str(port or 1433), user=dev.db_user, password=password,
 							   database=dev.db_name, login_timeout=10), "%s"
 	frappe.throw(_("Choose the database type."))
 
@@ -235,25 +256,101 @@ def pull(dev, since=None):
 		data = cur.fetchall()
 	finally:
 		conn.close()
-	rows = [{"user": r[0], "time": r[1], "state": r[2]} for r in data]
 	touch(dev)
-	out = ingest(dev, rows, "Database pull")
+	if cint(dev.get("split_by_terminal")) and _columns(dev)[4]:
+		groups = {}
+		for r in data:
+			groups.setdefault(str(r[3]).strip() if r[3] not in (None, "") else "", []).append(
+				{"user": r[0], "time": r[1], "state": r[2]})
+		out = {}
+		for sn, rows in groups.items():
+			target = terminal(dev, sn) if sn else dev
+			if target.name != dev.name:
+				latest = max(get_datetime(x["time"]) for x in rows).replace(microsecond=0, tzinfo=None)
+				frappe.db.set_value(DEVICE, target.name, "last_contact", latest, update_modified=False)
+			for k, v in ingest(target, rows, "Database pull").items():
+				out[k] = out.get(k, 0) + v
+		out = out or ingest(dev, [], "Database pull")
+	else:
+		out = ingest(dev, [{"user": r[0], "time": r[1], "state": r[2]} for r in data], "Database pull")
 	if data:
 		frappe.db.set_value(DEVICE, dev.name, "db_last_time", get_datetime(data[-1][1]).replace(microsecond=0, tzinfo=None),
 							update_modified=False)
 	return out
 
 
+TERMINAL = "Via database source"
+COPY = ("match_by", "punch_rule", "time_offset_minutes", "company", "brand")
+
+
+def terminal(source, sn, **values):
+	"""The device record for terminal ``sn`` of a database source; created the first time the terminal is seen.
+
+	A device already registered with this serial number (for example one that also pushes) is reused, so punches are
+	never split across two records; duplicates are ignored by ingest()."""
+	sn = str(sn).strip()[:140]
+	name = frappe.db.get_value(DEVICE, {"serial_number": sn}, "name")
+	if name:
+		doc = frappe.get_doc(DEVICE, name)
+		if values:
+			frappe.db.set_value(DEVICE, name, values, update_modified=False)
+		return doc
+	base = f"{source.device_name} · {sn}"[:140]
+	label, n = base, 2
+	while frappe.db.exists(DEVICE, label):
+		label, n = f"{base} ({n})", n + 1
+	doc = frappe.get_doc({"doctype": DEVICE, "device_name": label, "serial_number": sn, "connection": TERMINAL,
+						  "source_device": source.name, "enabled": 1, "location": source.location, "branch": None,
+						  "offline_alert_hours": 72, "split_by_terminal": 0,
+						  **{k: source.get(k) for k in COPY}, **values})
+	doc.insert(ignore_permissions=True)
+	return doc
+
+
+def discover(dev):
+	"""Find every terminal (serial number) in the source database and list it as its own device. No punches are read."""
+	table, _u, when, _s, sn = _columns(dev)
+	if not sn:
+		frappe.throw(_("This database has no device column, so terminals cannot be told apart."))
+	conn, _param = _connect(dev)
+	try:
+		cur = conn.cursor()
+		cur.execute(f"SELECT {sn}, COUNT(*), MAX({when}) FROM {table} GROUP BY {sn}")  # nosemgrep  # identifiers checked
+		data = cur.fetchall()
+	finally:
+		conn.close()
+	touch(dev)
+	found, new = [], 0
+	for code, count, last in data:
+		if code in (None, ""):
+			continue
+		existed = frappe.db.exists(DEVICE, {"serial_number": str(code).strip()})
+		values = {"punch_count": cint(count)}
+		if last:
+			values["last_punch"] = values["last_contact"] = get_datetime(last).replace(microsecond=0, tzinfo=None)
+		doc = terminal(dev, code, **values)
+		new += 0 if existed else 1
+		found.append({"name": doc.name, "serial_number": str(code).strip(), "punches": cint(count),
+					  "last": str(values.get("last_punch") or "") or None, "new": not existed})
+	if not cint(dev.get("split_by_terminal")):
+		frappe.db.set_value(DEVICE, dev.name, "split_by_terminal", 1, update_modified=False)
+	return {"terminals": found, "new": new}
+
+
 def test_connection(dev):
 	conn, _param = _connect(dev)
 	try:
-		table, _u, when, *_rest = _columns(dev)
+		table, _u, when, _s, sn = _columns(dev)
 		cur = conn.cursor()
 		cur.execute(f"SELECT COUNT(*), MAX({when}) FROM {table}")  # nosemgrep  # identifiers checked by IDENT / presets
 		count, last = cur.fetchone()
+		terminals = None
+		if sn:
+			cur.execute(f"SELECT COUNT(DISTINCT {sn}) FROM {table}")  # nosemgrep  # identifiers checked by IDENT / presets
+			terminals = cur.fetchone()[0]
 	finally:
 		conn.close()
-	return {"punches": count, "last": str(last) if last else None}
+	return {"punches": count, "last": str(last) if last else None, "terminals": terminals}
 
 
 # ------------------------------------------------------------------ scheduler

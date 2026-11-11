@@ -274,6 +274,7 @@ export const api = {
   deviceToken: (name: string) => call<any>(A + 'devices.new_token', { name }),
   deviceTest: (name: string) => call<any>(A + 'devices.test', { name }),
   devicePull: (name: string) => call<any>(A + 'devices.pull_now', { name }),
+  deviceDiscover: (name: string) => call<any>(A + 'devices.discover', { name }),
   deviceCommand: (name: string, command: string, user?: string) => call<any>(A + 'devices.command', { name, command, user }),
   deviceEnrolment: (name: string) => call<any>(A + 'devices.enrolment', { name }),
   attendanceMarking: () => call<any>('alphax_hr.attendance_marking.status'),

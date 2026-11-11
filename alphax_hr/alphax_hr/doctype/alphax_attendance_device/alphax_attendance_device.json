@@ -17,6 +17,9 @@
   "branch",
   "offline_alert_hours",
   "offline_alerted_on",
+  "source_device",
+  "split_by_terminal",
+  "punch_count",
   "cb1",
   "company",
   "location",
@@ -82,7 +85,7 @@
    "label": "Connection",
    "reqd": 1,
    "in_list_view": 1,
-   "options": "Device push (ZKTeco ADMS / iClock)\nPush API (bridge or other brands)\nDatabase pull (BioTime / ZKTime)\nFile upload",
+   "options": "Device push (ZKTeco ADMS / iClock)\nPush API (bridge or other brands)\nDatabase pull (BioTime / ZKTime)\nFile upload\nVia database source",
    "default": "Device push (ZKTeco ADMS / iClock)"
   },
   {
@@ -113,6 +116,27 @@
    "label": "Offline alert sent",
    "read_only": 1,
    "hidden": 1
+  },
+  {
+   "fieldname": "source_device",
+   "fieldtype": "Link",
+   "label": "Database source",
+   "options": "AlphaX Attendance Device",
+   "read_only": 1,
+   "description": "Terminals found in a central attendance database get their punches through that source."
+  },
+  {
+   "fieldname": "split_by_terminal",
+   "fieldtype": "Check",
+   "label": "Show each terminal separately",
+   "default": "1",
+   "description": "Database pull: punches are filed under the terminal (serial number) they were made on."
+  },
+  {
+   "fieldname": "punch_count",
+   "fieldtype": "Int",
+   "label": "Punches in the source",
+   "read_only": 1
   },
   {
    "fieldname": "cb1",
@@ -267,7 +291,7 @@
    "fieldname": "db_preset",
    "fieldtype": "Select",
    "label": "Software",
-   "options": "BioTime (iclock_transaction)\nZKTime / ZKAccess (CHECKINOUT)\nCustom",
+   "options": "BioTime (iclock_transaction)\nZKTime / ZKAccess (CHECKINOUT)\nADMS (CheckInOut + EmpDetails)\nCustom",
    "default": "BioTime (iclock_transaction)"
   },
   {

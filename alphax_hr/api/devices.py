@@ -15,7 +15,7 @@ from alphax_hr.api._common import parse_json, require_hr, require_hr_manager
 FIELDS = ["device_name", "enabled", "brand", "connection", "serial_number", "company", "location", "branch", "offline_alert_hours",
 		  "match_by", "punch_rule",
 		  "time_offset_minutes", "allowed_ips", "db_type", "db_host", "db_port", "db_name", "db_user", "db_preset", "db_table",
-		  "db_user_column", "db_time_column", "db_state_column", "db_sn_column", "pull_every"]
+		  "db_user_column", "db_time_column", "db_state_column", "db_sn_column", "pull_every", "split_by_terminal"]
 ONLINE_MINUTES = 10
 
 
@@ -24,6 +24,9 @@ def _status(d):
 		return "Waiting for approval" if (d.device_name or "").startswith("New device ") else "Disabled"
 	if not d.last_contact:
 		return "Never connected"
+	if d.connection == dv.TERMINAL:  # no live link to a terminal: judge it by its last punch
+		hours = cint(d.offline_alert_hours) or 24
+		return "Active" if get_datetime(d.last_contact) > now_datetime() - timedelta(hours=hours) else "Quiet"
 	limit = ONLINE_MINUTES if (d.connection or "").startswith("Device push") else max(cint(d.pull_every) or 15, 5) * 3
 	return "Online" if get_datetime(d.last_contact) > now_datetime() - timedelta(minutes=limit) else "Offline"
 
@@ -31,7 +34,8 @@ def _status(d):
 @frappe.whitelist()
 def overview():
 	require_hr()
-	rows = frappe.get_all(dv.DEVICE, fields=["name", *FIELDS, "last_contact", "last_punch", "last_ip", "model", "user_count", "db_last_time"],
+	rows = frappe.get_all(dv.DEVICE, fields=["name", *FIELDS, "last_contact", "last_punch", "last_ip", "model", "user_count", "db_last_time",
+												  "source_device", "punch_count"],
 						  order_by="device_name asc")
 	since = now_datetime() - timedelta(days=1)
 	for r in rows:
@@ -49,6 +53,12 @@ def overview():
 						   "not pressing the IN/OUT keys: set IN / OUT to 'First IN, last OUT (ignore the keys)'.")
 		for k in ("last_contact", "last_punch", "db_last_time"):
 			r[k] = str(r[k]) if r[k] else None
+	terminals = {}
+	for r in rows:
+		if r.source_device:
+			terminals[r.source_device] = terminals.get(r.source_device, 0) + 1
+	for r in rows:
+		r.terminals = terminals.get(r.name, 0)
 	host = get_url().split("://", 1)[-1].split("/")[0]
 	return {"devices": rows, "server": host, "push_url": get_url("/api/method/alphax_hr.api.devices.push"),
 			"can_edit": bool(set(frappe.get_roles()) & {"HR Manager", "System Manager"}),
@@ -65,6 +75,8 @@ def save(data: str | dict | list, name: str | None = None):
 		frappe.throw(_("Give the device a name."))
 	if (doc.connection or "").startswith("Device push") and not doc.serial_number:
 		frappe.throw(_("Device push needs the device's serial number."))
+	if doc.connection == dv.TERMINAL and not doc.source_device:
+		frappe.throw(_("Terminals are added by 'Find terminals' on their database connection."))
 	if "db_password" in (parse_json(data) or {}) and (parse_json(data) or {}).get("db_password"):
 		doc.db_password = parse_json(data)["db_password"]
 	if name and values.get("device_name") and values["device_name"] != name:
@@ -81,6 +93,12 @@ def delete(name: str):
 	if frappe.db.count(dv.LOG, {"device": name, "status": "Imported"}):
 		frappe.db.set_value(dv.DEVICE, name, "enabled", 0)
 		return {"disabled": True, **overview()}
+	for t in frappe.get_all(dv.DEVICE, filters={"source_device": name}, pluck="name"):
+		if frappe.db.count(dv.LOG, {"device": t, "status": "Imported"}):
+			frappe.db.set_value(dv.DEVICE, t, {"source_device": None, "enabled": 0})
+		else:
+			frappe.db.delete(dv.LOG, {"device": t})
+			frappe.delete_doc(dv.DEVICE, t, ignore_permissions=True)
 	frappe.db.delete(dv.LOG, {"device": name})
 	frappe.db.delete("AlphaX Device Command", {"device": name})
 	frappe.db.delete("AlphaX Device User", {"device": name})
@@ -108,7 +126,20 @@ def test(name: str):
 @frappe.whitelist(methods=["POST"])
 def pull_now(name: str):
 	require_hr_manager()
-	return dv.pull(frappe.get_doc(dv.DEVICE, name))
+	doc = frappe.get_doc(dv.DEVICE, name)
+	if doc.connection == dv.TERMINAL and doc.source_device:
+		doc = frappe.get_doc(dv.DEVICE, doc.source_device)  # a terminal's punches come through its source
+	return dv.pull(doc)
+
+
+@frappe.whitelist(methods=["POST"])
+def discover(name: str):
+	"""Find the terminals in a central attendance database and list each one as a device."""
+	require_hr_manager()
+	doc = frappe.get_doc(dv.DEVICE, name)
+	if not (doc.connection or "").startswith("Database pull"):
+		frappe.throw(_("Finding terminals works for a database connection."))
+	return {**dv.discover(doc), **overview()}
 
 
 @frappe.whitelist(methods=["POST"])
