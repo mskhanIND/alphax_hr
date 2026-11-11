@@ -4,7 +4,7 @@ import { Fingerprint, GitBranch,
 import { useState, type ReactNode } from 'react'
 import { NavLink, Link, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { api, signOut } from '../lib/api'
+import { api, boot, signOut } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 import { useSession } from '../lib/session'
 import { useInstall } from '../lib/pwa'
@@ -279,9 +279,23 @@ export function Layout({ children }: { children: ReactNode }) {
             <LogOut className="size-5 flip-rtl" />
           </button>
         </header>
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 pt-6 pb-24 sm:px-6 lg:pb-6">{children}</main>
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 pt-6 pb-24 sm:px-6 lg:pb-6"><RestartBanner />{children}</main>
       </div>
       <TabBar />
+    </div>
+  )
+}
+
+/** The screens are files the web server serves at once after an update, while the server code loads only on a restart.
+ * When the two differ, new screens call functions the running server does not have yet: say what to do. */
+function RestartBanner() {
+  const { t } = useI18n()
+  const server = boot.version
+  if (!server || server === 'dev' || typeof __APP_VERSION__ === 'undefined' || server === __APP_VERSION__) return null
+  return (
+    <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+      <b>{t('Update not finished')}</b>: {t('the screens are version')} {__APP_VERSION__}, {t('the server is still running')} {server}. {t('Some actions will fail until the server administrator runs')}{' '}
+      <code className="rounded bg-white/70 px-1 font-mono text-xs">bench --site {boot.site} migrate &amp;&amp; bench restart</code>
     </div>
   )
 }

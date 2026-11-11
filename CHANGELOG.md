@@ -2,6 +2,10 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.30.1 — 2026-11-11
+
+- **"Update not finished" banner.** After `git pull` the new screens are live at once, but the server code changes only after a restart. When they differ, AlphaX now shows which versions are running and the command to finish the update (`bench --site … migrate && bench restart`), instead of failing with "has no attribute".
+
 ## 0.30.0 — 2026-11-11
 
 - **Terminals are added automatically.** Saving a database connection lists its terminals at once, and the regular pull refreshes the list every 6 hours: new devices appear with their name, IP address, location and model from the source's devices table (detail columns recognised by name, or set in Tables & columns). Automatic names are replaced by the source's device names; a location HR typed is kept. *Find terminals* is now only for an immediate refresh.
