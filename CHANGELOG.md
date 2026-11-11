@@ -2,6 +2,11 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.33.0 — 2026-11-11
+
+- **Update past days.** On Attendance devices: *Last 10 days*, *This month so far*, *Previous month* or other dates (up to two months). For the period AlphaX reads punches again from every attendance database (nothing doubled), retries punches refused earlier (e.g. before a shift was assigned) and marks attendance. Up to 10 days runs at once; longer periods run in the background, and the last result is shown.
+- **Paid days are protected.** Marking never changes a day already in a submitted salary slip (shown as *Already paid, not changed*). Attendance from HR, attendance requests and leave is kept as before.
+
 ## 0.32.1 — 2026-11-11
 
 - Fix: the Setup & health page failed to open after 0.32.0 (tile filter set up in the wrong order).

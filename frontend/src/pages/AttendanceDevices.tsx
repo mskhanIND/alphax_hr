@@ -5,7 +5,7 @@ import { type ReactNode, useState } from 'react'
 import { LinkInput } from '../components/LinkInput'
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, Table, Tabs, Textarea } from '../components/ui'
 import { api, uploadFile } from '../lib/api'
-import { fmtDateTime } from '../lib/format'
+import { fmtDate, fmtDateTime } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 
 const PUSH = 'Device push (ZKTeco ADMS / iClock)'
@@ -508,6 +508,7 @@ function MarkingStrip({ can }: { can: boolean }) {
   const qc = useQueryClient()
   const q = useQuery<any>({ queryKey: ['attendance-marking'], queryFn: api.attendanceMarking })
   const run = useMutation({ mutationFn: api.markAttendanceNow, onSuccess: () => qc.invalidateQueries({ queryKey: ['attendance-marking'] }) })
+  const [past, setPast] = useState(false)
   if (!q.data) return null
   const m = q.data
   const week = Object.entries(m.week ?? {}).map(([k, n]) => `${t(k)} ${n}`).join(' · ')
@@ -524,8 +525,60 @@ function MarkingStrip({ can }: { can: boolean }) {
         {run.data && <div className="text-xs text-emerald-700">{t('Marked')}: {run.data.marked ?? 0} · {t('Corrected')}: {run.data.corrected ?? 0} · {t('Kept (HR or request)')}: {run.data.kept ?? 0}{run.data.errors ? ` · ${t('Errors')}: ${run.data.errors}` : ''}</div>}
       </div>
       {can && m.enabled && <Button size="sm" variant="secondary" loading={run.isPending} onClick={() => run.mutate()}>{t('Mark now')}</Button>}
+      {can && m.enabled && <Button size="sm" onClick={() => setPast(true)}>{t('Update past days')}</Button>}
       {run.error && <ErrorBox error={run.error} />}
+      {past && <PastDays onClose={() => setPast(false)} />}
     </div>
+  )
+}
+
+const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+function PastDays({ onClose }: { onClose: () => void }) {
+  const { t, lang } = useI18n()
+  const qc = useQueryClient()
+  const today = new Date()
+  const yday = new Date(today); yday.setDate(today.getDate() - 1)
+  const ten = new Date(today); ten.setDate(today.getDate() - 10)
+  const pmFirst = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+  const pmLast = new Date(today.getFullYear(), today.getMonth(), 0)
+  const PRESETS: Record<string, [string, string]> = { ten: [iso(ten), iso(yday)], prev: [iso(pmFirst), iso(pmLast)], month: [iso(new Date(today.getFullYear(), today.getMonth(), 1)), iso(yday)] }
+  const [preset, setPreset] = useState('ten')
+  const [range, setRange] = useState<[string, string]>(PRESETS.ten)
+  const last = useQuery<any>({ queryKey: ['period-update'], queryFn: api.lastPeriodUpdate })
+  const run = useMutation({ mutationFn: () => api.updatePastAttendance(range[0], range[1]),
+    onSuccess: () => { ['attendance-marking', 'period-update', 'register', 'devices', 'shift-gaps', 'device-logs'].forEach((k) => qc.invalidateQueries({ queryKey: [k] })) } })
+  const r = run.data && !run.data.queued ? run.data : null
+  const choose = (k: string) => { setPreset(k); if (PRESETS[k]) setRange(PRESETS[k]) }
+  const show = r ?? last.data
+  return (
+    <Modal open onClose={onClose} title={t('Update past days')}
+      footer={<><Button variant="secondary" onClick={onClose}>{t('Close')}</Button><Button loading={run.isPending} onClick={() => run.mutate()}>{t('Update')}</Button></>}>
+      <div className="flex flex-col gap-4 text-sm">
+        <p className="rounded-xl bg-brand-50 p-3 text-xs text-brand">{t('For each day of the period AlphaX reads the punches again from the attendance databases (nothing is doubled), retries punches refused earlier (for example before a shift was assigned) and marks attendance. Attendance entered by HR, attendance requests and leave are kept, and days already paid in a submitted salary slip are not changed.')}</p>
+        <div className="flex flex-wrap gap-2">
+          {[['ten', 'Last 10 days'], ['month', 'This month so far'], ['prev', 'Previous month'], ['custom', 'Other dates']].map(([k, l]) => (
+            <button key={k} type="button" onClick={() => choose(k)} className={clsx('rounded-lg px-3 py-1.5', preset === k ? 'bg-brand text-white' : 'border border-line bg-white')}>{t(l)}</button>))}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label={t('From')}><Input type="date" value={range[0]} max={iso(yday)} onChange={(e) => { setPreset('custom'); setRange([e.target.value, range[1]]) }} /></Field>
+          <Field label={t('To')}><Input type="date" value={range[1]} max={iso(yday)} onChange={(e) => { setPreset('custom'); setRange([range[0], e.target.value]) }} /></Field>
+        </div>
+        {run.data?.queued && <p className="text-emerald-700">{t('Running in the background; this can take a few minutes for a whole month. Open this window again to see the result.')}</p>}
+        {run.error && <ErrorBox error={run.error} />}
+        {show && (
+          <div className="rounded-xl border border-line p-3">
+            <div className="mb-1 font-medium">{r ? t('Result') : t('Last update')}: {fmtDate(show.from, lang)} – {fmtDate(show.to, lang)}{!r && show.at ? ` · ${fmtDateTime(show.at, lang)}` : ''}</div>
+            <ul className="space-y-0.5 text-xs">
+              <li>{t('Punches read again')}: {show.punches?.new ?? 0} {t('new')} · {t('Imported')}: {show.punches?.imported ?? 0}{show.punches?.unmatched ? ` · ${t('Unmatched')}: ${show.punches.unmatched}` : ''}</li>
+              {show.retried?.imported !== undefined && <li>{t('Refused punches retried')}: {t('Imported')} {show.retried.imported} · {t('Still refused')} {show.retried.error ?? 0}</li>}
+              <li>{t('Attendance')}: {t('Marked')} {show.attendance?.marked ?? 0} · {t('Corrected')} {show.attendance?.corrected ?? 0} · {t('Kept (HR or request)')} {show.attendance?.kept ?? 0}{show.attendance?.paid ? ` · ${t('Already paid, not changed')} ${show.attendance.paid}` : ''}{show.attendance?.errors ? ` · ${t('Errors')} ${show.attendance.errors}` : ''}</li>
+              {(show.sources ?? []).filter((x: any) => x.error).map((x: any) => <li key={x.device} className="text-red-700">{x.device}: {x.error}</li>)}
+            </ul>
+          </div>
+        )}
+      </div>
+    </Modal>
   )
 }
 

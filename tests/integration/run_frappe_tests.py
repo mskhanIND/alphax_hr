@@ -3173,6 +3173,16 @@ def run(site):
                 am.mark(employees=[emp], start=absent, end=absent)  # (the late punches also queued this)
                 assert frappe.db.get_value("Attendance", {"employee": emp, "attendance_date": absent, "docstatus": 1}, "status") == "Present"
                 assert frappe.db.count("Attendance", {"employee": emp, "attendance_date": absent, "docstatus": 2}) == 1
+                # a past period: days in a submitted salary slip are left alone; the period update reads, retries and marks
+                orig = am._paid
+                am._paid = lambda e_, s_, t_: {emp: [(min(days), max(days))]}
+                try:
+                    assert am.mark(employees=[emp], start=min(days), end=max(days)).get("paid") == len(days)
+                finally:
+                    am._paid = orig
+                up = am.update_period(min(days), max(days), employees=[emp])
+                assert up["from"] == str(min(days)) and up["attendance"].get("unchanged", 0) >= 2, up
+                expect_error(lambda: am.update_past(str(max(days)), str(min(days))), frappe.ValidationError)
                 # payroll on leave basis: absences would be paid -> the check says so and offers the fix
                 frappe.db.set_single_value("Payroll Settings", "payroll_based_on", "Leave")
                 frappe.set_user(f["hr"])

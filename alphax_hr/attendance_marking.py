@@ -18,7 +18,7 @@ from collections import defaultdict
 
 import frappe
 from frappe import _
-from frappe.utils import add_days, cint, flt, get_first_day, getdate, nowdate
+from frappe.utils import get_datetime, add_days, cint, flt, get_first_day, getdate, nowdate
 
 from alphax_hr.saudi import attendance as rules
 
@@ -111,6 +111,7 @@ def mark(employees=None, start=None, end=None):
 	company = {e.name: e.company for e in frappe.get_all("Employee", filters={"name": ["in", emps]}, fields=["name", "company"])}
 	types = sh.shift_types_map()
 	existing, ours = _existing(emps, start, end), _ours()
+	paid = _paid(emps, start, end)
 	month = getdate(get_first_day(start))
 	while month <= end:
 		data = month_data(str(month), employees=emps, ignore_attendance=set(ours))
@@ -119,6 +120,9 @@ def mark(employees=None, start=None, end=None):
 			for cell in row["cells"]:
 				d = getdate(cell["date"])
 				if not start <= d <= end:
+					continue
+				if any(a <= d <= b for a, b in paid.get(emp, ())):
+					counts["paid"] += 1  # in a submitted salary slip: payroll is closed for this day
 					continue
 				want = decide(cell, types.get(cell.get("shift")) if cell.get("shift") else None, conf, today, conf.window)
 				have = existing.get((emp, d))
@@ -150,6 +154,74 @@ def mark(employees=None, start=None, end=None):
 					frappe.log_error(title=f"AlphaX attendance marking: {emp} {d}", message=str(exc))
 		month = getdate(add_days(frappe.utils.get_last_day(month), 1))
 	return dict(counts)
+
+
+def _paid(emps, start, end):
+	"""{employee: [(from, to)]} of submitted salary slips overlapping the period."""
+	out = defaultdict(list)
+	if not frappe.db.exists("DocType", "Salary Slip"):
+		return out
+	for r in frappe.get_all("Salary Slip", filters={"docstatus": 1, "employee": ["in", emps], "start_date": ["<=", end],
+													 "end_date": [">=", start]}, fields=["employee", "start_date", "end_date"]):
+		out[r.employee].append((getdate(r.start_date), getdate(r.end_date)))
+	return out
+
+
+def update_period(start, end, employees=None):
+	"""Bring a past period up to date: read punches again from every attendance database, retry punches refused for a
+	reason since fixed (e.g. a missing shift), then mark attendance for the period. Days in submitted salary slips are
+	left alone."""
+	from alphax_hr import devices as dv
+
+	start, end = getdate(start), min(getdate(end), getdate(add_days(nowdate(), -1)))
+	out = {"from": str(start), "to": str(end), "punches": {}, "retried": {}, "attendance": {}, "sources": []}
+	if start > end:
+		return out
+	for name in frappe.get_all(dv.DEVICE, filters={"enabled": 1, "connection": ["like", "Database pull%"]}, pluck="name"):
+		try:
+			res = dv.backfill(frappe.get_doc(dv.DEVICE, name), str(start), f"{end} 23:59:59")
+			out["sources"].append({"device": name, **res})
+			for k, v in res.items():
+				out["punches"][k] = out["punches"].get(k, 0) + v
+		except Exception as exc:  # noqa: BLE001
+			out["sources"].append({"device": name, "error": frappe.utils.strip_html(str(exc))[:300]})
+	errs = frappe.get_all(dv.LOG, filters={"status": "Error", "punch_time": ["between", [get_datetime(start),
+							get_datetime(f"{end} 23:59:59")]]}, pluck="name", limit_page_length=50000)
+	if errs:
+		frappe.db.set_value(dv.LOG, {"name": ["in", errs]}, "status", "Pending", update_modified=False)
+		out["retried"] = dv.process(errs)
+	frappe.db.commit()
+	out["attendance"] = mark(employees=employees, start=start, end=end)
+	frappe.cache().set_value("alphax:last_period_update", {"at": str(frappe.utils.now_datetime()), **out})
+	return out
+
+
+@frappe.whitelist(methods=["POST"])
+def update_past(start: str, end: str):
+	"""HR: update a past period. Up to 10 days runs now; longer periods run in the background."""
+	from alphax_hr.api._common import require_hr_manager
+
+	require_hr_manager()
+	if not _conf().enabled:
+		frappe.throw(_("Turn on 'Mark attendance from punches' in Settings → Attendance & check-in first."))
+	s, e = getdate(start), getdate(end)
+	if e < s:
+		frappe.throw(_("The end date is before the start date."))
+	if (e - s).days > 62:
+		frappe.throw(_("Update at most two months at a time."))
+	if (e - s).days < 10 or frappe.flags.in_test:
+		return {"queued": False, **update_period(s, e)}
+	frappe.enqueue("alphax_hr.attendance_marking.update_period", queue="long", timeout=7200,
+				   job_id="alphax-update-period", deduplicate=True, start=str(s), end=str(e), enqueue_after_commit=True)
+	return {"queued": True, "from": str(s), "to": str(e)}
+
+
+@frappe.whitelist()
+def last_update():
+	from alphax_hr.api._common import require_hr
+
+	require_hr()
+	return frappe.cache().get_value("alphax:last_period_update")
 
 
 def daily():
