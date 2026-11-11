@@ -14,6 +14,9 @@
   "brand",
   "connection",
   "serial_number",
+  "branch",
+  "offline_alert_hours",
+  "offline_alerted_on",
   "cb1",
   "company",
   "location",
@@ -91,6 +94,27 @@
    "description": "As shown on the device (Menu → System info). Required for device push."
   },
   {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "Branch",
+   "description": "Employees of another branch can still punch here, but their punches are flagged."
+  },
+  {
+   "fieldname": "offline_alert_hours",
+   "fieldtype": "Int",
+   "label": "Tell HR when offline for (hours)",
+   "default": "2",
+   "description": "0 = never"
+  },
+  {
+   "fieldname": "offline_alerted_on",
+   "fieldtype": "Datetime",
+   "label": "Offline alert sent",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
    "fieldname": "cb1",
    "fieldtype": "Column Break"
   },
@@ -117,8 +141,9 @@
    "fieldname": "punch_rule",
    "fieldtype": "Select",
    "label": "IN / OUT",
-   "options": "From the device (0 = IN, 1 = OUT)\nAlternate (shift decides)\nAll IN\nAll OUT",
-   "default": "From the device (0 = IN, 1 = OUT)"
+   "options": "From the device (0 = IN, 1 = OUT)\nFirst IN, last OUT (ignore the keys)\nAlternate (shift decides)\nAll IN\nAll OUT",
+   "default": "From the device (0 = IN, 1 = OUT)",
+   "description": "Use 'First IN, last OUT' when staff do not press the IN/OUT keys: the first punch of the day is IN, the last OUT."
   },
   {
    "fieldname": "time_offset_minutes",

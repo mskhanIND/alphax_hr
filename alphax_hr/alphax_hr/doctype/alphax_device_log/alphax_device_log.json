@@ -19,7 +19,8 @@
   "status",
   "employee",
   "employee_checkin",
-  "message"
+  "message",
+  "outside_branch"
  ],
  "fields": [
   {
@@ -93,6 +94,12 @@
    "fieldname": "message",
    "fieldtype": "Small Text",
    "label": "Message"
+  },
+  {
+   "fieldname": "outside_branch",
+   "fieldtype": "Check",
+   "label": "Outside the employee's branch",
+   "read_only": 1
   }
  ],
  "permissions": [

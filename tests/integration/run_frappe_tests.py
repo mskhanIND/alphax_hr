@@ -2955,6 +2955,125 @@ def run(site):
         check("labour law: Nitaqat schedule and forecast, Saudis-only professions blocked, designations mapped and merged, resignation accepted after 30 days, Article 80 warning drafted once, notice pay and Art. 77 compensation",
               labour_law_controls)
 
+        def attendance_process_flow():
+            from werkzeug.test import EnvironBuilder
+            from werkzeug.wrappers import Request
+            from alphax_hr import adms, attendance_marking as am, devices as dvm
+            from alphax_hr.api import attendance as att_api, devices as dapi, payroll_control as pc
+            frappe.set_user("Administrator")
+            emp = f["e_emp2"]
+            keep = frappe.db.get_value("Employee", emp, ["attendance_device_id", "branch"], as_dict=True)
+            basis = frappe.db.get_single_value("Payroll Settings", "payroll_based_on")
+            sn, pin = "AXTFLOW" + frappe.generate_hash(length=4).upper(), "77" + str(random_int())
+            if not frappe.db.exists("Branch", "AXT Branch A"):
+                frappe.get_doc({"doctype": "Branch", "branch": "AXT Branch A"}).insert()
+            hl = frappe.db.get_value("Employee", emp, "holiday_list") or frappe.db.get_value("Company", COMPANY, "default_holiday_list")
+            hol = {getdate(x) for x in frappe.get_all("Holiday", filters={"parent": hl}, pluck="holiday_date")}
+            def free(d):
+                return d not in hol and not frappe.db.exists("Attendance", {"employee": emp, "attendance_date": d, "docstatus": ["<", 2]}) \
+                    and not frappe.db.exists("Employee Checkin", {"employee": emp, "time": ["between", [f"{d} 00:00:00", f"{d} 23:59:59"]]}) \
+                    and not frappe.db.exists("Leave Application", {"employee": emp, "from_date": ["<=", d], "to_date": [">=", d], "docstatus": ["<", 2]})
+            days, d = [], getdate(add_days(nowdate(), -1))
+            while len(days) < 3 and d > getdate(add_days(nowdate(), -6)):
+                if free(d):
+                    days.append(d)
+                d = getdate(add_days(d, -1))
+            if len(days) < 3:
+                print("    (skipped: not enough free working days in the last week)")
+                return
+            worked, absent, manual = days
+            made_att = []
+            started = frappe.utils.now_datetime()
+            frappe.flags.alphax_no_remark = True  # the test re-marks itself; no background job left behind
+            def call(path, method="GET", data=None):
+                req = Request(EnvironBuilder(path=path, method=method, data=data).get_environ())
+                return adms.handle(path.split("?")[0].split("/")[-1], req)
+            try:
+                frappe.db.set_value("Employee", emp, {"attendance_device_id": pin, "branch": None})
+                dev = frappe.get_doc({"doctype": dvm.DEVICE, "device_name": "AXT Flow Gate", "enabled": 1, "connection": "Device push (ZKTeco ADMS / iClock)",
+                                      "serial_number": sn, "company": COMPANY, "punch_rule": "First IN, last OUT (ignore the keys)",
+                                      "branch": "AXT Branch A", "offline_alert_hours": 2}).insert()
+                # staff do not press the keys: three untyped taps = IN at the first, OUT at the last
+                body = f"{pin}\t{worked} 08:01:00\t0\n{pin}\t{worked} 08:01:40\t0\n{pin}\t{worked} 17:04:00\t0\n"
+                assert call(f"/iclock/cdata?SN={sn}&table=ATTLOG", "POST", body).get_data(as_text=True) == "OK: 3"
+                assert frappe.db.count(dvm.LOG, {"device": dev.name, "outside_branch": 1}) >= 1  # employee not of Branch A
+                cell = next(c for r in att_api.month_data(str(worked), employees=[emp])["rows"] for c in r["cells"] if c["date"] == str(worked))
+                assert cell["code"] == "P" and abs(cell["hours"] - 9.05) < 0.02, cell
+                # HR marked one day by hand: AlphaX keeps it
+                a = frappe.get_doc({"doctype": "Attendance", "employee": emp, "attendance_date": manual, "status": "Present", "company": COMPANY})
+                a.insert(); a.submit(); made_att.append(a.name)
+                res = am.mark(employees=[emp], start=min(days), end=max(days))
+                got = {getdate(x.attendance_date): x.status for x in frappe.get_all("Attendance", filters={"employee": emp, "docstatus": 1,
+                       "attendance_date": ["in", days]}, fields=["attendance_date", "status"])}
+                assert got.get(worked) == "Present" and got.get(absent) == "Absent" and got.get(manual) == "Present", (got, res)
+                assert res.get("kept", 0) >= 1, res
+                assert am.mark(employees=[emp], start=min(days), end=max(days)).get("unchanged", 0) >= 2  # nothing changes twice
+                # the device was offline: punches for the "absent" day arrive later, the absence is corrected
+                body = f"{pin}\t{absent} 07:58:00\t0\n{pin}\t{absent} 16:30:00\t0\n"
+                call(f"/iclock/cdata?SN={sn}&table=ATTLOG", "POST", body)
+                am.mark(employees=[emp], start=absent, end=absent)  # (the late punches also queued this)
+                assert frappe.db.get_value("Attendance", {"employee": emp, "attendance_date": absent, "docstatus": 1}, "status") == "Present"
+                assert frappe.db.count("Attendance", {"employee": emp, "attendance_date": absent, "docstatus": 2}) == 1
+                # payroll on leave basis: absences would be paid -> the check says so and offers the fix
+                frappe.db.set_single_value("Payroll Settings", "payroll_based_on", "Leave")
+                frappe.set_user(f["hr"])
+                checks = pc.checklist(COMPANY, str(getdate(worked).replace(day=1)))
+                chk = next((c for c in (checks.get("checks") if isinstance(checks, dict) else checks) if c.get("key") == "absences"), None)
+                if chk and chk["count"]:
+                    assert chk["action"]["method"].endswith("use_attendance_basis") and "paid" in chk["hint"], chk
+                pc.use_attendance_basis()
+                assert frappe.db.get_single_value("Payroll Settings", "payroll_based_on") == "Attendance"
+                # device controls
+                frappe.set_user("Administrator")
+                frappe.db.set_value(dvm.DEVICE, dev.name, "last_contact", frappe.utils.add_to_date(frappe.utils.now_datetime(), hours=-3), update_modified=False)
+                dvm.offline_alerts()
+                first = frappe.db.get_value(dvm.DEVICE, dev.name, "offline_alerted_on")
+                assert first
+                dvm.offline_alerts()
+                assert frappe.db.get_value(dvm.DEVICE, dev.name, "offline_alerted_on") == first  # told once per outage
+                call(f"/iclock/cdata?SN={sn}&table=ATTLOG", "POST", f"999{pin}\t{nowdate()} 09:00:00\t0\n")  # unknown user
+                frappe.set_user(f["hr"])
+                expect_error(lambda: dapi.command(dev.name, "Clear device logs"), frappe.ValidationError)
+                expect_error(lambda: dapi.command(dev.name, "Remove left employees"), frappe.ValidationError)
+                dapi.command(dev.name, "Delete user from device", "12345")
+                assert frappe.db.get_value("AlphaX Device Command", {"device": dev.name, "command": "Delete user from device"}, "payload") == "DATA DELETE USERINFO PIN=12345"
+                en = dapi.enrolment(dev.name)
+                assert "missing_id" in en and not en["users_known"]
+                # a device whose staff never press OUT: the page suggests the right setting
+                frappe.set_user("Administrator")
+                frappe.db.set_value(dvm.DEVICE, dev.name, "punch_rule", "From the device (0 = IN, 1 = OUT)")
+                for i in range(20):
+                    frappe.get_doc({"doctype": dvm.LOG, "device": dev.name, "device_user": "55" + str(i), "punch_time": frappe.utils.add_to_date(frappe.utils.now_datetime(), minutes=-i - 1),
+                                    "log_type": "IN", "status": "Duplicate", "source": "Device push"}).insert(ignore_permissions=True)
+                frappe.set_user(f["hr"])
+                row = next(x for x in dapi.overview()["devices"] if x["name"] == dev.name)
+                assert row["hint"] and "First IN" in row["hint"], row
+            finally:
+                frappe.set_user("Administrator")
+                frappe.flags.alphax_no_remark = False
+                frappe.db.set_single_value("Payroll Settings", "payroll_based_on", basis)
+                for a in frappe.get_all("Attendance", filters={"employee": emp, "attendance_date": ["in", days]}, fields=["name", "docstatus"]):
+                    if a.docstatus == 1:
+                        frappe.get_doc("Attendance", a.name).cancel()
+                    frappe.delete_doc("Attendance", a.name, force=True, ignore_permissions=True)
+                for m in frappe.get_all(am.LOG, filters={"creation": [">=", started]}, fields=["name", "attendance"]):
+                    if frappe.db.get_value("Attendance", m.attendance, "docstatus") == 1:
+                        frappe.get_doc("Attendance", m.attendance).cancel()
+                    if frappe.db.exists("Attendance", m.attendance):
+                        frappe.delete_doc("Attendance", m.attendance, force=True, ignore_permissions=True)
+                    frappe.db.delete(am.LOG, {"name": m.name})
+                frappe.db.delete(am.LOG, {"employee": emp})
+                for n in frappe.get_all(dvm.LOG, filters={"device": "AXT Flow Gate"}, fields=["name", "employee_checkin"]):
+                    if n.employee_checkin and frappe.db.exists("Employee Checkin", n.employee_checkin):
+                        frappe.delete_doc("Employee Checkin", n.employee_checkin, force=True)
+                for dt_ in (dvm.LOG, "AlphaX Device Command", "AlphaX Device User"):
+                    frappe.db.delete(dt_, {"device": "AXT Flow Gate"})
+                if frappe.db.exists(dvm.DEVICE, "AXT Flow Gate"):
+                    frappe.delete_doc(dvm.DEVICE, "AXT Flow Gate", force=True)
+                frappe.db.set_value("Employee", emp, dict(keep))
+        check("attendance flow: untyped device punches read first IN / last OUT, nightly HRMS attendance (present, absent, kept, corrected after late punches), absences deducted in payroll, offline alert, device commands and hints",
+              attendance_process_flow)
+
         def approval_policies():
             from alphax_hr import approval_policy as ap
             from alphax_hr.api import approval_policies as apol, approvals, delays, requests as rq

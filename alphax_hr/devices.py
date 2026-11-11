@@ -15,7 +15,7 @@ from datetime import timedelta
 
 import frappe
 from frappe import _
-from frappe.utils import cint, get_datetime, now_datetime
+from frappe.utils import cint, get_datetime, getdate, now_datetime
 
 DEVICE = "AlphaX Attendance Device"
 LOG = "AlphaX Device Log"
@@ -50,8 +50,8 @@ def log_type(dev, state):
 		return "IN"
 	if rule.startswith("All OUT"):
 		return "OUT"
-	if rule.startswith("Alternate"):
-		return None
+	if rule.startswith("Alternate") or rule.startswith("First IN"):
+		return None  # the register reads the day: first punch IN, last punch OUT
 	s = re.sub(r"[\s_]", "", str(state if state is not None else "").strip().lower())
 	if s in IN_STATES:
 		return "IN"
@@ -110,7 +110,7 @@ def process(names=None, device=None):
 	if device:
 		filters["device"] = device
 	counts = {"imported": 0, "unmatched": 0, "duplicate": 0, "error": 0}
-	devices = {}
+	devices, earlier = {}, set()
 	for row in frappe.get_all(LOG, filters=filters, fields=["name", "device", "device_user", "punch_time", "log_type"],
 							  order_by="punch_time asc", limit_page_length=5000):
 		dev = devices.get(row.device) or devices.setdefault(row.device, frappe.get_cached_doc(DEVICE, row.device))
@@ -120,6 +120,9 @@ def process(names=None, device=None):
 								update_modified=False)
 			counts["unmatched"] += 1
 			continue
+		outside = 0
+		if dev.get("branch"):
+			outside = int((frappe.get_cached_value("Employee", employee, "branch") or "") != dev.branch)
 		existing = frappe.db.get_value("Employee Checkin", {"employee": employee, "time": row.punch_time}, "name")
 		if existing:
 			frappe.db.set_value(LOG, row.name, {"status": "Duplicate", "employee": employee, "employee_checkin": existing,
@@ -133,14 +136,21 @@ def process(names=None, device=None):
 			chk.flags.ignore_permissions = True
 			chk.insert()
 			frappe.db.set_value(LOG, row.name, {"status": "Imported", "employee": employee, "employee_checkin": chk.name,
-												"message": None}, update_modified=False)
+												"outside_branch": outside,
+												"message": _("Punched at another branch's device") if outside else None},
+								update_modified=False)
 			counts["imported"] += 1
+			earlier.add((employee, getdate(row.punch_time)))
 		except Exception as exc:  # noqa: BLE001
 			frappe.db.rollback(save_point="alphax_device_log")
 			frappe.clear_messages()
 			frappe.db.set_value(LOG, row.name, {"status": "Error", "employee": employee,
 												"message": frappe.utils.strip_html(str(exc))[:300]}, update_modified=False)
 			counts["error"] += 1
+	if earlier:  # punches for days already past (device was offline): correct their attendance
+		from alphax_hr.attendance_marking import remark_later
+
+		remark_later(earlier)
 	return counts
 
 
@@ -262,3 +272,25 @@ def scheduled():
 			frappe.log_error(title=f"AlphaX device pull: {d.name}")
 	if frappe.db.count(LOG, {"status": "Pending"}):
 		process()
+	offline_alerts(now)
+
+
+def offline_alerts(now=None):
+	"""Tell HR once when an enabled device stops contacting AlphaX for longer than its alert hours."""
+	now = now or now_datetime()
+	for d in frappe.get_all(DEVICE, filters={"enabled": 1, "offline_alert_hours": [">", 0], "last_contact": ["is", "set"],
+											  "connection": ["!=", "File upload"]},
+							fields=["name", "device_name", "location", "last_contact", "offline_alert_hours", "offline_alerted_on"]):
+		last = get_datetime(d.last_contact)
+		if last > now - timedelta(hours=cint(d.offline_alert_hours)):
+			continue
+		if d.offline_alerted_on and get_datetime(d.offline_alerted_on) >= last:
+			continue  # already told for this outage
+		from alphax_hr.api import alerts
+
+		alerts.event("Device offline", _("Attendance device offline: {0}").format(d.device_name),
+					 _("No contact since {0}{1}. Punches made meanwhile stay on the device and arrive when it reconnects; "
+					   "check its power and network.").format(frappe.utils.format_datetime(last, "dd-MM-yyyy HH:mm"),
+															  f" ({d.location})" if d.location else ""),
+					 url="/alphax/attendance-devices", doc=(DEVICE, d.name), tag=f"offline-{d.name}")
+		frappe.db.set_value(DEVICE, d.name, "offline_alerted_on", now, update_modified=False)

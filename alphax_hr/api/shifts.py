@@ -28,8 +28,8 @@ def _employees(department=None, company=None, names=None):
 
 def shift_types_map():
 	fields = ["name", "start_time", "end_time", "late_entry_grace_period", "early_exit_grace_period"]
-	if frappe.get_meta("Shift Type").has_field("color"):
-		fields.append("color")
+	meta = frappe.get_meta("Shift Type")
+	fields += [f for f in ("color", "working_hours_threshold_for_half_day", "working_hours_threshold_for_absent") if meta.has_field(f)]
 	return {s.name: s for s in frappe.get_all("Shift Type", fields=fields)}
 
 

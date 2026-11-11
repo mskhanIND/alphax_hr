@@ -4,7 +4,7 @@ import { AlertTriangle, Check, ChevronDown, ChevronLeft, ChevronRight, CircleDot
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge, Button, Card, ErrorBox, Modal, PageHeader, Select, Spinner, Stat, Textarea } from '../components/ui'
-import { api, downloadFile, downloadUrl } from '../lib/api'
+import { api, call, downloadFile, downloadUrl } from '../lib/api'
 import { fmtDate, fmtMoney, fmtMonth, fmtNumber, monthStart, shiftMonth, todayISO } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 import { recordPath } from '../lib/links'
@@ -24,6 +24,8 @@ const STEP_LABEL: Record<string, string> = { prepare: 'Prepare', review: 'Review
 function CheckRow({ c }: { c: any }) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
+  const qc = useQueryClient()
+  const act = useMutation({ mutationFn: () => call(c.action.method), onSuccess: () => qc.invalidateQueries() })
   const icon = c.severity === 'blocker' ? <AlertTriangle className="size-4 text-red-600" /> : c.severity === 'warning'
     ? <AlertTriangle className="size-4 text-amber-600" /> : c.severity === 'info' ? <Info className="size-4 text-blue-600" /> : <Check className="size-4 text-emerald-600" />
   return (
@@ -37,6 +39,8 @@ function CheckRow({ c }: { c: any }) {
       {open && (
         <div className="mt-2 ms-7 text-sm">
           {c.hint && <p className="mb-1 text-muted">{c.hint}</p>}
+          {c.action && <Button size="sm" className="mb-2" loading={act.isPending} onClick={() => act.mutate()}>{c.action.label}</Button>}
+          {act.error && <ErrorBox error={act.error} />}
           <ul className="flex flex-col gap-1">
             {c.items.map((i: any, n: number) => (
               <li key={n} className="flex flex-wrap gap-2">

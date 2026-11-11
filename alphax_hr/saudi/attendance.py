@@ -80,6 +80,25 @@ def pair_logs(logs: list[tuple[datetime, str]]) -> DayLogs:
     return out
 
 
+def resolve_types(logs: list[tuple[datetime, str | None]], min_gap_minutes: int = 5) -> list[tuple[datetime, str]]:
+    """Give every punch of one day an IN/OUT type.
+
+    Typed punches keep their type. When the day has punches without a type (devices whose IN/OUT keys nobody
+    presses, or set to "first IN, last OUT"), the day is read as first punch = IN and last punch = OUT; repeated
+    taps within ``min_gap_minutes`` count once, and a single punch is a missing punch.
+    """
+    logs = sorted(logs)
+    if not logs or all(k in ("IN", "OUT") for _, k in logs):
+        return [(t, k) for t, k in logs if k in ("IN", "OUT")]
+    times = []
+    for t, _k in logs:
+        if not times or (t - times[-1]).total_seconds() >= min_gap_minutes * 60:
+            times.append(t)
+    if len(times) == 1:
+        return [(times[0], "IN")]
+    return [(times[0], "IN"), (times[-1], "OUT")]
+
+
 def overtime_hours(worked: float, shift_hours: float, minimum_minutes: int = 30) -> float:
     """Hours beyond the shift, ignoring small overruns (default under 30 minutes)."""
     extra = worked - shift_hours

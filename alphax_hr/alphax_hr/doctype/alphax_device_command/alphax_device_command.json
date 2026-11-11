@@ -29,7 +29,7 @@
    "fieldname": "command",
    "fieldtype": "Select",
    "label": "Command",
-   "options": "Reboot\nUpload all logs again\nSend employees to device\nRead device info",
+   "options": "Reboot\nUpload all logs again\nSend employees to device\nRead device info\nRemove left employees\nDelete user from device\nClear device logs",
    "reqd": 1,
    "in_list_view": 1
   },

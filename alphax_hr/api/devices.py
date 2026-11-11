@@ -12,7 +12,8 @@ from frappe.utils import add_days, cint, get_datetime, get_url, now_datetime
 from alphax_hr import devices as dv
 from alphax_hr.api._common import parse_json, require_hr, require_hr_manager
 
-FIELDS = ["device_name", "enabled", "brand", "connection", "serial_number", "company", "location", "match_by", "punch_rule",
+FIELDS = ["device_name", "enabled", "brand", "connection", "serial_number", "company", "location", "branch", "offline_alert_hours",
+		  "match_by", "punch_rule",
 		  "time_offset_minutes", "allowed_ips", "db_type", "db_host", "db_port", "db_name", "db_user", "db_preset", "db_table",
 		  "db_user_column", "db_time_column", "db_state_column", "db_sn_column", "pull_every"]
 ONLINE_MINUTES = 10
@@ -38,6 +39,14 @@ def overview():
 		r.punches_24h = frappe.db.count(dv.LOG, {"device": r.name, "punch_time": [">=", since]})
 		r.unmatched = frappe.db.count(dv.LOG, {"device": r.name, "status": "Unmatched"})
 		r.has_token = bool(frappe.db.get_value(dv.DEVICE, r.name, "api_token"))
+		r.outside_7d = frappe.db.count(dv.LOG, {"device": r.name, "outside_branch": 1, "punch_time": [">=", now_datetime() - timedelta(days=7)]})
+		r.hint = None
+		if (r.punch_rule or "").startswith("From the device"):
+			week = {"device": r.name, "punch_time": [">=", now_datetime() - timedelta(days=7)]}
+			total = frappe.db.count(dv.LOG, week)
+			if total >= 20 and not frappe.db.count(dv.LOG, {**week, "log_type": "OUT"}):
+				r.hint = _("Every punch from this device arrives as IN, so each day looks like a missing punch. Staff are probably "
+						   "not pressing the IN/OUT keys: set IN / OUT to 'First IN, last OUT (ignore the keys)'.")
 		for k in ("last_contact", "last_punch", "db_last_time"):
 			r[k] = str(r[k]) if r[k] else None
 	host = get_url().split("://", 1)[-1].split("/")[0]
@@ -103,7 +112,7 @@ def pull_now(name: str):
 
 
 @frappe.whitelist(methods=["POST"])
-def command(name: str, command: str):
+def command(name: str, command: str, user: str | None = None):
 	require_hr_manager()
 	doc = frappe.get_doc(dv.DEVICE, name)
 	if not (doc.connection or "").startswith("Device push"):
@@ -122,6 +131,24 @@ def command(name: str, command: str):
 		if not lines:
 			frappe.throw(_("No active employee has a numeric attendance device ID to send."))
 		payload = "\n".join(lines)
+	elif command == "Remove left employees":
+		left = [u for u in enrolment(name)["left_on_device"]]
+		if not left:
+			frappe.throw(_("No employee who has left is on this device."))
+		payload = "\n".join(f"DATA DELETE USERINFO PIN={u['device_user']}" for u in left)
+	elif command == "Delete user from device":
+		user = (user or "").strip()
+		if not user.isdigit():
+			frappe.throw(_("Enter the user number on the device."))
+		payload = f"DATA DELETE USERINFO PIN={user}"
+	elif command == "Clear device logs":
+		waiting = frappe.db.count(dv.LOG, {"device": name, "status": ["in", ["Pending", "Unmatched", "Error"]]})
+		if waiting:
+			frappe.throw(_("{0} punches from this device are not imported yet (unmatched users or errors). Fix them first: "
+						   "clearing the device removes its copy for good.").format(waiting))
+		if not frappe.db.count(dv.LOG, {"device": name}):
+			frappe.throw(_("No punches from this device have been received yet."))
+		payload = "CLEAR LOG"
 	elif command not in ("Reboot", "Read device info"):
 		frappe.throw(_("Unknown command."))
 	frappe.get_doc({"doctype": "AlphaX Device Command", "device": name, "command": command, "payload": payload,
@@ -147,7 +174,7 @@ def logs(device: str | None = None, status: str | None = None, employee: str | N
 		if v:
 			filters[k] = v
 	rows = frappe.get_all(dv.LOG, filters=filters, fields=["name", "device", "device_user", "punch_time", "log_type", "source",
-														   "status", "employee", "message"],
+														   "status", "employee", "message", "outside_branch"],
 						  order_by="punch_time desc", limit=min(cint(limit) or 100, 500))
 	names = {r.employee for r in rows if r.employee}
 	labels = dict(frappe.get_all("Employee", filters={"name": ["in", list(names) or [""]]}, fields=["name", "employee_name"], as_list=True))
@@ -155,6 +182,37 @@ def logs(device: str | None = None, status: str | None = None, employee: str | N
 		r.punch_time = str(r.punch_time)
 		r.employee_name = labels.get(r.employee)
 	return rows
+
+
+@frappe.whitelist()
+def enrolment(name: str):
+	"""Who is on the device and who should be: users of employees who left (remove them), active employees without a
+	device ID, and employees with an ID who are not on the device yet."""
+	require_hr()
+	dev = frappe.get_doc(dv.DEVICE, name)
+	users = frappe.get_all("AlphaX Device User", filters={"device": name}, fields=["device_user", "user_name"])
+	filters = {"status": "Active"}
+	if dev.company:
+		filters["company"] = dev.company
+	if dev.get("branch"):
+		filters["branch"] = dev.branch
+	active = frappe.get_all("Employee", filters=filters, fields=["name", "employee_name", "attendance_device_id", "department"])
+	on_device = {str(u.device_user) for u in users}
+	left = []
+	for u in users:
+		emp = dv.employee_for(dev, u.device_user)
+		if emp:
+			e = frappe.db.get_value("Employee", emp, ["employee_name", "status", "relieving_date"], as_dict=True)
+			if e.status != "Active" or (e.relieving_date and frappe.utils.getdate(e.relieving_date) < frappe.utils.getdate()):
+				left.append({"device_user": u.device_user, "user_name": u.user_name, "employee": emp, "employee_name": e.employee_name,
+							 "status": e.status})
+	return {"device_users": len(users), "users_known": bool(users),
+			"left_on_device": left,
+			"missing_id": [{"name": e.name, "employee_name": e.employee_name, "department": e.department}
+						   for e in active if not e.attendance_device_id][:200],
+			"not_on_device": [{"name": e.name, "employee_name": e.employee_name, "attendance_device_id": e.attendance_device_id}
+							  for e in active if e.attendance_device_id and str(e.attendance_device_id) not in on_device][:200]
+			if users else []}
 
 
 @frappe.whitelist()

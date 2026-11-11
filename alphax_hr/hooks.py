@@ -58,7 +58,8 @@ scheduler_events = {
 		"alphax_hr.absence_warnings.daily",
 	],
 	"hourly": ["alphax_hr.api.delays.escalate_pending_approvals"],
-	"cron": {"*/15 * * * *": ["alphax_hr.api.alerts.missing_checkins"], "*/5 * * * *": ["alphax_hr.devices.scheduled"]},
+	"cron": {"*/15 * * * *": ["alphax_hr.api.alerts.missing_checkins"], "*/5 * * * *": ["alphax_hr.devices.scheduled"],
+			 "30 1 * * *": ["alphax_hr.attendance_marking.daily"]},
 }
 
 permission_query_conditions = {"AlphaX Request": "alphax_hr.api.requests.query_conditions",

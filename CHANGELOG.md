@@ -2,6 +2,13 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.27.0 — 2026-11-11
+
+- **Punches become HRMS attendance.** Every night (and when a device sends punches for earlier days) the register's result for employees who punch is submitted as Attendance: present (late entry / early exit flagged), half day or absent by the shift's hour thresholds, absent on a working day with no punch, a missing punch left open for correction within the re-check window. Attendance from HR, attendance requests or leave is never changed; AlphaX's own records are corrected when punches arrive late (the old one cancelled with a comment). Settings → Attendance & check-in; *Mark now* and last run on Attendance devices.
+- **Fix: absences were paid.** With payroll based on leave, absent days were not deducted. The payroll checklist now says so and *Deduct absent days* switches payroll to attendance (days nobody marked stay paid). On attendance-based payroll it warns about absent days not yet recorded.
+- **Fix: punches without IN/OUT were ignored** by the register (devices on "Alternate", or staff not pressing the keys). Such days are read as first punch IN, last punch OUT, repeated taps counted once. New device setting *First IN, last OUT (ignore the keys)*; a device sending every punch as IN gets a hint to use it.
+- **Device controls:** HR is told when a device is offline for the set hours (once per outage); a device can belong to a branch and punches by other branches' employees are flagged; *Users on the device* lists employees who left but are still on it (remove them in one click), employees without a device ID and those not on the device; delete one user; clear device logs only after every punch is imported.
+
 ## 0.26.0 — 2026-11-05
 
 - **Designations & Saudization** (new HR page, *People*):

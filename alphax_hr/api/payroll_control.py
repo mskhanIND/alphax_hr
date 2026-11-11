@@ -143,8 +143,27 @@ def checklist(company, month, scope=None):
 			ot_hours += t.get("overtime_hours", 0)
 		checks.append(_check("attendance_gaps", _("Attendance gaps (missing punch / not marked)"), att_items, "warning",
 							 _("Fix or mark attendance so absences are not paid by mistake."), "/attendance"))
-		checks.append(_check("absences", _("Absences this month"), absent_items, "info", _("Unpaid unless covered by leave; consider penalties."),
-							 "/penalties?tab=suggest"))
+		basis = frappe.db.get_single_value("Payroll Settings", "payroll_based_on")
+		if basis == "Attendance":
+			unmarked = 0
+			if absent_items:
+				ids = [i["employee"] for i in absent_items]
+				hr_absent = frappe.db.count("Attendance", {"employee": ["in", ids], "docstatus": 1, "status": "Absent",
+														   "attendance_date": ["between", [start, end]]})
+				reg_absent = sum(int(r["totals"].get(ABSENT, 0)) for r in data["rows"] if r.get("employee") in ids)
+				unmarked = max(reg_absent - hr_absent, 0)
+			chk = _check("absences", _("Absences this month"), absent_items, "warning" if unmarked else "info",
+						 (_("{0} absent day(s) are not yet recorded as Attendance, so they would be paid: run Mark attendance.").format(unmarked)
+						  if unmarked else _("Deducted from pay (payroll is based on attendance).")), "/attendance")
+			if unmarked:
+				chk["action"] = {"method": "alphax_hr.attendance_marking.mark_now", "label": _("Mark attendance now")}
+		else:
+			chk = _check("absences", _("Absences this month"), absent_items, "warning",
+						 _("These absences will be paid: payroll is based on leave, so only unpaid leave reduces pay. "
+						   "Switch payroll to attendance so absent days are deducted, or record unpaid leave."), "/attendance")
+			if absent_items:
+				chk["action"] = {"method": "alphax_hr.api.payroll_control.use_attendance_basis", "label": _("Deduct absent days")}
+		checks.append(chk)
 	except Exception:  # noqa: BLE001 - the checklist must still load if a shift setup is broken
 		frappe.log_error(title="AlphaX payroll checklist: attendance")
 		ot_hours = 0.0
@@ -874,3 +893,20 @@ def salary_file(company: str, month: str, run: str | None = None, submitted_only
 	frappe.response["filecontent"] = make_xlsx(rows, "Salary file").getvalue()
 	frappe.response["filename"] = f"salary-file-{company}-{start.strftime('%Y-%m')}.xlsx".replace(" ", "-")
 	frappe.response["type"] = "binary"
+
+
+@frappe.whitelist(methods=["POST"])
+def use_attendance_basis():
+	"""Payroll counts payment days from attendance: absent days and unpaid leave are deducted; days nobody marked stay paid."""
+	require_hr_manager()
+	ps = frappe.get_single("Payroll Settings")
+	ps.payroll_based_on = "Attendance"
+	if ps.meta.has_field("consider_unmarked_attendance_as"):
+		ps.consider_unmarked_attendance_as = "Present"
+	ps.flags.ignore_permissions = True  # HR Manager (checked above) decides how payroll counts days
+	ps.save()
+	if frappe.db.get_single_value("AlphaX HR Settings", "mark_attendance") is not None:
+		frappe.db.set_single_value("AlphaX HR Settings", "mark_attendance", 1)
+	from alphax_hr.attendance_marking import mark
+
+	return {"basis": "Attendance", "marked": mark()}

@@ -33,35 +33,49 @@ def _checkins(employees, start, end):
 	for r in rows:
 		t = get_datetime(r.time)
 		day = getdate(r.get("shift_start")) if r.get("shift_start") else t.date()
-		if start <= day <= end and r.log_type in ("IN", "OUT"):
-			out[r.employee][day].append((t, r.log_type))
+		if start <= day <= end:
+			out[r.employee][day].append((t, r.log_type if r.log_type in ("IN", "OUT") else None))
+	gap = _punch_gap()
+	for days in out.values():
+		for day in list(days):
+			days[day] = rules.resolve_types(days[day], gap)
 	return out
 
 
-def _attendance(employees, start, end):
+def _punch_gap():
+	"""Minutes within which repeated taps count once (Settings → Attendance)."""
+	try:
+		return cint(frappe.db.get_single_value("AlphaX HR Settings", "checkin_min_gap") or 5)
+	except Exception:  # noqa: BLE001
+		return 5
+
+
+def _attendance(employees, start, end, ignore=None):
 	out = defaultdict(dict)
 	if not employees:
 		return out
 	for a in frappe.get_all("Attendance", filters={
 			"employee": ["in", list(employees)], "docstatus": 1, "attendance_date": ["between", [start, end]]},
-			fields=["employee", "attendance_date", "status", "late_entry", "early_exit", "working_hours", "shift"]):
+			fields=["name", "employee", "attendance_date", "status", "late_entry", "early_exit", "working_hours", "shift"]):
+		if ignore and a.name in ignore:
+			continue  # AlphaX's own marking, re-read from the punches
 		out[a.employee][getdate(a.attendance_date)] = a
 	return out
 
 
-def month_data(month=None, department=None, company=None):
+def month_data(month=None, department=None, company=None, employees=None, ignore_attendance=None):
 	"""Everything the register and overtime views need, computed once."""
 	ref = getdate(month or nowdate())
 	start, end = getdate(get_first_day(ref)), getdate(get_last_day(ref))
 	today = getdate(nowdate())
-	emps = sh._employees(department, company)
+	emps = sh._employees(department, company, names=employees)
 	ids = [e.name for e in emps]
 	assigned = sh.assignments(ids, start, end)
 	types = sh.shift_types_map()
 	hols = sh.holidays(emps, start, end)
 	leaves = sh.approved_leaves(ids, start, end)
 	logs = _checkins(ids, start, end)
-	marked = _attendance(ids, start, end)
+	marked = _attendance(ids, start, end, ignore_attendance)
 	from alphax_hr.api.requests import excused as _excused
 
 	permits = _excused(ids, start, end)

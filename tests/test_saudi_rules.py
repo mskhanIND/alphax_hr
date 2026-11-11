@@ -217,3 +217,18 @@ class TerminationTests(unittest.TestCase):
         self.assertEqual(t.article77(t.FIXED, 6000, 2, remaining_days=270), 54000.0)
         self.assertEqual(t.article77(t.FIXED, 6000, 2, remaining_days=20), 12000.0)
         self.assertEqual(t.article77(t.INDEFINITE, 6000, 10, agreed=50000), 50000.0)
+
+
+class PunchTypeTests(unittest.TestCase):
+    def test_untyped_first_in_last_out(self):
+        from datetime import datetime
+        from alphax_hr.saudi import attendance as a
+        d = lambda h, m=0: datetime(2026, 11, 10, h, m)
+        logs = [(d(8, 2), None), (d(8, 3), None), (d(12), None), (d(13), None), (d(17, 5), None)]
+        self.assertEqual(a.resolve_types(logs), [(d(8, 2), "IN"), (d(17, 5), "OUT")])
+        self.assertEqual(a.resolve_types([(d(8), None), (d(8, 2), None)]), [(d(8), "IN")])  # double tap = one punch
+        typed = [(d(8), "IN"), (d(17), "OUT")]
+        self.assertEqual(a.resolve_types(typed), typed)
+        p = a.pair_logs(a.resolve_types(logs))
+        self.assertFalse(p.missing_punch)
+        self.assertAlmostEqual(p.hours, 9.05, places=2)

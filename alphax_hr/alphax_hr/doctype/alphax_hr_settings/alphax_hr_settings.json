@@ -68,6 +68,9 @@
   "checkin_section",
   "checkin_location_rule",
   "checkin_min_gap",
+  "mark_attendance",
+  "mark_absent",
+  "attendance_recheck_days",
   "push_section",
   "push_public_key",
   "push_private_key",
@@ -469,6 +472,29 @@
    "label": "Minutes between two punches",
    "default": "5",
    "description": "Stops repeated taps (IN, OUT, IN within a minute). 0 = no limit."
+  },
+  {
+   "fieldname": "mark_attendance",
+   "fieldtype": "Check",
+   "label": "Mark HRMS attendance from punches",
+   "default": "1",
+   "description": "Every night, past days of employees who punch become Attendance records (payroll, leave and HRMS reports use them)."
+  },
+  {
+   "fieldname": "mark_absent",
+   "fieldtype": "Check",
+   "label": "Mark absent days",
+   "default": "1",
+   "depends_on": "mark_attendance",
+   "description": "A working day with no punch, leave or request becomes Absent."
+  },
+  {
+   "fieldname": "attendance_recheck_days",
+   "fieldtype": "Int",
+   "label": "Re-check the last days",
+   "default": "7",
+   "depends_on": "mark_attendance",
+   "description": "Days re-checked for punches that arrive late (a device offline) and missing punches that can still be corrected."
   },
   {
    "fieldname": "push_section",

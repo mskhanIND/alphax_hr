@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { Cpu, Pencil, Plus, RefreshCw, Trash2, Upload } from 'lucide-react'
-import { useState } from 'react'
+import { AlertTriangle, CalendarCheck, Cpu, Pencil, Plus, RefreshCw, Trash2, Upload, Users } from 'lucide-react'
+import { type ReactNode, useState } from 'react'
 import { LinkInput } from '../components/LinkInput'
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, Table, Tabs, Textarea } from '../components/ui'
 import { api, uploadFile } from '../lib/api'
@@ -13,7 +13,7 @@ const API = 'Push API (bridge or other brands)'
 const DB = 'Database pull (BioTime / ZKTime)'
 const FILE = 'File upload'
 const STATUS_TONE: Record<string, string> = { Online: 'green', Offline: 'red', 'Never connected': 'gray', 'Waiting for approval': 'amber', Disabled: 'gray' }
-const BLANK = { device_name: '', enabled: 1, brand: 'ZKTeco', connection: PUSH, serial_number: '', company: '', location: '', match_by: 'Attendance device ID',
+const BLANK = { device_name: '', enabled: 1, brand: 'ZKTeco', connection: PUSH, serial_number: '', company: '', location: '', branch: '', offline_alert_hours: 2, match_by: 'Attendance device ID',
   punch_rule: 'From the device (0 = IN, 1 = OUT)', time_offset_minutes: 0, allowed_ips: '', db_type: '', db_host: '', db_port: '', db_name: '', db_user: '',
   db_password: '', db_preset: 'BioTime (iclock_transaction)', db_table: '', db_user_column: '', db_time_column: '', db_state_column: '', db_sn_column: '', pull_every: 15 }
 
@@ -58,7 +58,9 @@ function DeviceForm({ device, onClose, server, pushUrl }: { device: any | null; 
           <Field label={t('Company')}><LinkInput doctype="Company" value={v.company ?? ''} onChange={(x) => set('company', x)} /></Field>
           {text('location', 'Location / site')}
           {sel('match_by', 'Match device users by', ['Attendance device ID', 'Employee ID', 'National ID / Iqama'])}
-          {sel('punch_rule', 'IN / OUT', ['From the device (0 = IN, 1 = OUT)', 'Alternate (shift decides)', 'All IN', 'All OUT'])}
+          {sel('punch_rule', 'IN / OUT', ['From the device (0 = IN, 1 = OUT)', 'First IN, last OUT (ignore the keys)', 'Alternate (shift decides)', 'All IN', 'All OUT'])}
+          <Field label={t('Branch')} hint={t('Punches by employees of another branch are flagged.')}><LinkInput doctype="Branch" value={v.branch ?? ''} onChange={(x) => set('branch', x)} /></Field>
+          {v.connection !== FILE ? text('offline_alert_hours', 'Tell HR when offline for (hours)', 'number') : null}
           {text('time_offset_minutes', 'Device clock offset (minutes)', 'number')}
           <label className="flex items-center gap-2 self-end pb-2 text-sm"><input type="checkbox" className="size-4 accent-[var(--color-brand)]" checked={!!Number(v.enabled)} onChange={(e) => set('enabled', e.target.checked ? 1 : 0)} />{t('Enabled')}</label>
         </div>
@@ -76,6 +78,41 @@ function DeviceForm({ device, onClose, server, pushUrl }: { device: any | null; 
         )}
         {save.error && <ErrorBox error={save.error} />}
       </div>
+    </Modal>
+  )
+}
+
+function Enrolment({ device, onClose, onQueued }: { device: any; onClose: () => void; onQueued: () => void }) {
+  const { t } = useI18n()
+  const q = useQuery<any>({ queryKey: ['device-enrolment', device.name], queryFn: () => api.deviceEnrolment(device.name) })
+  const [pin, setPin] = useState('')
+  const cmd = useMutation({ mutationFn: (x: { c: string; user?: string }) => api.deviceCommand(device.name, x.c, x.user), onSuccess: onQueued })
+  const list = (title: string, rows: any[], render: (r: any) => ReactNode, tone = '') => (
+    <section>
+      <h3 className={clsx('mb-1 text-sm font-semibold', tone)}>{title} ({rows.length})</h3>
+      {rows.length ? <ul className="max-h-48 divide-y divide-line overflow-auto rounded-lg border border-line text-sm">{rows.map((r, i) => <li key={i} className="flex justify-between gap-2 px-2 py-1.5">{render(r)}</li>)}</ul>
+        : <p className="text-sm text-muted">{t('None')}</p>}
+    </section>
+  )
+  return (
+    <Modal open wide onClose={onClose} title={`${t('Users on the device')} · ${device.device_name}`}
+      footer={<Button variant="secondary" onClick={onClose}>{t('Close')}</Button>}>
+      {q.isLoading ? <Spinner /> : q.error ? <ErrorBox error={q.error} /> : (
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-muted">{q.data.users_known ? t('{0} users reported by the device.').replace('{0}', String(q.data.device_users))
+            : t('The device has not reported its users yet; they arrive when users are added on it (or use Upload all logs again).')}</p>
+          {list(t('Employees who left, still on the device'), q.data.left_on_device, (r) => <><span>{r.employee_name} <span className="text-muted">#{r.device_user}</span></span><Badge tone="red">{t(r.status)}</Badge></>, 'text-red-700')}
+          {q.data.left_on_device.length > 0 && <Button className="self-start" variant="danger" loading={cmd.isPending} onClick={() => cmd.mutate({ c: 'Remove left employees' })}>{t('Remove them from the device')}</Button>}
+          {list(t('Active employees without a device ID'), q.data.missing_id, (r) => <><span>{r.employee_name}</span><span className="text-muted">{r.department ?? ''}</span></>, 'text-amber-700')}
+          {q.data.users_known && list(t('Employees with a device ID who are not on the device'), q.data.not_on_device, (r) => <><span>{r.employee_name}</span><span className="text-muted">#{r.attendance_device_id}</span></>)}
+          {q.data.users_known && q.data.not_on_device.length > 0 && <Button className="self-start" variant="secondary" loading={cmd.isPending} onClick={() => cmd.mutate({ c: 'Send employees to device' })}>{t('Send employees to device')}</Button>}
+          <div className="flex items-end gap-2 border-t border-line pt-3">
+            <Field label={t('Delete one user from the device (user number)')}><Input value={pin} onChange={(e) => setPin(e.target.value)} inputMode="numeric" /></Field>
+            <Button variant="secondary" disabled={!pin.trim()} loading={cmd.isPending} onClick={() => cmd.mutate({ c: 'Delete user from device', user: pin.trim() })}>{t('Delete')}</Button>
+          </div>
+          {cmd.error && <ErrorBox error={cmd.error} />}
+        </div>
+      )}
     </Modal>
   )
 }
@@ -108,6 +145,7 @@ function DeviceCard({ d, can, onEdit }: { d: any; can: boolean; onEdit: () => vo
     onSuccess: (r: any) => { refresh(); setMsg(`${t('Punches in file')}: ${r.received} · ${t('Imported')}: ${r.imported} · ${t('Unmatched')}: ${r.unmatched} · ${t('Already had')}: ${r.already_had}`) },
   })
   const kind = d.connection === PUSH ? 'push' : d.connection === DB ? 'db' : d.connection === API ? 'api' : 'file'
+  const [enrol, setEnrol] = useState(false)
   return (
     <Card>
       <div className="flex flex-wrap items-start gap-3">
@@ -120,7 +158,9 @@ function DeviceCard({ d, can, onEdit }: { d: any; can: boolean; onEdit: () => vo
             <span><span className="text-muted">{t('Last punch')}:</span> {d.last_punch ? fmtDateTime(d.last_punch, lang) : '—'}</span>
             <span><span className="text-muted">{t('Punches (24 h)')}:</span> {d.punches_24h}</span>
             <span className={clsx(d.unmatched && 'text-amber-700')}><span className="text-muted">{t('Unmatched')}:</span> {d.unmatched}</span>
+            {d.outside_7d > 0 && <span className="text-amber-700"><span className="text-muted">{t('Other branch (7 days)')}:</span> {d.outside_7d}</span>}
           </div>
+          {d.hint && <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-50 p-2 text-xs text-amber-900"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" />{d.hint}</p>}
         </div>
         {can && <div className="flex gap-1">
           <Button size="sm" variant="ghost" onClick={onEdit} aria-label={t('Edit')}><Pencil className="size-4" /></Button>
@@ -135,6 +175,8 @@ function DeviceCard({ d, can, onEdit }: { d: any; can: boolean; onEdit: () => vo
             <Button size="sm" variant="secondary" onClick={() => act.mutate('Send employees to device')}>{t('Send employees to device')}</Button>
             <Button size="sm" variant="secondary" onClick={() => act.mutate('Read device info')}>{t('Read device info')}</Button>
             <Button size="sm" variant="secondary" onClick={() => { if (confirm(t('Restart the device?'))) act.mutate('Reboot') }}>{t('Reboot')}</Button>
+            <Button size="sm" variant="secondary" onClick={() => setEnrol(true)}><Users className="size-4" />{t('Users on the device')}</Button>
+            <Button size="sm" variant="secondary" onClick={() => { if (confirm(t('Delete all punches stored on the device? Only possible when every punch from it has been imported.'))) act.mutate('Clear device logs') }}>{t('Clear device logs')}</Button>
           </>}
           {kind === 'db' && <>
             <Button size="sm" variant="secondary" loading={act.isPending && act.variables === 'test'} onClick={() => act.mutate('test')}>{t('Test connection')}</Button>
@@ -147,6 +189,7 @@ function DeviceCard({ d, can, onEdit }: { d: any; can: boolean; onEdit: () => vo
           </label>
         </div>
       )}
+      {enrol && <Enrolment device={d} onClose={() => setEnrol(false)} onQueued={() => { setEnrol(false); setMsg(t('Command queued; the device picks it up within a minute.')) }} />}
       {token && <div className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{t('Token (shown once — copy it into the bridge now)')}: <code className="break-all font-mono">{token}</code></div>}
       {msg && <p className="mt-3 text-sm text-emerald-700">{msg}</p>}
       {(act.error || up.error) && <div className="mt-3"><ErrorBox error={act.error || up.error} /></div>}
@@ -171,7 +214,7 @@ function Punches({ devices }: { devices: any[] }) {
             <tr key={r.name}>
               <td className="py-1.5 tabular-nums">{fmtDateTime(r.punch_time, lang)}</td><td>{r.device_user}</td><td>{r.employee_name ?? '—'}</td>
               <td>{r.log_type ? t(r.log_type) : '—'}</td><td className="text-muted">{r.device}</td>
-              <td><Badge tone={r.status === 'Imported' ? 'green' : r.status === 'Unmatched' ? 'amber' : r.status === 'Error' ? 'red' : 'gray'}>{t(r.status)}</Badge>{r.message && r.status !== 'Imported' && <div className="text-xs text-muted">{r.message}</div>}</td>
+              <td><Badge tone={r.status === 'Imported' ? 'green' : r.status === 'Unmatched' ? 'amber' : r.status === 'Error' ? 'red' : 'gray'}>{t(r.status)}</Badge>{r.message && r.status !== 'Imported' && <div className="text-xs text-muted">{r.message}</div>}{!!r.outside_branch && <div className="text-xs text-amber-700">{t('Other branch')}</div>}</td>
             </tr>
           ))}
         </Table>
@@ -212,6 +255,32 @@ function Unmatched({ can }: { can: boolean }) {
   )
 }
 
+function MarkingStrip({ can }: { can: boolean }) {
+  const { t, lang } = useI18n()
+  const qc = useQueryClient()
+  const q = useQuery<any>({ queryKey: ['attendance-marking'], queryFn: api.attendanceMarking })
+  const run = useMutation({ mutationFn: api.markAttendanceNow, onSuccess: () => qc.invalidateQueries({ queryKey: ['attendance-marking'] }) })
+  if (!q.data) return null
+  const m = q.data
+  const week = Object.entries(m.week ?? {}).map(([k, n]) => `${t(k)} ${n}`).join(' · ')
+  return (
+    <div className={clsx('flex flex-wrap items-center gap-3 rounded-xl border p-3 text-sm', m.enabled ? 'border-brand/20 bg-brand-50' : 'border-amber-200 bg-amber-50')}>
+      <CalendarCheck className="size-5 shrink-0 text-brand" />
+      <div className="min-w-0 flex-1">
+        <div className="font-medium">{m.enabled ? t('Punches become HRMS attendance every night') : t('Punches are not turned into HRMS attendance')}</div>
+        <div className="text-xs text-muted">
+          {m.enabled ? t('{0} employees who punch · last {1} days re-checked for late punches').replace('{0}', String(m.employees)).replace('{1}', String(m.window))
+            : t('Payroll, leave and HRMS reports will not see these days. Switch it on in Settings → Attendance & check-in.')}
+          {m.last?.at && ` · ${t('last run')} ${fmtDateTime(m.last.at, lang)}`}{week && ` · ${t('this week')}: ${week}`}
+        </div>
+        {run.data && <div className="text-xs text-emerald-700">{t('Marked')}: {run.data.marked ?? 0} · {t('Corrected')}: {run.data.corrected ?? 0} · {t('Kept (HR or request)')}: {run.data.kept ?? 0}{run.data.errors ? ` · ${t('Errors')}: ${run.data.errors}` : ''}</div>}
+      </div>
+      {can && m.enabled && <Button size="sm" variant="secondary" loading={run.isPending} onClick={() => run.mutate()}>{t('Mark now')}</Button>}
+      {run.error && <ErrorBox error={run.error} />}
+    </div>
+  )
+}
+
 export default function AttendanceDevices() {
   const { t } = useI18n()
   const q = useQuery({ queryKey: ['devices'], queryFn: api.devicesOverview, refetchInterval: 30_000 })
@@ -224,6 +293,7 @@ export default function AttendanceDevices() {
     <div className="flex flex-col gap-5">
       <PageHeader title={t('Attendance devices')} subtitle={t('Fingerprint and face devices: ZKTeco by device push, other brands by the push API or a bridge, attendance software by database, or log files.')}
         actions={d.can_edit ? <Button onClick={() => setEdit(null)}><Plus className="size-4" />{t('Add device')}</Button> : undefined} />
+      <MarkingStrip can={d.can_edit} />
       <Tabs value={tab} onChange={setTab} tabs={[{ value: 'devices', label: t('Devices') },
         { value: 'punches', label: t('Punches') },
         { value: 'unmatched', label: t('Unmatched users'), badge: d.totals.Unmatched ? <span className="rounded-full bg-amber-100 px-1.5 text-xs text-amber-800">{d.totals.Unmatched}</span> : undefined }]} />
