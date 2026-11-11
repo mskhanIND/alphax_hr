@@ -2854,6 +2854,45 @@ def run(site):
         check("central attendance database: find terminals, file punches per terminal, match by national ID (ADMS preset)",
               central_database_terminals)
 
+        def punches_refused_for_missing_shift():
+            from alphax_hr import devices as dvm
+            from alphax_hr.api import devices as dapi
+            frappe.set_user("Administrator")
+            emp = frappe.get_all("Employee", filters={"status": "Active"}, pluck="name", limit=1)[0]
+            st = frappe.get_all("Shift Type", pluck="name", limit=1)
+            if not st:
+                frappe.get_doc({"doctype": "Shift Type", "name": "AXT Day", "start_time": "08:00:00", "end_time": "17:00:00"}).insert()
+                st = ["AXT Day"]
+            dev = frappe.get_doc({"doctype": dvm.DEVICE, "device_name": "AXT Shiftless", "connection": "File upload"}).insert()
+            logs = []
+            try:
+                for t in ("2027-03-02 08:01:00", "2027-03-02 17:05:00"):
+                    logs.append(frappe.get_doc({"doctype": dvm.LOG, "device": dev.name, "device_user": "x1", "punch_time": t,
+                                                "employee": emp, "status": "Error", "source": "File upload",
+                                                "message": "No active shift assignment found for X on 02-03-2027."}).insert().name)
+                gaps = dapi.shift_gaps()
+                row = next(r for r in gaps["employees"] if r["employee"] == emp)
+                assert row["refused"] == 2 and row["first"].startswith("2027-03-02") and gaps["shift_types"]
+                res = dapi.fix_shift_gaps([emp], st[0], "2027-03-01")
+                assert res["created"] == 1 and res["imported"] == 2, res
+                assert {frappe.db.get_value(dvm.LOG, n, "status") for n in logs} == {"Imported"}
+                assert frappe.db.exists("Shift Assignment", {"employee": emp, "shift_type": st[0], "start_date": "2027-03-01", "docstatus": 1})
+                assert not any(r["employee"] == emp for r in dapi.shift_gaps()["employees"])
+            finally:
+                for n in logs:
+                    c = frappe.db.get_value(dvm.LOG, n, "employee_checkin")
+                    if c and frappe.db.exists("Employee Checkin", c):
+                        frappe.delete_doc("Employee Checkin", c, force=True)
+                frappe.db.delete(dvm.LOG, {"device": dev.name})
+                for a in frappe.get_all("Shift Assignment", filters={"employee": emp, "start_date": "2027-03-01"}, pluck="name"):
+                    d = frappe.get_doc("Shift Assignment", a)
+                    if d.docstatus == 1:
+                        d.cancel()
+                    frappe.delete_doc("Shift Assignment", a, force=True)
+                frappe.delete_doc(dvm.DEVICE, dev.name, force=True)
+        check("punches refused for a missing shift: listed per employee, shift assigned in bulk, refused punches imported",
+              punches_refused_for_missing_shift)
+
         def mandatory_gaps_do_not_block_other_sections():
             from frappe.custom.doctype.property_setter.property_setter import make_property_setter
             from alphax_hr.api import hr as hr_api

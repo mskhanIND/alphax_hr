@@ -2,6 +2,12 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.31.0 — 2026-11-11
+
+- **Punches refused for a missing shift.** When the site refuses check-ins without a shift assignment, Attendance devices now shows how many employees and punches are waiting. *Assign shifts* lists them (department, refused punches since, default shift, current shift) and assigns one shift, or each employee's default shift, from the first refused day with no end date. Their punches are imported at once.
+- **Any shift assignment imports waiting punches.** Submitting a Shift Assignment (from AlphaX, the roster or desk) retries that employee's punches refused for a missing shift in its period.
+- **Try again** on refused punches (Punches → Error). A retried punch keeps the employee it was matched to.
+
 ## 0.30.2 — 2026-11-11
 
 - **Match employees links without overwriting.** The link (attendance user → employee) is kept on the connection, so employees whose Device ID or Iqama already holds another value (for example a national ID from an earlier system) are linked instead of refused; empty fields are still filled in. Punches match through the link from then on.

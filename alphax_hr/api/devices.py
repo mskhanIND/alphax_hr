@@ -156,6 +156,73 @@ def link_people(name: str, pairs: str | list):
 
 
 @frappe.whitelist()
+def shift_gaps():
+	"""Employees whose punches were refused because they have no shift, with what HR needs to fix it."""
+	require_hr()
+	rows = frappe.db.sql("""select employee, count(*) n, min(punch_time) first, max(punch_time) last,
+			group_concat(distinct device separator ', ') devices
+		from `tabAlphaX Device Log` where status='Error' and message like %s and employee is not null
+		group by employee order by n desc limit 1000""", (dv.SHIFT_ERROR,), as_dict=True)
+	out = []
+	for r in rows:
+		e = frappe.db.get_value("Employee", r.employee, ["employee_name", "department", "default_shift", "company", "branch"],
+								as_dict=True) or {}
+		current = frappe.get_all("Shift Assignment", filters={"employee": r.employee, "docstatus": 1, "status": "Active"},
+								 fields=["shift_type", "start_date", "end_date"], order_by="start_date desc", limit=1)
+		out.append({"employee": r.employee, "employee_name": e.get("employee_name"), "department": e.get("department"),
+					"branch": e.get("branch"), "default_shift": e.get("default_shift"), "refused": r.n,
+					"first": str(r.first), "last": str(r.last), "devices": r.devices,
+					"assignment": ({**current[0], "start_date": str(current[0].start_date),
+									"end_date": str(current[0].end_date) if current[0].end_date else None} if current else None)})
+	types = frappe.get_all("Shift Type", fields=["name", "start_time", "end_time"], order_by="name")
+	return {"employees": out, "refused": sum(r["refused"] for r in out),
+			"shift_types": [{"name": t.name, "start_time": str(t.start_time), "end_time": str(t.end_time)} for t in types],
+			"other_errors": frappe.db.count(dv.LOG, {"status": "Error", "message": ["not like", dv.SHIFT_ERROR]})}
+
+
+@frappe.whitelist(methods=["POST"])
+def fix_shift_gaps(employees: str | list, shift_type: str | None = None, start_date: str | None = None, use_default: int | str = 0):
+	"""Assign a shift from ``start_date`` with no end date (or each employee's default shift), then import their refused
+	punches."""
+	require_hr_manager()
+	from alphax_hr.api import shifts
+
+	names = parse_json(employees) or []
+	created, failed = [], []
+	if cint(use_default):
+		groups = {}
+		for emp in names:
+			default = frappe.db.get_value("Employee", emp, "default_shift")
+			if default:
+				groups.setdefault(default, []).append(emp)
+			else:
+				failed.append({"employee": emp, "error": _("No default shift on the profile")})
+	else:
+		if not shift_type:
+			frappe.throw(_("Choose a shift type."))
+		groups = {shift_type: names}
+	for st, emps in groups.items():
+		for i in range(0, len(emps), shifts.MAX_ASSIGN):
+			res = shifts.assign(emps[i:i + shifts.MAX_ASSIGN], st, start_date or frappe.utils.today())
+			created += res["created"]
+			failed += res["failed"]
+	frappe.flags.in_test or frappe.db.commit()
+	counts = dv.retry_errors(employees=names, since=start_date, only_shift=True)
+	return {"created": len(created), "failed": failed, **counts}
+
+
+@frappe.whitelist(methods=["POST"])
+def retry_errors(device: str | None = None):
+	"""Try every refused punch again."""
+	require_hr_manager()
+	if device:
+		names = frappe.get_all(dv.LOG, filters={"status": "Error", "device": device}, pluck="name")
+		frappe.db.set_value(dv.LOG, {"name": ["in", names or ["-"]]}, "status", "Pending", update_modified=False)
+		return dv.process(names)
+	return dv.retry_errors()
+
+
+@frappe.whitelist()
 def sync_status(name: str, start: str | None = None, end: str | None = None):
 	require_hr()
 	return dv.sync_status(frappe.get_doc(dv.DEVICE, name), start or None, end or None)

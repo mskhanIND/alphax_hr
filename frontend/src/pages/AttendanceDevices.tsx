@@ -446,11 +446,15 @@ function Punches({ devices }: { devices: any[] }) {
   const [device, setDevice] = useState('')
   const [status, setStatus] = useState('')
   const q = useQuery({ queryKey: ['device-logs', device, status], queryFn: () => api.deviceLogs({ device: device || undefined, status: status || undefined }) })
+  const qc = useQueryClient()
+  const retry = useMutation({ mutationFn: () => api.deviceRetryErrors(device || undefined), onSuccess: () => { qc.invalidateQueries({ queryKey: ['device-logs'] }); qc.invalidateQueries({ queryKey: ['shift-gaps'] }) } })
   return (
     <Card>
       <div className="mb-3 flex flex-wrap gap-2">
         <Select value={device} onChange={(e) => setDevice(e.target.value)} className="!w-56"><option value="">{t('All devices')}</option>{devices.map((d) => <option key={d.name} value={d.name}>{d.device_name}</option>)}</Select>
         <Select value={status} onChange={(e) => setStatus(e.target.value)} className="!w-44"><option value="">{t('All')}</option>{['Imported', 'Unmatched', 'Duplicate', 'Error', 'Pending'].map((s) => <option key={s} value={s}>{t(s)}</option>)}</Select>
+        {status === 'Error' && <Button size="sm" variant="secondary" className="ms-auto" loading={retry.isPending} onClick={() => retry.mutate()}><RefreshCw className="size-4" />{t('Try again')}</Button>}
+        {retry.data && <span className="self-center text-sm text-emerald-700">{t('Imported')}: {retry.data.imported} · {t('Still refused')}: {retry.data.error}</span>}
       </div>
       {q.isLoading ? <Spinner /> : q.error ? <ErrorBox error={q.error} /> : !q.data?.length ? <Empty title={t('No punches yet')} /> : (
         <Table head={[t('Time'), t('Device user ID'), t('Employee'), t('IN / OUT'), t('Device'), t('Status')]}>
@@ -525,6 +529,65 @@ function MarkingStrip({ can }: { can: boolean }) {
   )
 }
 
+function ShiftGaps({ can }: { can: boolean }) {
+  const { t, lang } = useI18n()
+  const qc = useQueryClient()
+  const q = useQuery<any>({ queryKey: ['shift-gaps'], queryFn: api.deviceShiftGaps, refetchInterval: 60_000 })
+  const [open, setOpen] = useState(false)
+  const [sel, setSel] = useState<Record<string, boolean>>({})
+  const [shift, setShift] = useState('')
+  const [mode, setMode] = useState('one')
+  const [start, setStart] = useState('')
+  const fix = useMutation({
+    mutationFn: () => api.deviceFixShiftGaps(rows.filter((r: any) => sel[r.employee] ?? true).map((r: any) => r.employee), mode === 'one' ? shift : null, start || earliest, mode === 'default' ? 1 : 0),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['shift-gaps'] }); qc.invalidateQueries({ queryKey: ['devices'] }); qc.invalidateQueries({ queryKey: ['device-logs'] }); setSel({}) },
+  })
+  const rows: any[] = q.data?.employees ?? []
+  if (!rows.length && !fix.data) return null
+  const earliest = rows.length ? rows.map((r) => r.first.slice(0, 10)).sort()[0] : ''
+  const chosen = rows.filter((r) => sel[r.employee] ?? true)
+  return (
+    <>
+      {rows.length > 0 && <Card className="border-amber-200 bg-amber-50/60">
+        <div className="flex flex-wrap items-center gap-3">
+          <AlertTriangle className="size-5 text-amber-700" />
+          <div className="flex-1 text-sm"><b>{rows.length} {t('employees have no shift')}</b>: {q.data.refused} {t('punches were refused and wait for a shift')}.
+            <div className="text-xs text-muted">{t('Assign a shift and their waiting punches are imported at once; later shift assignments import them by themselves.')}</div></div>
+          {can && <Button onClick={() => setOpen(true)}>{t('Assign shifts')}</Button>}
+        </div>
+      </Card>}
+      {open && <Modal open wide onClose={() => setOpen(false)} title={t('Assign shifts to employees whose punches were refused')}
+        footer={<><Button variant="secondary" onClick={() => setOpen(false)}>{t('Close')}</Button>
+          <Button loading={fix.isPending} disabled={!chosen.length || (mode === 'one' && !shift)} onClick={() => fix.mutate()}>{t('Assign and import')} ({chosen.length})</Button></>}>
+        <div className="flex flex-col gap-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label={t('Shift')}><Select value={mode === 'default' ? '__default' : shift} onChange={(e) => { if (e.target.value === '__default') setMode('default'); else { setMode('one'); setShift(e.target.value) } }}>
+              <option value="">—</option>
+              <option value="__default">{t("Each employee's default shift")}</option>
+              {(q.data?.shift_types ?? []).map((s: any) => <option key={s.name} value={s.name}>{s.name} ({s.start_time.slice(0, 5)}–{s.end_time.slice(0, 5)})</option>)}
+            </Select></Field>
+            <Field label={t('From')} hint={t('No end date: the shift continues until changed.')}><Input type="date" value={start || earliest} onChange={(e) => setStart(e.target.value)} /></Field>
+          </div>
+          <Table head={[<input key="all" type="checkbox" className="size-4 accent-[var(--color-brand)]" checked={chosen.length === rows.length} onChange={(e) => setSel(Object.fromEntries(rows.map((r) => [r.employee, e.target.checked])))} />,
+            t('Employee'), t('Department'), t('Refused punches'), t('Since'), t('Default shift'), t('Current shift')]}>
+            {rows.map((r) => <tr key={r.employee}>
+              <td><input type="checkbox" className="size-4 accent-[var(--color-brand)]" checked={sel[r.employee] ?? true} onChange={(e) => setSel((x) => ({ ...x, [r.employee]: e.target.checked }))} /></td>
+              <td><div className="font-medium">{r.employee_name}</div><div className="text-xs text-muted">{r.employee}</div></td>
+              <td className="text-sm">{r.department ?? '—'}</td><td>{r.refused}</td><td>{fmtDateTime(r.first, lang)}</td>
+              <td className="text-sm">{r.default_shift ?? <span className="text-muted">—</span>}</td>
+              <td className="text-sm">{r.assignment ? `${r.assignment.shift_type} · ${r.assignment.start_date}${r.assignment.end_date ? ` → ${r.assignment.end_date}` : ''}` : <span className="text-amber-700">{t('None')}</span>}</td>
+            </tr>)}
+          </Table>
+          {fix.data && <div className="text-sm"><span className="text-emerald-700">{t('Shifts assigned')}: {fix.data.created} · {t('Imported')}: {fix.data.imported}</span>
+            {fix.data.error > 0 && <span className="text-amber-700"> · {t('Still refused')}: {fix.data.error}</span>}
+            {fix.data.failed?.length > 0 && <ul className="mt-1 list-disc ps-5 text-amber-800">{fix.data.failed.map((f: any) => <li key={f.employee}>{f.employee}: {f.error}</li>)}</ul>}</div>}
+          {fix.error && <ErrorBox error={fix.error} />}
+        </div>
+      </Modal>}
+    </>
+  )
+}
+
 export default function AttendanceDevices() {
   const { t } = useI18n()
   const q = useQuery({ queryKey: ['devices'], queryFn: api.devicesOverview, refetchInterval: 30_000 })
@@ -540,6 +603,7 @@ export default function AttendanceDevices() {
           <Button variant="secondary" onClick={() => setEdit({ ...BLANK, connection: DB, db_type: 'SQL Server', db_preset: 'ADMS (CheckInOut + EmpDetails)', match_by: 'National ID / Iqama', offline_alert_hours: 2, name: undefined })}><Plus className="size-4" />{t('Connect attendance database')}</Button>
           <Button onClick={() => setEdit(null)}><Plus className="size-4" />{t('Add device')}</Button></div> : undefined} />
       <MarkingStrip can={d.can_edit} />
+      <ShiftGaps can={d.can_edit} />
       <Tabs value={tab} onChange={setTab} tabs={[{ value: 'devices', label: t('Devices') },
         { value: 'punches', label: t('Punches') },
         { value: 'unmatched', label: t('Unmatched users'), badge: d.totals.Unmatched ? <span className="rounded-full bg-amber-100 px-1.5 text-xs text-amber-800">{d.totals.Unmatched}</span> : undefined }]} />

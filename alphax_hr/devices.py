@@ -97,6 +97,33 @@ def ingest(dev, rows, source):
 	return {"received": len(rows), "new": len(names), "already_had": dup, "unreadable": bad, **result}
 
 
+SHIFT_ERROR = "%shift%"
+
+
+def retry_errors(employees=None, since=None, only_shift=False):
+	"""Try refused punches again (after HR fixed the cause, e.g. assigned a shift). Returns process() counts."""
+	filters = {"status": "Error"}
+	if employees:
+		filters["employee"] = ["in", list(employees)]
+	if since:
+		filters["punch_time"] = [">=", get_datetime(getdate(since))]
+	if only_shift:
+		filters["message"] = ["like", SHIFT_ERROR]
+	names = frappe.get_all(LOG, filters=filters, pluck="name", limit_page_length=20000)
+	if not names:
+		return {"imported": 0, "unmatched": 0, "duplicate": 0, "error": 0}
+	frappe.db.set_value(LOG, {"name": ["in", names]}, "status", "Pending", update_modified=False)
+	return process(names)
+
+
+def on_shift_assignment(doc, method=None):
+	"""A shift was assigned: punches refused for lack of one in that period are imported now."""
+	if doc.docstatus != 1:
+		return
+	frappe.enqueue("alphax_hr.devices.retry_errors", queue="short", enqueue_after_commit=True, now=frappe.flags.in_test,
+				   employees=[doc.employee], since=doc.start_date, only_shift=True)
+
+
 def employee_for(dev, user):
 	# a link HR made for this device (or its database source) wins: it never needs the employee's own fields changed
 	group = [dev.name] + ([dev.source_device] if dev.get("source_device") else [])
@@ -128,10 +155,10 @@ def process(names=None, device=None):
 		filters["device"] = device
 	counts = {"imported": 0, "unmatched": 0, "duplicate": 0, "error": 0}
 	devices, earlier = {}, set()
-	for row in frappe.get_all(LOG, filters=filters, fields=["name", "device", "device_user", "punch_time", "log_type"],
+	for row in frappe.get_all(LOG, filters=filters, fields=["name", "device", "device_user", "punch_time", "log_type", "employee"],
 							  order_by="punch_time asc", limit_page_length=5000):
 		dev = devices.get(row.device) or devices.setdefault(row.device, frappe.get_cached_doc(DEVICE, row.device))
-		employee = employee_for(dev, row.device_user)
+		employee = employee_for(dev, row.device_user) or row.employee  # a retried punch keeps the employee found before
 		if not employee:
 			frappe.db.set_value(LOG, row.name, {"status": "Unmatched", "message": _("No employee has this device user ID")},
 								update_modified=False)
