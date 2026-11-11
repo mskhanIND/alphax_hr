@@ -98,6 +98,12 @@ def ingest(dev, rows, source):
 
 
 def employee_for(dev, user):
+	# a link HR made for this device (or its database source) wins: it never needs the employee's own fields changed
+	group = [dev.name] + ([dev.source_device] if dev.get("source_device") else [])
+	linked = frappe.db.get_value("AlphaX Device User", {"device": ["in", group], "device_user": user, "employee": ["is", "set"]},
+								 "employee")
+	if linked:
+		return linked
 	match = dev.match_by or "Attendance device ID"
 	if match == "Employee ID":
 		return user if frappe.db.exists("Employee", user) else None
@@ -584,6 +590,8 @@ def people_matching(dev, limit=3000):
 			hit, reason = by_no[p["emp_no"].lower()], "Employee number"
 		elif p["id"] in by_device:
 			hit, reason = by_device[p["id"]], "Device ID"
+		elif p["emp_no"] and p["emp_no"] in by_device:
+			hit, reason = by_device[p["emp_no"]], "Device ID"
 		elif p["name"]:
 			want = _clean(p["name"])
 			scored = sorted(((difflib.SequenceMatcher(None, want, v).ratio(), k) for k, v in names.items() if v), reverse=True)[:2]
@@ -618,17 +626,24 @@ def link_people(dev, pairs):
 		if current == emp:
 			users.append(user)
 			continue
-		if dev.match_by == "National ID / Iqama" and NATIONAL_ID.match(user) and frappe.get_meta("Employee").has_field("alphax_iqama_number"):
-			have = str(frappe.db.get_value("Employee", emp, "alphax_iqama_number") or "").strip()
-			if have and have != user:
-				problems.append(_("{0} has Iqama {1}, the attendance database says {2}: correct the wrong one").format(label, have, user))
-				continue
-			frappe.db.set_value("Employee", emp, "alphax_iqama_number", user)
+		other = frappe.db.get_value("AlphaX Device User", {"device": dev.name, "employee": emp, "device_user": ["!=", user]},
+									"device_user")
+		if other:
+			problems.append(_("{0} is already linked to attendance user {1}").format(label, other))
+			continue
+		# the link itself is kept on the connection; the employee's fields are filled only when empty, never overwritten
+		row = frappe.db.get_value("AlphaX Device User", {"device": dev.name, "device_user": user}, "name")
+		if row:
+			frappe.db.set_value("AlphaX Device User", row, "employee", emp, update_modified=False)
 		else:
-			have = str(frappe.db.get_value("Employee", emp, "attendance_device_id") or "").strip()
-			if have and have != user:
-				problems.append(_("{0} already has device ID {1}").format(label, have))
-				continue
+			frappe.get_doc({"doctype": "AlphaX Device User", "device": dev.name, "device_user": user, "employee": emp,
+							"user_name": label}).insert(ignore_permissions=True)
+		if NATIONAL_ID.match(user) and frappe.get_meta("Employee").has_field("alphax_iqama_number"):
+			if not frappe.db.get_value("Employee", emp, "alphax_iqama_number") and \
+					not frappe.db.exists("Employee", {"alphax_iqama_number": user}):
+				frappe.db.set_value("Employee", emp, "alphax_iqama_number", user)
+		elif not frappe.db.get_value("Employee", emp, "attendance_device_id") and \
+				not frappe.db.exists("Employee", {"attendance_device_id": user}):
 			frappe.db.set_value("Employee", emp, "attendance_device_id", user)
 		done += 1
 		users.append(user)

@@ -289,6 +289,7 @@ const ar: Record<string, string> = {
   'Reboot': 'إعادة التشغيل',
   'Test connection': 'اختبار الاتصال',
   'Pull now': 'سحب الآن',
+  "The link is kept on this connection, so an employee's existing Device ID or Iqama is never changed (empty ones are filled in). Waiting punches are imported at once. Suggestions by name are not ticked: check them first.": 'يُحفظ الربط في هذا الاتصال، فلا يتغير رقم الجهاز أو الإقامة الموجود لدى الموظف (وتُعبأ الحقول الفارغة فقط). تُستورد البصمات المنتظرة فورًا. الاقتراحات حسب الاسم غير محددة: راجعها أولًا.',
   'Update not finished': 'التحديث لم يكتمل',
   'the screens are version': 'الشاشات بالإصدار',
   'the server is still running': 'والخادم ما زال يعمل بالإصدار',

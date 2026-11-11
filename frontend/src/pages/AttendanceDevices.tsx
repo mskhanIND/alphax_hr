@@ -292,7 +292,7 @@ function MatchPeople({ device, onClose }: { device: any; onClose: () => void }) 
             <div className="rounded-xl border border-line p-2"><div className="text-lg font-semibold text-brand">{q.data.suggested}</div><div className="text-xs text-muted">{t('Suggested')}</div></div>
             <div className="rounded-xl border border-line p-2"><div className="text-lg font-semibold text-amber-700">{q.data.unmatched}</div><div className="text-xs text-muted">{t('To choose')}</div></div>
           </div>
-          <p className="rounded-xl bg-brand-50 p-3 text-xs text-brand">{t('Linking a national ID stores it as the employee\'s Iqama; people without a national ID in the attendance database are linked by their device user ID. Their waiting punches are imported at once. Suggestions by name are not ticked: check them first.')}</p>
+          <p className="rounded-xl bg-brand-50 p-3 text-xs text-brand">{t('The link is kept on this connection, so an employee\'s existing Device ID or Iqama is never changed (empty ones are filled in). Waiting punches are imported at once. Suggestions by name are not ticked: check them first.')}</p>
           {!q.data.has_people_table && <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-900">{t('No people table is set, so only device users with waiting punches are listed. Set it in Tables & columns to see names.')}</p>}
           <div className="flex flex-wrap items-center gap-2">
             <Select value={show} onChange={(e) => setShow(e.target.value)} className="!w-44">

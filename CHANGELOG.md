@@ -2,6 +2,11 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.30.2 — 2026-11-11
+
+- **Match employees links without overwriting.** The link (attendance user → employee) is kept on the connection, so employees whose Device ID or Iqama already holds another value (for example a national ID from an earlier system) are linked instead of refused; empty fields are still filled in. Punches match through the link from then on.
+- Suggestion by device ID also compares the source's employee number.
+
 ## 0.30.1 — 2026-11-11
 
 - **"Update not finished" banner.** After `git pull` the new screens are live at once, but the server code changes only after a restart. When they differ, AlphaX now shows which versions are running and the command to finish the update (`bench --site … migrate && bench restart`), instead of failing with "has no attribute".

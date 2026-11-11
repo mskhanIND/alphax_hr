@@ -2806,10 +2806,12 @@ def run(site):
                 rows = {r["device_user"]: r for r in pm["people"]}
                 assert rows[iqama]["employee"] == emp and rows["1987654321"]["suggest"] == emp2 and rows["1987654321"]["reason"] == "Employee number"
                 assert rows["99"]["problem"] == "No national ID in the attendance database" and rows["99"]["waiting"] == 1
+                frappe.db.set_value("Employee", emp3, "attendance_device_id", "1999999999")  # already holds another value
                 res = dapi.link_people(src, [{"device_user": "1987654321", "employee": emp2}, {"device_user": "99", "employee": emp3}])
                 assert res["linked"] == 2 and res["imported"] == 2 and not res["problems"], res
                 assert frappe.db.get_value("Employee", emp2, "alphax_iqama_number") == "1987654321"  # national ID -> Iqama
-                assert frappe.db.get_value("Employee", emp3, "attendance_device_id") == "99"  # no national ID -> device ID
+                assert frappe.db.get_value("Employee", emp3, "attendance_device_id") == "1999999999"  # linked without overwriting
+                assert dvm.employee_for(frappe.get_doc(dvm.DEVICE, terms[sns[1]].name), "99") == emp3  # the link on the connection
                 assert dapi.link_people(src, [{"device_user": "99", "employee": emp2}])["problems"]  # already someone else's
                 assert dapi.people(src)["matched"] == 2  # both people-table rows; device user 99 has no waiting punches now
                 assert dapi.pull_now(src)["new"] == 0
