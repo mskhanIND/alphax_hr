@@ -14,7 +14,7 @@ const DB = 'Database pull (BioTime / ZKTime)'
 const FILE = 'File upload'
 const TERMINAL = 'Via database source'
 const PRESETS = ['BioTime (iclock_transaction)', 'ZKTime / ZKAccess (CHECKINOUT)', 'ADMS (CheckInOut + EmpDetails)', 'Custom']
-const STATUS_TONE: Record<string, string> = { Online: 'green', Offline: 'red', 'Never connected': 'gray', 'Waiting for approval': 'amber', Disabled: 'gray', Active: 'green', Quiet: 'amber' }
+const STATUS_TONE: Record<string, string> = { Online: 'green', Offline: 'red', 'Never connected': 'gray', 'Waiting for approval': 'amber', Disabled: 'gray', Active: 'green', Quiet: 'amber', 'Connection failed': 'red', 'Source not reachable': 'red' }
 const BLANK = { device_name: '', enabled: 1, brand: 'ZKTeco', connection: PUSH, serial_number: '', company: '', location: '', branch: '', offline_alert_hours: 2, match_by: 'Attendance device ID',
   punch_rule: 'From the device (0 = IN, 1 = OUT)', time_offset_minutes: 0, allowed_ips: '', db_type: '', db_host: '', db_port: '', db_name: '', db_user: '',
   db_password: '', db_preset: 'BioTime (iclock_transaction)', db_table: '', db_user_column: '', db_time_column: '', db_state_column: '', db_sn_column: '', pull_every: 15, split_by_terminal: 1 }
@@ -50,7 +50,7 @@ function DeviceForm({ device, onClose, server, pushUrl }: { device: any | null; 
   const text = (k: string, label: string, type = 'text') => <Field label={t(label)}><Input type={type} value={v[k] ?? ''} onChange={(e) => set(k, e.target.value)} /></Field>
   const sel = (k: string, label: string, opts: string[]) => <Field label={t(label)}><Select value={v[k] ?? ''} onChange={(e) => set(k, e.target.value)}>{opts.map((o) => <option key={o} value={o}>{o ? t(o) : '—'}</option>)}</Select></Field>
   return (
-    <Modal open wide onClose={onClose} title={device ? device.device_name : t('Add device')}
+    <Modal open wide onClose={onClose} title={device?.name ? device.device_name : device?.connection === DB ? t('Connect attendance database') : t('Add device')}
       footer={<><Button variant="secondary" onClick={onClose}>{t('Cancel')}</Button><Button loading={save.isPending} onClick={() => save.mutate()}>{t('Save')}</Button></>}>
       <div className="flex flex-col gap-4">
         <div className="grid gap-3 sm:grid-cols-2">
@@ -74,7 +74,7 @@ function DeviceForm({ device, onClose, server, pushUrl }: { device: any | null; 
             {sel('db_type', 'Database', ['', 'MySQL / MariaDB', 'PostgreSQL', 'SQL Server'])}
             {sel('db_preset', 'Software', PRESETS)}
             <Field label={t('Host')} hint={t('Server name or IP only; the port goes in Port.')}><Input value={v.db_host ?? ''} onChange={(e) => set('db_host', e.target.value)} /></Field>{text('db_port', 'Port', 'number')}{text('db_name', 'Database name')}{text('db_user', 'User')}
-            <Field label={t('Password')} hint={device ? t('Leave empty to keep the saved password.') : undefined}><Input type="password" value={v.db_password} onChange={(e) => set('db_password', e.target.value)} /></Field>
+            <Field label={t('Password')} hint={device?.name ? t('Leave empty to keep the saved password.') : undefined}><Input type="password" value={v.db_password} onChange={(e) => set('db_password', e.target.value)} /></Field>
             {text('pull_every', 'Pull every (minutes)', 'number')}
             <label className="flex items-center gap-2 self-end pb-2 text-sm"><input type="checkbox" className="size-4 accent-[var(--color-brand)]" checked={!!Number(v.split_by_terminal)} onChange={(e) => set('split_by_terminal', e.target.checked ? 1 : 0)} />{t('Show each terminal separately')}</label>
             {v.db_preset === 'ADMS (CheckInOut + EmpDetails)' && <p className="text-xs text-muted sm:col-span-2">{t('Users are matched by the national ID in EmpDetails: set Match device users by to National ID / Iqama.')}</p>}
@@ -159,7 +159,7 @@ function DeviceCard({ d, can, onEdit, terminals = [], onEditTerminal }: { d: any
         <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand/10 text-brand"><Cpu className="size-5" /></span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2"><span className="font-semibold">{d.device_name}</span><Badge tone={STATUS_TONE[d.status] ?? 'gray'}>{t(d.status)}</Badge></div>
-          <div className="text-xs text-muted">{t(d.brand)} · {t(d.connection)}{d.serial_number ? ` · SN ${d.serial_number}` : ''}{d.location ? ` · ${d.location}` : ''}{d.model ? ` · ${d.model}` : ''}</div>
+          <div className="text-xs text-muted">{kind === 'db' ? `${t('Attendance database')} · ${d.db_name ?? ''}${d.db_host ? ` @ ${d.db_host}` : ''}` : t(d.brand)} · {t(d.connection)}{d.serial_number ? ` · SN ${d.serial_number}` : ''}{d.location ? ` · ${d.location}` : ''}{d.model ? ` · ${d.model}` : ''}</div>
           <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
             <span><span className="text-muted">{t('Last contact')}:</span> {d.last_contact ? fmtDateTime(d.last_contact, lang) : '—'}</span>
             <span><span className="text-muted">{t('Last punch')}:</span> {d.last_punch ? fmtDateTime(d.last_punch, lang) : '—'}</span>
@@ -167,6 +167,9 @@ function DeviceCard({ d, can, onEdit, terminals = [], onEditTerminal }: { d: any
             <span className={clsx(d.unmatched && 'text-amber-700')}><span className="text-muted">{t('Unmatched')}:</span> {d.unmatched}</span>
             {d.outside_7d > 0 && <span className="text-amber-700"><span className="text-muted">{t('Other branch (7 days)')}:</span> {d.outside_7d}</span>}
           </div>
+          {d.last_error && <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-red-50 p-2 text-xs text-red-800"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+            <span><b>{t('Connection failed')}</b>{d.last_error_on ? ` · ${t('since')} ${fmtDateTime(d.last_error_on, lang)}` : ''}{d.failures > 1 ? ` · ${d.failures} ${t('attempts')}` : ''}<br />{d.last_error}<br />
+            <span className="text-red-700">{t('Punches stay in the attendance database and are read once the connection works again.')}</span></span></p>}
           {d.hint && <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-50 p-2 text-xs text-amber-900"><AlertTriangle className="mt-0.5 size-3.5 shrink-0" />{d.hint}</p>}
         </div>
         {can && <div className="flex gap-1">
@@ -318,7 +321,9 @@ export default function AttendanceDevices() {
   return (
     <div className="flex flex-col gap-5">
       <PageHeader title={t('Attendance devices')} subtitle={t('Fingerprint and face devices: ZKTeco by device push, other brands by the push API or a bridge, attendance software by database, or log files.')}
-        actions={d.can_edit ? <Button onClick={() => setEdit(null)}><Plus className="size-4" />{t('Add device')}</Button> : undefined} />
+        actions={d.can_edit ? <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => setEdit({ ...BLANK, connection: DB, db_type: 'SQL Server', db_preset: 'ADMS (CheckInOut + EmpDetails)', match_by: 'National ID / Iqama', offline_alert_hours: 2, name: undefined })}><Plus className="size-4" />{t('Connect attendance database')}</Button>
+          <Button onClick={() => setEdit(null)}><Plus className="size-4" />{t('Add device')}</Button></div> : undefined} />
       <MarkingStrip can={d.can_edit} />
       <Tabs value={tab} onChange={setTab} tabs={[{ value: 'devices', label: t('Devices') },
         { value: 'punches', label: t('Punches') },

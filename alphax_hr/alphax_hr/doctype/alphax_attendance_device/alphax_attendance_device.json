@@ -20,6 +20,9 @@
   "source_device",
   "split_by_terminal",
   "punch_count",
+  "last_error",
+  "last_error_on",
+  "failures",
   "cb1",
   "company",
   "location",
@@ -136,6 +139,24 @@
    "fieldname": "punch_count",
    "fieldtype": "Int",
    "label": "Punches in the source",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Small Text",
+   "label": "Last connection error",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_error_on",
+   "fieldtype": "Datetime",
+   "label": "Failing since",
+   "read_only": 1
+  },
+  {
+   "fieldname": "failures",
+   "fieldtype": "Int",
+   "label": "Failed attempts in a row",
    "read_only": 1
   },
   {

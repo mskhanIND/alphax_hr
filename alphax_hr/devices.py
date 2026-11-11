@@ -267,7 +267,31 @@ def _select(dev, since, limit=5000):
 
 
 def pull(dev, since=None):
-	"""Read new punches from the attendance software's database and ingest them."""
+	"""Read new punches from the attendance software's database and ingest them, keeping the connection's health:
+	each failure is recorded with its reason; when it works again HR is told it recovered (if it was reported down)."""
+	try:
+		out = _pull(dev, since)
+	except Exception as e:  # noqa: BLE001
+		frappe.db.rollback()
+		reason = frappe.utils.strip_html(str(getattr(e, "message", None) or e)).strip()[:500] or type(e).__name__
+		frappe.db.set_value(DEVICE, dev.name, {"last_error": reason, "failures": cint(dev.get("failures")) + 1,
+											   "last_error_on": dev.get("last_error_on") or now_datetime()}, update_modified=False)
+		frappe.db.commit()
+		raise
+	if cint(dev.get("failures")) or dev.get("last_error"):
+		was_reported = dev.get("offline_alerted_on") and dev.get("last_error_on") and \
+			get_datetime(dev.offline_alerted_on) >= get_datetime(dev.last_error_on)
+		frappe.db.set_value(DEVICE, dev.name, {"last_error": None, "failures": 0, "last_error_on": None}, update_modified=False)
+		if was_reported:
+			from alphax_hr.api import alerts
+
+			alerts.event("Device offline", _("Attendance database connected again: {0}").format(dev.device_name),
+						 _("The connection works again and punches made meanwhile are being read now."),
+						 url="/alphax/attendance-devices", doc=(DEVICE, dev.name), tag=f"offline-{dev.name}")
+	return out
+
+
+def _pull(dev, since=None):
 	since = since or dev.db_last_time or "2000-01-01 00:00:00"
 	conn, _param = _connect(dev)
 	try:
@@ -397,7 +421,8 @@ def offline_alerts(now=None):
 	now = now or now_datetime()
 	for d in frappe.get_all(DEVICE, filters={"enabled": 1, "offline_alert_hours": [">", 0], "last_contact": ["is", "set"],
 											  "connection": ["!=", "File upload"]},
-							fields=["name", "device_name", "location", "last_contact", "offline_alert_hours", "offline_alerted_on"]):
+							fields=["name", "device_name", "location", "last_contact", "offline_alert_hours", "offline_alerted_on",
+									"connection", "last_error"]):
 		last = get_datetime(d.last_contact)
 		if last > now - timedelta(hours=cint(d.offline_alert_hours)):
 			continue
@@ -405,6 +430,16 @@ def offline_alerts(now=None):
 			continue  # already told for this outage
 		from alphax_hr.api import alerts
 
+		if (d.connection or "").startswith("Database pull"):
+			alerts.event("Device offline", _("Attendance database not reachable: {0}").format(d.device_name),
+						 _("No successful read since {0}. Punches are safe in the attendance database and are read as soon as the "
+						   "connection works again. Reason: {1}").format(frappe.utils.format_datetime(last, "dd-MM-yyyy HH:mm"),
+																		d.last_error or _("unknown")),
+						 url="/alphax/attendance-devices", doc=(DEVICE, d.name), tag=f"offline-{d.name}")
+			frappe.db.set_value(DEVICE, d.name, "offline_alerted_on", now, update_modified=False)
+			continue
+		if d.connection == TERMINAL:
+			continue  # a terminal that is quiet may just be closed (weekend); its source is watched instead
 		alerts.event("Device offline", _("Attendance device offline: {0}").format(d.device_name),
 					 _("No contact since {0}{1}. Punches made meanwhile stay on the device and arrive when it reconnects; "
 					   "check its power and network.").format(frappe.utils.format_datetime(last, "dd-MM-yyyy HH:mm"),

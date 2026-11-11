@@ -2778,6 +2778,23 @@ def run(site):
                 assert dapi.pull_now(src)["new"] == 0
                 assert dapi._status(frappe.get_doc(dvm.DEVICE, terms[sns[0]].name)) in ("Active", "Quiet")
                 expect_error(lambda: dapi.save({"device_name": "AXT stray", "connection": dvm.TERMINAL}), frappe.ValidationError)
+                # connection health: a failure is recorded with its reason, terminals show the source is down, HR is told once,
+                # and told again when it recovers
+                frappe.db.commit()
+                frappe.db.set_value(dvm.DEVICE, src, {"db_port": 1, "last_contact": "2026-01-01 00:00:00", "offline_alert_hours": 2})
+                frappe.db.commit()
+                expect_error(lambda: dapi.pull_now(src), Exception)
+                bad = frappe.get_doc(dvm.DEVICE, src)
+                assert bad.failures == 1 and bad.last_error and bad.last_error_on, bad.as_dict()
+                ov = {d.name: d for d in dapi.overview()["devices"]}
+                assert ov[src].status == "Connection failed" and ov[terms[sns[0]].name].status == "Source not reachable"
+                dvm.offline_alerts()
+                assert frappe.db.get_value(dvm.DEVICE, src, "offline_alerted_on")
+                frappe.db.set_value(dvm.DEVICE, src, "db_port", cint_(conf.db_port) or 3306)
+                frappe.db.commit()
+                dapi.pull_now(src)
+                ok = frappe.get_doc(dvm.DEVICE, src)
+                assert not ok.failures and not ok.last_error and dapi._status(ok) != "Connection failed"
             finally:
                 frappe.set_user("Administrator")
                 frappe.db.sql_ddl("drop table if exists CheckInOut")

@@ -2,6 +2,11 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.28.1 — 2026-11-11
+
+- **Attendance database health.** Each failed read is recorded with its reason, the time it started failing and how many attempts have failed in a row. The card shows **Connection failed** with the reason, and the database's terminals show **Source not reachable**. HR is told once when it stays down past the alert hours (with the reason), and told again when it connects. Punches wait safely in the attendance database and are read when it is back. A terminal that is quiet (closed site, weekend) raises no alert; only its database is watched.
+- **Connect attendance database** button: opens the form prefilled for an ADMS SQL Server database.
+
 ## 0.28.0 — 2026-11-11
 
 - Database connection errors now say what to check (port / firewall, login, database name) instead of the raw driver message.

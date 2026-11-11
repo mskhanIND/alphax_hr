@@ -22,6 +22,8 @@ ONLINE_MINUTES = 10
 def _status(d):
 	if not cint(d.enabled):
 		return "Waiting for approval" if (d.device_name or "").startswith("New device ") else "Disabled"
+	if cint(d.get("failures")) and (d.connection or "").startswith("Database pull"):
+		return "Connection failed"
 	if not d.last_contact:
 		return "Never connected"
 	if d.connection == dv.TERMINAL:  # no live link to a terminal: judge it by its last punch
@@ -35,7 +37,8 @@ def _status(d):
 def overview():
 	require_hr()
 	rows = frappe.get_all(dv.DEVICE, fields=["name", *FIELDS, "last_contact", "last_punch", "last_ip", "model", "user_count", "db_last_time",
-												  "source_device", "punch_count"],
+												  "source_device", "punch_count",
+												  "last_error", "last_error_on", "failures"],
 						  order_by="device_name asc")
 	since = now_datetime() - timedelta(days=1)
 	for r in rows:
@@ -57,8 +60,13 @@ def overview():
 	for r in rows:
 		if r.source_device:
 			terminals[r.source_device] = terminals.get(r.source_device, 0) + 1
+	down = {r.name for r in rows if r.status == "Connection failed"}
 	for r in rows:
 		r.terminals = terminals.get(r.name, 0)
+		if r.source_device in down and cint(r.enabled):
+			r.status = "Source not reachable"
+		if r.last_error_on:
+			r.last_error_on = str(r.last_error_on)
 	host = get_url().split("://", 1)[-1].split("/")[0]
 	return {"devices": rows, "server": host, "push_url": get_url("/api/method/alphax_hr.api.devices.push"),
 			"can_edit": bool(set(frappe.get_roles()) & {"HR Manager", "System Manager"}),
