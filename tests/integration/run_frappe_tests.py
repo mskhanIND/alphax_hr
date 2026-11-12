@@ -3047,6 +3047,101 @@ def run(site):
         check("WPS: checks before paying (ID, IBAN, net, duplicates) and the Mudad template filled without touching its fixed columns",
               wps_checks_and_mudad_template)
 
+        def probation_tracking():
+            from alphax_hr import probation as pb
+            frappe.set_user("Administrator")
+            emp = f["e_emp"]
+            keep = frappe.db.get_value("Employee", emp, ["date_of_joining", "alphax_probation_end_date", "alphax_probation_status",
+                                                         "alphax_probation_note", "alphax_probation_decided_on", "holiday_list"], as_dict=True)
+            hl = frappe.get_doc({"doctype": "Holiday List", "holiday_list_name": "AXT Probation HL " + frappe.generate_hash(length=4),
+                                 "from_date": frappe.utils.add_days(nowdate(), -400), "to_date": frappe.utils.add_days(nowdate(), 400),
+                                 "holidays": [{"holiday_date": frappe.utils.add_days(nowdate(), 5), "description": "Eid al-Fitr"},
+                                              {"holiday_date": frappe.utils.add_days(nowdate(), 6), "description": "Eid al-Fitr"},
+                                              {"holiday_date": frappe.utils.add_days(nowdate(), 7), "description": "Founding Day"}]}).insert()
+            join = frappe.utils.add_days(nowdate(), -150)
+            end = frappe.utils.add_days(join, 89)  # 90 days
+            try:
+                frappe.db.set_value("Employee", emp, {"date_of_joining": join, "alphax_probation_end_date": frappe.utils.add_days(nowdate(), 10),
+                                                      "alphax_probation_status": "On probation", "holiday_list": hl.name,
+                                                      "alphax_probation_decided_on": None})
+                ov = pb.overview()
+                r = next(x for x in ov["rows"] if x["employee"] == emp)
+                assert r["ending_soon"] and r["days_left"] == 10 and ov["counts"]["ending_soon"] >= 1
+                assert r["excluded_days"] == 2 and r["suggested_end"] == str(frappe.utils.add_days(nowdate(), 12)), r  # Eid does not count
+                max_end = frappe.utils.add_days(join, pb.MAX_DAYS - 1 + 2)
+                expect_error(lambda: pb.decide(emp, "Extended", "agreed", str(frappe.utils.add_days(max_end, 1))), frappe.ValidationError)
+                expect_error(lambda: pb.decide(emp, "Extended", "", str(max_end)), frappe.ValidationError)  # reason required
+                pb.decide(emp, "Extended", "Agreed in writing", str(max_end))
+                assert frappe.db.get_value("Employee", emp, "alphax_probation_status") == "Extended"
+                assert str(frappe.db.get_value("Employee", emp, "alphax_probation_end_date")) == str(max_end)
+                expect_error(lambda: pb.decide(emp, "Not confirmed", ""), frappe.ValidationError)
+                pb.decide(emp, "Confirmed", "Good work")
+                row = frappe.db.get_value("Employee", emp, ["alphax_probation_status", "alphax_probation_decided_on"], as_dict=True)
+                assert row.alphax_probation_status == "Confirmed" and str(row.alphax_probation_decided_on) == nowdate()
+                frappe.db.set_value("Employee", emp, {"alphax_probation_status": "On probation",
+                                                      "alphax_probation_end_date": frappe.utils.add_days(nowdate(), 7)})
+                sent = []
+                from alphax_hr.api import alerts
+                orig = alerts.event
+                alerts.event = lambda name, subject, *a, **k: sent.append((name, subject))
+                try:
+                    pb.daily()
+                finally:
+                    alerts.event = orig
+                assert any(n == "Probation ending" and "7 days" in s_ for n, s_ in sent), sent
+                frappe.set_user(f["emp2"])  # a colleague: neither HR nor the manager
+                expect_error(lambda: pb.decide(emp, "Confirmed"), frappe.PermissionError)
+            finally:
+                frappe.set_user("Administrator")
+                frappe.db.set_value("Employee", emp, dict(keep))
+                frappe.delete_doc("Holiday List", hl.name, force=True)
+        check("probation: ending-soon list, Eid days not counted, extension within 180 days with a written reason, decision, reminders",
+              probation_tracking)
+
+        def employee_logins_bulk_and_automatic():
+            from alphax_hr import logins as lg
+            from alphax_hr.api import hr as hr_api
+            frappe.set_user("Administrator")
+            made, users = [], []
+            tag = frappe.generate_hash(length=5)
+            try:
+                for i, mail in enumerate((f"axt.a.{tag}@example.com", None)):
+                    r = hr_api.create_employee({"first_name": f"Login{i}", "last_name": tag, "gender": "Male", "date_of_birth": "1990-01-01",
+                                                "date_of_joining": nowdate(), "company": COMPANY, **({"company_email": mail} if mail else {})})
+                    made.append(r["name"])
+                ov = lg.overview()
+                rows = {x["employee"]: x for x in ov["without"]}
+                assert rows[made[0]]["email"] == f"axt.a.{tag}@example.com" and rows[made[1]]["problem"] == "No e-mail"
+                res = lg.create(made)
+                assert res["created"] == 1 and len(res["skipped"]) == 1 and res["skipped"][0]["employee"] == made[1], res
+                uid = frappe.db.get_value("Employee", made[0], "user_id")
+                users.append(uid)
+                assert uid == f"axt.a.{tag}@example.com" and "Employee" in frappe.get_roles(uid)
+                assert lg.create([made[0]])["exists"] == 1  # never twice
+                res2 = lg.create([made[1]], {made[1]: f"axt.b.{tag}@example.com"})  # an e-mail given by HR
+                assert res2["created"] == 1
+                users.append(frappe.db.get_value("Employee", made[1], "user_id"))
+                lg.save_settings(1)  # automatic from now on
+                r = hr_api.create_employee({"first_name": "Login2", "last_name": tag, "gender": "Female", "date_of_birth": "1991-01-01",
+                                            "date_of_joining": nowdate(), "company": COMPANY, "personal_email": f"axt.c.{tag}@example.com"})
+                made.append(r["name"])
+                users.append(frappe.db.get_value("Employee", r["name"], "user_id"))
+                assert users[-1] == f"axt.c.{tag}@example.com", users
+                frappe.set_user(f["emp"])
+                expect_error(lambda: lg.create([made[0]]), frappe.PermissionError)
+            finally:
+                frappe.set_user("Administrator")
+                lg.save_settings(0)
+                for e in made:
+                    frappe.db.set_value("Employee", e, "user_id", None)
+                    frappe.delete_doc("Employee", e, force=True)
+                for u in users:
+                    if u and frappe.db.exists("User", u):
+                        frappe.db.delete("User Permission", {"user": u})
+                        frappe.delete_doc("User", u, force=True)
+        check("employee logins: list without a login, create in bulk (skips without e-mail, never twice), automatic on save",
+              employee_logins_bulk_and_automatic)
+
         def mandatory_gaps_do_not_block_other_sections():
             from frappe.custom.doctype.property_setter.property_setter import make_property_setter
             from alphax_hr.api import hr as hr_api

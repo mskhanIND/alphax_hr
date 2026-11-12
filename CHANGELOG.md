@@ -2,6 +2,11 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.38.0 — 2026-11-12
+
+- **Employee logins.** *Employees → Logins* lists active employees without a login, with the e-mail that will be used (editable). *Create logins* creates them in bulk (in the background with progress for large groups): Employee role, linked to the employee, welcome e-mail to set a password. An existing user with that e-mail is linked, never duplicated; employees without an e-mail are listed and skipped. A setting creates the login automatically when a new employee is saved with an e-mail (company or personal e-mail first). Managers need nothing extra: their menu appears once employees report to them.
+- **Probation.** A page for HR (People) and managers (their team): who is on probation, end date, days left, with filter tiles (ending within 30 days, decision overdue, extended, confirmed). *Decide*: confirm, extend (only with a written reason and within 180 days from joining), not confirmed (reason required), or move the end date. Eid holidays and sick leave are not counted (Art. 53): AlphaX shows the adjusted end date. Managers and HR are reminded 30 and 7 days before the end and once when it passed without a decision (*Probation ending* notification). Each decision is noted on the employee.
+
 ## 0.37.0 — 2026-11-12
 
 - **Wage protection (WPS / Mudad)** on a payroll run with submitted slips (replaces the plain *Bank salary file* button):

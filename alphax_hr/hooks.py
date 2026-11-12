@@ -29,7 +29,8 @@ before_migrate = "alphax_hr.install.before_migrate"
 after_migrate = "alphax_hr.install.after_migrate"
 
 doc_events = {
-	"Employee": {"validate": ["alphax_hr.employee_rules.validate", "alphax_hr.saudization.validate_employee"]},
+	"Employee": {"validate": ["alphax_hr.employee_rules.validate", "alphax_hr.saudization.validate_employee"],
+				 "on_update": "alphax_hr.logins.on_employee_saved"},
 	"Holiday List": {"on_update": "alphax_hr.week_off.sync_public_holidays"},
 	"Leave Type": {
 		"before_rename": "alphax_hr.leave_engine.block_rename",
@@ -57,6 +58,7 @@ scheduler_events = {
 		"alphax_hr.api.loans.daily_post_due",
 		"alphax_hr.api.requests.accept_overdue_resignations",
 		"alphax_hr.absence_warnings.daily",
+		"alphax_hr.probation.daily",
 	],
 	"hourly": ["alphax_hr.api.delays.escalate_pending_approvals"],
 	"cron": {"*/15 * * * *": ["alphax_hr.api.alerts.missing_checkins"], "*/5 * * * *": ["alphax_hr.devices.scheduled"],

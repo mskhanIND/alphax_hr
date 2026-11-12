@@ -65,6 +65,9 @@
   "payslip_signatory_title",
   "payslip_note",
   "payslip_note_ar",
+  "logins_section",
+  "auto_create_user",
+  "login_email_source",
   "checkin_section",
   "checkin_location_rule",
   "checkin_min_gap",
@@ -452,6 +455,25 @@
    "fieldname": "payslip_note_ar",
    "fieldtype": "Small Text",
    "label": "Payslip footer note (Arabic)"
+  },
+  {
+   "fieldname": "logins_section",
+   "fieldtype": "Section Break",
+   "label": "Employee logins"
+  },
+  {
+   "fieldname": "auto_create_user",
+   "fieldtype": "Check",
+   "label": "Create a login when an employee is saved with an e-mail",
+   "default": "0",
+   "description": "The employee gets the Employee role, is linked to the login and receives a welcome e-mail to set a password."
+  },
+  {
+   "fieldname": "login_email_source",
+   "fieldtype": "Select",
+   "label": "E-mail used for the login",
+   "options": "Company e-mail first\nPersonal e-mail first\nCompany e-mail only",
+   "default": "Company e-mail first"
   },
   {
    "fieldname": "checkin_section",

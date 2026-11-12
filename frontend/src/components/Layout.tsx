@@ -56,6 +56,7 @@ export function useNav(): { group: string; items: NavItem[] }[] {
         { to: '/approval-delays', label: t('Approval delays'), icon: <Hourglass className="size-5" /> },
         { to: '/my-team', label: t('My team'), icon: <Users className="size-5" /> },
         ...(s.persona.manager || s.persona.hr ? [{ to: '/team-appraisals', label: t('Team appraisals'), icon: <Star className="size-5" /> }] : []),
+        ...(s.persona.manager && !s.persona.hr ? [{ to: '/probation', label: t('Probation'), icon: <Hourglass className="size-5" /> }] : []),
         ...(!s.persona.hr ? [{ to: '/checkins', label: t('Check-ins & movements'), icon: <MapPin className="size-5" /> }] : []),
         { to: '/vacation-planner', label: t('Vacation planner'), icon: <CalendarRange className="size-5" /> },
         { to: '/team', label: t('Team Calendar'), icon: <CalendarRange className="size-5" /> },
@@ -67,6 +68,7 @@ export function useNav(): { group: string; items: NavItem[] }[] {
       items: [
         { to: '/people', label: t('Employees'), icon: <Users className="size-5" /> },
         { to: '/joiners', label: t('New joiners'), icon: <UserPlus className="size-5" /> },
+        { to: '/probation', label: t('Probation'), icon: <Hourglass className="size-5" /> },
         { to: '/designations', label: t('Designations & Saudization'), icon: <BadgePercent className="size-5" /> },
         { to: '/people?view=org', label: t('Org chart'), icon: <Network className="size-5" /> },
         { to: '/people/bulk-update', label: t('Bulk update'), icon: <Users className="size-5" /> },

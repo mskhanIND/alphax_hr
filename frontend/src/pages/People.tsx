@@ -1,9 +1,10 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { AlertTriangle, Download, LayoutList, Network, Search, Table2, Trash2, UserPlus, X } from 'lucide-react'
+import { AlertTriangle, Download, KeyRound, LayoutList, Network, Search, Table2, Trash2, UserPlus, X } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { DeleteEmployees } from '../components/DeleteEmployees'
+import { Logins } from '../components/Logins'
 import { OrgChart } from '../components/OrgChart'
 import { Avatar, Badge, Button, Card, Empty, ErrorBox, Input, PageHeader, Select, Spinner, StatusBadge, statusTone } from '../components/ui'
 import { api, downloadUrl } from '../lib/api'
@@ -110,6 +111,7 @@ export default function People() {
   const view = (params.get('view') as View) || 'list'
   const setView = (v: View) => { params.set('view', v); setParams(params, { replace: true }) }
   const [search, setSearch] = useState('')
+  const [logins, setLogins] = useState(false)
   const [debounced, setDebounced] = useState('')
   const [status, setStatus] = useState('Active')
   const [saudi, setSaudi] = useState('')
@@ -144,7 +146,8 @@ export default function People() {
   return (
     <div>
       <PageHeader title={t('People')} subtitle={q.data && view !== 'org' ? `${fmtNumber(q.data.total, lang)} ${t('employees')}` : undefined}
-        actions={<div className="flex gap-2"><ExportMenu args={filters} /><Link to="/people/new"><Button><UserPlus className="size-4" />{t('Add employee')}</Button></Link></div>} />
+        actions={<div className="flex gap-2"><ExportMenu args={filters} /><Button variant="secondary" onClick={() => setLogins(true)}><KeyRound className="size-4" />{t('Logins')}</Button><Link to="/people/new"><Button><UserPlus className="size-4" />{t('Add employee')}</Button></Link></div>} />
+      {logins && <Logins onClose={() => setLogins(false)} />}
       <Card>
         <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
           <div className="relative flex-1">

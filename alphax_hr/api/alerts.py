@@ -28,6 +28,7 @@ DEFAULTS = {
 	"Absence warning": (1, 1, 1, 0, 1, 1, 0),
 	"Device offline": (1, 1, 1, 0, 0, 1, 0),
 	"New joiner": (1, 1, 1, 0, 0, 1, 0),
+	"Probation ending": (1, 1, 1, 0, 1, 1, 0),
 	"Announcement": (1, 0, 1, 1, 0, 0, 0),
 }
 FLAGS = ("enabled", "email", "app", "to_employee", "to_manager", "to_hr", "minutes")
@@ -47,6 +48,7 @@ HELP = {
 	"Device offline": "To HR when an attendance device has not been in contact for the hours set on the device.",
 	"Absence warning": "To HR and the manager when an Article 80 warning is due (10 days in a row, 20 in a contract year) or a limit is passed.",
 	"New joiner": "To HR when a new joiner sends the onboarding form.",
+	"Probation ending": "To the manager and HR 30 and 7 days before a probation ends, and when it passed without a decision.",
 	"Announcement": "When HR publishes an announcement.",
 }
 
