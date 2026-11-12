@@ -163,6 +163,12 @@ def shift_gaps():
 			group_concat(distinct device separator ', ') devices
 		from `tabAlphaX Device Log` where status='Error' and message like %s and employee is not null
 		group by employee order by n desc limit 1000""", (dv.SHIFT_ERROR,), as_dict=True)
+	from alphax_hr.attendance_health import without_shift
+
+	seen = {r.employee for r in rows}
+	for e in without_shift():  # punch but have no shift at all, even if nothing was refused
+		if e.name not in seen:
+			rows.append(frappe._dict(employee=e.name, n=0, first=frappe.utils.today(), last=frappe.utils.today(), devices=None))
 	out = []
 	for r in rows:
 		e = frappe.db.get_value("Employee", r.employee, ["employee_name", "department", "default_shift", "company", "branch"],
@@ -175,7 +181,7 @@ def shift_gaps():
 					"assignment": ({**current[0], "start_date": str(current[0].start_date),
 									"end_date": str(current[0].end_date) if current[0].end_date else None} if current else None)})
 	types = frappe.get_all("Shift Type", fields=["name", "start_time", "end_time"], order_by="name")
-	return {"employees": out, "refused": sum(r["refused"] for r in out),
+	return {"employees": out, "refused": sum(r["refused"] for r in out), "no_shift": sum(1 for r in out if not r["refused"]),
 			"shift_types": [{"name": t.name, "start_time": str(t.start_time), "end_time": str(t.end_time)} for t in types],
 			"other_errors": frappe.db.count(dv.LOG, {"status": "Error", "message": ["not like", dv.SHIFT_ERROR]})}
 

@@ -29,7 +29,8 @@ def _checkins(employees, start, end):
 	fields = ["employee", "time", "log_type"] + (["shift_start"] if meta.has_field("shift_start") else [])
 	rows = frappe.get_all("Employee Checkin", filters={
 		"employee": ["in", list(employees)],
-		"time": ["between", [f"{start} 00:00:00", f"{add_days(end, 1)} 12:00:00"]]}, fields=fields, order_by="time asc")
+		"time": ["between", [f"{start} 00:00:00", f"{add_days(end, 1)} 12:00:00"]],
+		**({"skip_auto_attendance": 0} if meta.has_field("skip_auto_attendance") else {})}, fields=fields, order_by="time asc")
 	for r in rows:
 		t = get_datetime(r.time)
 		day = getdate(r.get("shift_start")) if r.get("shift_start") else t.date()
@@ -277,7 +278,8 @@ def live(date: str | None = None, department: str | None = None):
 	if frappe.get_meta("Employee Checkin").has_field("alphax_location"):
 		fields += ["alphax_location", "alphax_distance_m", "alphax_outside", "alphax_source"]
 	logs = defaultdict(list)
-	for r in frappe.get_all("Employee Checkin", filters={"employee": ["in", ids or [""]], "time": ["between", [f"{day} 00:00:00", f"{day} 23:59:59"]]},
+	skip = {"skip_auto_attendance": 0} if frappe.get_meta("Employee Checkin").has_field("skip_auto_attendance") else {}
+	for r in frappe.get_all("Employee Checkin", filters={"employee": ["in", ids or [""]], "time": ["between", [f"{day} 00:00:00", f"{day} 23:59:59"]], **skip},
 							fields=fields, order_by="time asc"):
 		logs[r.employee].append({**r, "time": str(r.time)})
 	on_leave = {r.employee: r.leave_type for r in frappe.get_all("Leave Application", filters={

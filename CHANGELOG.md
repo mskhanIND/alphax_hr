@@ -2,6 +2,19 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.35.0 — 2026-11-12
+
+- **Attendance health** on Attendance devices: the go-live checklist from punches to correct attendance, in order, each with a fix:
+  1. Connected: devices / attendance databases reachable and in contact.
+  2. Turned on: attendance marked from punches (*Turn on*).
+  3. Match people: unmatched device users (*Match employees*); national IDs kept in the Device ID field with an empty Iqama (*Copy to Iqama*, the device ID is kept); two employees sharing a device ID or Iqama (list).
+  4. Read punches right: devices sending IN for nearly everything (*Use first IN, last OUT* on the connection and its terminals); double taps within a minute (*Set them aside*: kept on record, left out of attendance).
+  5. Shifts & holidays: punching employees without a shift (*Assign shifts*, which now also lists employees with no shift at all) or without a holiday list.
+  6. Clear what blocks: server scripts or other apps that can refuse check-ins (*Turn off scripts*); refused punches (*Try again*).
+  *See list* shows the records behind each check. Nothing is deleted by a fix.
+- Check-ins set aside (skip auto attendance) no longer count in the register or the live check-ins list.
+- The "Update not finished" banner is shown only to System Managers.
+
 ## 0.34.0 — 2026-11-11
 
 - **New joiners fill in their own form.** *People → New joiners → Invite a new joiner* (name, mobile or e-mail, company, department, designation, joining date) makes a private link valid for 14 days, to copy, send by WhatsApp or e-mail. The joiner opens it on the phone without an account, in Arabic or English: personal details, national ID / Iqama, passport, contact and emergency contact, bank IBAN, qualification, and documents (photo, ID, passport, IBAN letter, certificate; PDF or photo, private). Drafts can be saved; ID, IBAN, phone and e-mail are checked before sending.

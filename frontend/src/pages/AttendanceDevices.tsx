@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
 import { Activity, AlertTriangle, UserCheck, CalendarCheck, Cpu, Database, Pencil, Plus, RefreshCw, Search, Trash2, Upload, Users } from 'lucide-react'
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { LinkInput } from '../components/LinkInput'
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, Table, Tabs, Textarea } from '../components/ui'
 import { api, uploadFile } from '../lib/api'
@@ -582,11 +583,12 @@ function PastDays({ onClose }: { onClose: () => void }) {
   )
 }
 
-function ShiftGaps({ can }: { can: boolean }) {
+function ShiftGaps({ can, openSignal = 0 }: { can: boolean; openSignal?: number }) {
   const { t, lang } = useI18n()
   const qc = useQueryClient()
   const q = useQuery<any>({ queryKey: ['shift-gaps'], queryFn: api.deviceShiftGaps, refetchInterval: 60_000 })
   const [open, setOpen] = useState(false)
+  useEffect(() => { if (openSignal) setOpen(true) }, [openSignal])
   const [sel, setSel] = useState<Record<string, boolean>>({})
   const [shift, setShift] = useState('')
   const [mode, setMode] = useState('one')
@@ -596,7 +598,7 @@ function ShiftGaps({ can }: { can: boolean }) {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['shift-gaps'] }); qc.invalidateQueries({ queryKey: ['devices'] }); qc.invalidateQueries({ queryKey: ['device-logs'] }); setSel({}) },
   })
   const rows: any[] = q.data?.employees ?? []
-  if (!rows.length && !fix.data) return null
+  if (!rows.length && !fix.data && !open) return null
   const earliest = rows.length ? rows.map((r) => r.first.slice(0, 10)).sort()[0] : ''
   const chosen = rows.filter((r) => sel[r.employee] ?? true)
   return (
@@ -604,7 +606,7 @@ function ShiftGaps({ can }: { can: boolean }) {
       {rows.length > 0 && <Card className="border-amber-200 bg-amber-50/60">
         <div className="flex flex-wrap items-center gap-3">
           <AlertTriangle className="size-5 text-amber-700" />
-          <div className="flex-1 text-sm"><b>{rows.length} {t('employees have no shift')}</b>: {q.data.refused} {t('punches were refused and wait for a shift')}.
+          <div className="flex-1 text-sm"><b>{rows.length} {t('employees have no shift')}</b>{q.data.refused ? <>: {q.data.refused} {t('punches were refused and wait for a shift')}</> : null}.
             <div className="text-xs text-muted">{t('Assign a shift and their waiting punches are imported at once; later shift assignments import them by themselves.')}</div></div>
           {can && <Button onClick={() => setOpen(true)}>{t('Assign shifts')}</Button>}
         </div>
@@ -641,10 +643,74 @@ function ShiftGaps({ can }: { can: boolean }) {
   )
 }
 
+const STEP: Record<number, string> = { 1: 'Connect', 2: 'Turn on', 3: 'Match people', 4: 'Read punches right', 5: 'Shifts & holidays', 6: 'Clear what blocks' }
+const DOT: Record<string, string> = { ok: 'bg-emerald-500', warn: 'bg-amber-500', error: 'bg-red-500' }
+
+function AttendanceHealth({ can, devices, onShifts }: { can: boolean; devices: any[]; onShifts: () => void }) {
+  const { t } = useI18n()
+  const qc = useQueryClient()
+  const nav = useNavigate()
+  const q = useQuery<any>({ queryKey: ['attendance-health'], queryFn: api.attendanceHealth })
+  const [open, setOpen] = useState<boolean | null>(null)
+  const [who, setWho] = useState<any | null>(null)
+  const [match, setMatch] = useState<any | null>(null)
+  const fix = useMutation({ mutationFn: (key: string) => api.attendanceHealthFix(key),
+    onSuccess: () => ['attendance-health', 'devices', 'shift-gaps', 'attendance-marking', 'device-logs'].forEach((k) => qc.invalidateQueries({ queryKey: [k] })) })
+  const details = useQuery<any[]>({ queryKey: ['attendance-health-details', who?.key], queryFn: () => api.attendanceHealthDetails(who.key), enabled: !!who })
+  if (!q.data) return null
+  const rows: any[] = q.data.checks
+  const todo = rows.filter((r) => r.status !== 'ok').length
+  const shown = open ?? todo > 0
+  const source = devices.find((x: any) => (x.connection || '').startsWith('Database pull'))
+  const act = (r: any) => {
+    if (r.fix === 'match') return source ? <Button size="sm" variant="secondary" onClick={() => setMatch(source)}>{t('Match employees')}</Button> : null
+    if (r.fix === 'assign_shifts') return <Button size="sm" variant="secondary" onClick={onShifts}>{t('Assign shifts')}</Button>
+    if (r.fix) return <Button size="sm" variant="secondary" loading={fix.isPending && fix.variables === r.fix}
+      onClick={() => { if (r.fix !== 'disable_checkin_scripts' || confirm(t('Turn off these server scripts on check-ins? They can be turned on again in Server Script.'))) fix.mutate(r.fix) }}>{t(FIX_LABEL[r.fix] ?? 'Fix')}</Button>
+    if (r.link) return <Button size="sm" variant="ghost" onClick={() => nav(r.link)}>{t('Open')}</Button>
+    return null
+  }
+  return (
+    <Card>
+      <button type="button" onClick={() => setOpen(!shown)} className="flex w-full items-center gap-3 text-start">
+        <span className={clsx('size-2.5 rounded-full', q.data.counts.error ? DOT.error : todo ? DOT.warn : DOT.ok)} />
+        <span className="flex-1 font-semibold">{t('Attendance health')}</span>
+        <span className="text-sm text-muted">{todo ? `${todo} ${t('to fix')}` : t('All good')}</span>
+        <span className="text-xs text-brand">{shown ? t('Hide') : t('Show')}</span>
+      </button>
+      {shown && <ol className="mt-3 divide-y divide-line">
+        {rows.map((r) => (
+          <li key={r.key} className="flex flex-wrap items-start gap-3 py-2.5">
+            <span className={clsx('mt-1.5 size-2.5 shrink-0 rounded-full', DOT[r.status])} />
+            <div className="min-w-60 flex-1">
+              <div className="text-sm font-medium"><span className="me-2 text-xs text-muted">{r.step}. {t(STEP[r.step])}</span>{t(r.title)}</div>
+              {r.detail && <div className="mt-0.5 text-xs text-muted">{r.detail}</div>}
+            </div>
+            {r.status !== 'ok' && r.value > 0 && DETAIL_KEYS.has(r.key) && <Button size="sm" variant="ghost" onClick={() => setWho(r)}>{t('See list')}</Button>}
+            {can && r.status !== 'ok' && act(r)}
+          </li>
+        ))}
+      </ol>}
+      {fix.data && <p className="mt-2 text-sm text-emerald-700">{t('Done')}: {fix.data.done}{fix.data.imported !== undefined ? ` · ${t('Imported')} ${fix.data.imported}` : ''}{fix.data.note ? ` · ${fix.data.note}` : ''}{fix.data.skipped?.length ? ` · ${t('Skipped (already used by another employee)')}: ${fix.data.skipped.join(', ')}` : ''}</p>}
+      {fix.error && <ErrorBox error={fix.error} />}
+      {who && <Modal open wide onClose={() => setWho(null)} title={t(who.title)}>
+        {details.isLoading ? <Spinner /> : details.error ? <ErrorBox error={details.error} /> : (
+          (details.data ?? []).length ? <Table head={Object.keys(details.data![0]).map((k) => t(k))}>
+            {details.data!.slice(0, 300).map((x: any, i: number) => <tr key={i}>{Object.keys(details.data![0]).map((k) => <td key={k} className="text-sm">{String(x[k] ?? '—')}</td>)}</tr>)}
+          </Table> : <Empty title={t('Nothing left')} />)}
+      </Modal>}
+      {match && <MatchPeople device={match} onClose={() => { setMatch(null); q.refetch() }} />}
+    </Card>
+  )
+}
+const DETAIL_KEYS = new Set(['national_id_in_device_id', 'duplicate_ids', 'all_in', 'no_shift', 'no_holiday_list', 'checkin_blockers', 'unmatched', 'refused', 'double_taps'])
+const FIX_LABEL: Record<string, string> = { turn_on_marking: 'Turn on', copy_iqama: 'Copy to Iqama', first_in_last_out: 'Use first IN, last OUT', skip_double_taps: 'Set them aside', disable_checkin_scripts: 'Turn off scripts', retry: 'Try again' }
+
 export default function AttendanceDevices() {
   const { t } = useI18n()
   const q = useQuery({ queryKey: ['devices'], queryFn: api.devicesOverview, refetchInterval: 30_000 })
   const [tab, setTab] = useState('devices')
+  const [shiftSignal, setShiftSignal] = useState(0)
   const [edit, setEdit] = useState<any | null | undefined>(undefined)
   if (q.isLoading) return <Spinner />
   if (q.error) return <ErrorBox error={q.error} onRetry={() => q.refetch()} />
@@ -656,7 +722,8 @@ export default function AttendanceDevices() {
           <Button variant="secondary" onClick={() => setEdit({ ...BLANK, connection: DB, db_type: 'SQL Server', db_preset: 'ADMS (CheckInOut + EmpDetails)', match_by: 'National ID / Iqama', offline_alert_hours: 2, name: undefined })}><Plus className="size-4" />{t('Connect attendance database')}</Button>
           <Button onClick={() => setEdit(null)}><Plus className="size-4" />{t('Add device')}</Button></div> : undefined} />
       <MarkingStrip can={d.can_edit} />
-      <ShiftGaps can={d.can_edit} />
+      <AttendanceHealth can={d.can_edit} devices={d.devices} onShifts={() => setShiftSignal((x) => x + 1)} />
+      <ShiftGaps can={d.can_edit} openSignal={shiftSignal} />
       <Tabs value={tab} onChange={setTab} tabs={[{ value: 'devices', label: t('Devices') },
         { value: 'punches', label: t('Punches') },
         { value: 'unmatched', label: t('Unmatched users'), badge: d.totals.Unmatched ? <span className="rounded-full bg-amber-100 px-1.5 text-xs text-amber-800">{d.totals.Unmatched}</span> : undefined }]} />

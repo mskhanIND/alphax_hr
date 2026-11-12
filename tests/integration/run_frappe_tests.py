@@ -2877,7 +2877,7 @@ def run(site):
                 assert res["created"] == 1 and res["imported"] == 2, res
                 assert {frappe.db.get_value(dvm.LOG, n, "status") for n in logs} == {"Imported"}
                 assert frappe.db.exists("Shift Assignment", {"employee": emp, "shift_type": st[0], "start_date": "2027-03-01", "docstatus": 1})
-                assert not any(r["employee"] == emp for r in dapi.shift_gaps()["employees"])
+                assert not any(r["employee"] == emp and r["refused"] for r in dapi.shift_gaps()["employees"])
             finally:
                 for n in logs:
                     c = frappe.db.get_value(dvm.LOG, n, "employee_checkin")
@@ -2955,6 +2955,56 @@ def run(site):
                 frappe.delete_doc(jn.DT, j["name"], force=True)
         check("new joiner self-onboarding: invite link, form without login (validated), changes requested, employee created from it",
               joiner_self_onboarding)
+
+        def attendance_health_checks_and_fixes():
+            from alphax_hr import attendance_health as ah, devices as dvm
+            frappe.set_user("Administrator")
+            emp, emp2 = frappe.get_all("Employee", filters={"status": "Active"}, pluck="name", limit=2)
+            keep = frappe.db.get_value("Employee", emp, ["attendance_device_id", "alphax_iqama_number"], as_dict=True)
+            nid = "2" + frappe.generate_hash(length=12).translate(str.maketrans("abcdef", "345678"))[:9]
+            dev = frappe.get_doc({"doctype": dvm.DEVICE, "device_name": "AXT Health", "connection": "File upload",
+                                  "punch_rule": "From the device (0 = IN, 1 = OUT)"}).insert()
+            checkins = []
+            try:
+                frappe.db.set_value("Employee", emp, {"attendance_device_id": nid, "alphax_iqama_number": None})
+                for i in range(22):  # a device that sends IN for everything
+                    frappe.get_doc({"doctype": dvm.LOG, "device": dev.name, "device_user": "u", "employee": emp, "status": "Imported",
+                                    "log_type": "IN", "source": "File upload",
+                                    "punch_time": frappe.utils.add_to_date(frappe.utils.now_datetime(), hours=-i - 1)}).insert()
+                for sec in (0, 20):  # a double tap
+                    c = frappe.get_doc({"doctype": "Employee Checkin", "employee": emp2, "log_type": "IN",
+                                        "time": frappe.utils.add_to_date(frappe.utils.now_datetime(), days=-2, seconds=sec)})
+                    c.flags.ignore_validate = True
+                    c.insert(ignore_permissions=True)
+                    checkins.append(c.name)
+                res = ah.overview()
+                by = {c["key"]: c for c in res["checks"]}
+                assert set(by) >= {"connection", "marking", "unmatched", "national_id_in_device_id", "duplicate_ids", "all_in",
+                                   "double_taps", "no_shift", "no_holiday_list", "checkin_blockers", "refused"}
+                assert by["national_id_in_device_id"]["status"] == "warn" and by["national_id_in_device_id"]["fix"] == "copy_iqama"
+                assert any(r["name"] == emp for r in ah.details("national_id_in_device_id"))
+                assert any(a["device"] == dev.name for a in ah.all_in_sources())
+                assert checkins[1] in {r.name for r in ah.double_taps()} and checkins[0] not in {r.name for r in ah.double_taps()}
+                assert ah.fix("copy_iqama")["done"] >= 1
+                assert frappe.db.get_value("Employee", emp, "alphax_iqama_number") == nid
+                assert frappe.db.get_value("Employee", emp, "attendance_device_id") == nid  # the device ID is kept
+                ah.fix("first_in_last_out")
+                assert frappe.db.get_value(dvm.DEVICE, dev.name, "punch_rule").startswith("First IN")
+                ah.fix("skip_double_taps")
+                assert frappe.db.get_value("Employee Checkin", checkins[1], "skip_auto_attendance") == 1
+                assert not frappe.db.get_value("Employee Checkin", checkins[0], "skip_auto_attendance")
+                by = {c["key"]: c for c in ah.overview()["checks"]}
+                assert not any(r["name"] == emp for r in ah.details("national_id_in_device_id"))
+                expect_error(lambda: ah.fix("duplicate_ids"), frappe.ValidationError)  # no automatic fix for that one
+            finally:
+                for n in checkins:
+                    frappe.delete_doc("Employee Checkin", n, force=True)
+                frappe.db.delete(dvm.LOG, {"device": dev.name})
+                frappe.delete_doc(dvm.DEVICE, dev.name, force=True)
+                frappe.db.set_value("Employee", emp, {"attendance_device_id": keep.attendance_device_id,
+                                                      "alphax_iqama_number": keep.alphax_iqama_number})
+        check("attendance health: go-live checks with one-click fixes (Iqama copy, first IN/last OUT, double taps)",
+              attendance_health_checks_and_fixes)
 
         def mandatory_gaps_do_not_block_other_sections():
             from frappe.custom.doctype.property_setter.property_setter import make_property_setter

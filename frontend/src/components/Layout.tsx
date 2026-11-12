@@ -291,7 +291,10 @@ export function Layout({ children }: { children: ReactNode }) {
  * When the two differ, new screens call functions the running server does not have yet: say what to do. */
 function RestartBanner() {
   const { t } = useI18n()
+  const s = useSession()
   const server = boot.version
+  // only the people who can finish an update (System Managers) see it; employees and HR get no technical banner
+  if (!s.roles?.includes('System Manager') && !s.persona?.system_manager) return null
   if (!server || server === 'dev' || typeof __APP_VERSION__ === 'undefined' || server === __APP_VERSION__) return null
   return (
     <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
