@@ -235,6 +235,12 @@ def _hr_operational_checks(rows):
 		if frappe.db.exists("DocType", dt):
 			old += frappe.db.count(dt, {"docstatus": 0, "creation": ["<", add_days(today, -3)], **conf["open"]})
 	_check(rows, g, "approvals_waiting", WARN if old else OK, old, _("Requests waiting for a decision for more than 3 days."), "/approvals")
+	from alphax_hr import attendance_health
+
+	ah = attendance_health.checks()
+	todo = [c for c in ah["checks"] if c["status"] != OK]
+	_check(rows, g, "attendance_health", ERROR if ah["counts"]["error"] else WARN if todo else OK, len(todo),
+		   _("Attendance go-live checks to fix: {0}").format(", ".join(c["title"] for c in todo)), "/attendance-devices")
 
 
 def _active_employees(fields):

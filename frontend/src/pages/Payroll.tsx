@@ -10,6 +10,7 @@ import { useI18n } from '../lib/i18n'
 import { recordPath } from '../lib/links'
 import { PayrollSlips } from '../components/PayrollSlips'
 import { PayrollRuns } from '../components/PayrollRuns'
+import { WageProtection } from '../components/WageProtection'
 
 const FLOW = [
   { step: 'prepare', status: 'Open', done: 'Prepared', by: 'prepared' },
@@ -79,6 +80,7 @@ export default function Payroll() {
   const m = useMutation({ mutationFn: () => act!.step === 'submit_slips' ? api.payrollSubmitSlips(company, month, run || undefined)
     : api.payrollAdvance(company, month, act!.step, note || undefined, override ? 1 : 0, run || undefined), onSuccess: done })
   const file = useMutation({ mutationFn: () => downloadFile(downloadUrl('payroll_control.salary_file', { company, month, run: run || undefined }), `salary-file-${month.slice(0, 7)}.xlsx`) })
+  const [wps, setWps] = useState(false)
   const ot = useMutation({ mutationFn: () => api.payrollAddOvertime(company, month, run || undefined), onSuccess: () => qc.invalidateQueries({ queryKey: ['payroll-period'] }) })
   const p = q.data
   const cl = p?.checklist
@@ -135,11 +137,12 @@ export default function Payroll() {
                 <Button variant="secondary" onClick={() => setAct({ step: 'submit_slips', label: 'Submit salary slips' })}>{t('Submit salary slips')}</Button>
               )}
               {(p.slips.submitted_count ?? 0) > 0 && (
-                <Button variant="secondary" loading={file.isPending} onClick={() => file.mutate()}>{t('Bank salary file (WPS)')}</Button>
+                <Button variant="secondary" onClick={() => setWps(true)}>{t('Wage protection (WPS / Mudad)')}</Button>
               )}
               {['Prepared', 'Reviewed', 'Approved'].includes(p.status) && p.can_approve && (
                 <Button variant="secondary" onClick={() => setAct({ step: 'reopen', label: 'Reopen' })}>{t('Reopen')}</Button>
               )}
+              {wps && <WageProtection company={company} month={month} run={run || undefined} onClose={() => setWps(false)} />}
               {p.payroll_entry && <Link className="text-sm text-brand underline" to={recordPath('Payroll Entry', p.payroll_entry)}>{p.payroll_entry} · {t(p.payroll_entry_status ?? '')}</Link>}
               {next?.step === 'approve' && !p.can_approve && <span className="text-sm text-muted">{t('An HR Manager approves payroll.')}</span>}
             </div>

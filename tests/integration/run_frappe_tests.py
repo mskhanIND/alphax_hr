@@ -2158,6 +2158,9 @@ def run(site):
                     pe = frappe.get_doc("Payroll Entry", p["payroll_entry"])
                     assert [r.employee for r in pe.employees] == [f["e_emp"]]
                     assert pc.slips(COMPANY, month, run=bulk["name"])["rows"] == []
+                    from alphax_hr import wps as wps_mod
+                    wr = wps_mod.payroll_rows(COMPANY, month, run=single["name"], submitted_only=False)
+                    assert [r.employee for r in wr] == [f["e_emp"]] and wr[0].net == frappe.utils.flt(slips[0]["net_pay"]), (wr, slips)
                     pc.salary_file(COMPANY, month, run=single["name"], submitted_only=0)  # bank / WPS file of this run
                     assert frappe.response["filecontent"][:2] == b"PK" and frappe.response["filename"].endswith(".xlsx")
                     frappe.response.pop("filecontent", None); frappe.response.pop("type", None)
@@ -3005,6 +3008,44 @@ def run(site):
                                                       "alphax_iqama_number": keep.alphax_iqama_number})
         check("attendance health: go-live checks with one-click fixes (Iqama copy, first IN/last OUT, double taps)",
               attendance_health_checks_and_fixes)
+
+        def wps_checks_and_mudad_template():
+            import io as _io
+            import openpyxl
+            from alphax_hr import wps
+            R = frappe._dict
+            rows = [R(employee="E1", employee_name="Ali", id="1012345678", iban="SA0380000000608010167519", bank="Al Rajhi",
+                      salary_mode="Bank", basic=5000, housing=1250, transport=500, overtime=300, commission=0, other=200,
+                      gross=7250, deductions=600, net=6650, slip="S1"),
+                    R(employee="E2", employee_name="Sara", id="2512345678", iban="SA0380000000608010167518", bank="",
+                      salary_mode="Bank", basic=4000, housing=1000, transport=400, overtime=0, commission=0, other=0,
+                      gross=5400, deductions=0, net=5400, slip="S2"),
+                    R(employee="E3", employee_name="Omar", id="", iban="", bank="", salary_mode="Bank", basic=3000, housing=750,
+                      transport=300, overtime=0, commission=0, other=0, gross=4050, deductions=0, net=0, slip="S3")]
+            codes = {(i["employee"], i["code"]) for i in wps.problems(rows)}
+            assert ("E2", "bad_iban") in codes and ("E3", "no_id") in codes and ("E3", "no_iban") in codes and ("E3", "no_net") in codes
+            assert not any(e == "E1" for e, _c in codes)  # a correct row passes
+            # a Mudad-style template (Arabic headers, a title row, its own column order)
+            wb = openpyxl.Workbook(); ws = wb.active
+            ws.append(["مسير رواتب شهر"])
+            ws.append(["اسم الموظف", "رقم الهوية", "الراتب الأساسي", "بدل السكن", "بدل النقل", "بدلات أخرى", "الخصومات", "صافي الراتب", "إجمالي الراتب"])
+            ws.append(["Ali", 1012345678, 5000, 1250, 500, None, None, None, 6750])
+            ws.append(["Sara", "2512345678", 4200, 1000, 400, None, None, None, 5600])
+            ws.append(["Khalid", "1099999999", 3000, 750, 300, None, None, None, 4050])
+            buf = _io.BytesIO(); wb.save(buf)
+            out, rep = wps.fill_mudad(buf.getvalue(), rows, {"E1": {"basic": 5000, "housing": 1250}, "E2": {"basic": 4000, "housing": 1000}})
+            assert rep["matched"] == 2 and set(rep["kept"]) == {"name", "id", "basic", "housing", "transport", "total"}, rep
+            assert [x["id"] for x in rep["not_in_payroll"]] == ["1099999999"]  # registered in Mudad, no salary slip
+            assert [x["employee"] for x in rep["not_in_template"]] == ["E3"]
+            assert rep["differences"] == [{"employee": "E2", "employee_name": "Sara", "field": "basic", "mudad": 4200.0, "alphax": 4000.0}]
+            got = openpyxl.load_workbook(_io.BytesIO(out)).active
+            assert [c.value for c in got[3]] == ["Ali", 1012345678, 5000, 1250, 500, 500.0, 600.0, 6650.0, 6750]  # overtime folded into other
+            assert got["C4"].value == 4200  # Mudad's own columns are never changed
+            assert rep["totals"]["net"] == 12050.0
+            bad = openpyxl.Workbook(); bad.active.append(["foo", "bar"]); b2 = _io.BytesIO(); bad.save(b2)
+            expect_error(lambda: wps.fill_mudad(b2.getvalue(), rows), frappe.ValidationError)
+        check("WPS: checks before paying (ID, IBAN, net, duplicates) and the Mudad template filled without touching its fixed columns",
+              wps_checks_and_mudad_template)
 
         def mandatory_gaps_do_not_block_other_sections():
             from frappe.custom.doctype.property_setter.property_setter import make_property_setter

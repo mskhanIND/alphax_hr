@@ -19,7 +19,7 @@ const CHECK_LABEL: Record<string, string> = {
   reports_to: 'Reporting managers', user_account: 'Employee user accounts', salary_mapping: 'Salary component mapping',
   annual_leave: 'Annual leave', statutory_leave: 'Statutory leave types', gosi_rates: 'GOSI rates', broken_links: 'Employee values missing from their lists', print_images: 'Images missing from letter heads and payslips', check_failed: 'Check could not run', broken_scripts: 'Server scripts using fields of removed apps', orphan_mandatory: 'Mandatory fields left by removed apps', save_test: 'Saving an employee (test, undone)',
   documents_expired: 'Expired documents', documents_expiring: 'Documents expiring (30 days)', mandatory_missing: 'Employees missing mandatory data',
-  no_salary: 'Employees without salary', approvals_waiting: 'Approvals waiting over 3 days',
+  no_salary: 'Employees without salary', approvals_waiting: 'Approvals waiting over 3 days', attendance_health: 'Attendance health',
 }
 const ICON = {
   ok: <CheckCircle2 className="size-5 text-emerald-600" />,

@@ -2,6 +2,14 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.37.0 — 2026-11-12
+
+- **Wage protection (WPS / Mudad)** on a payroll run with submitted slips (replaces the plain *Bank salary file* button):
+  - **Checks before paying:** employees, net to pay, totals by bank, and every row the bank or Mudad would reject: missing or invalid national ID / Iqama, missing or invalid IBAN (check digits), net salary of zero or less, the same ID twice; warnings for an unknown bank or the same IBAN on two employees.
+  - **Bank salary file** as before (ID, name, bank, IBAN, basic, housing, other earnings, deductions, net, totals).
+  - **Mudad payroll file:** upload the template downloaded from Mudad (Payroll Management → Create Payroll → Upload Payroll File → Download Template). AlphaX recognises its columns in Arabic or English, matches employees by ID number and fills other allowances, overtime, commissions, deductions and net from the run. It never changes the columns Mudad fixes (name, ID, basic, housing, transport, total) and keeps the file's layout. It lists where Mudad's basic or housing differs from AlphaX (update the Qiwa contract / GOSI wage or the salary), who is paid in AlphaX but missing from the template, and who is in the template without a salary slip.
+- Setup & health shows the attendance go-live checks still to fix, with a link to them.
+
 ## 0.36.0 — 2026-11-12
 
 - **`bench alphax-update`: update in one step.** Pulls the code, installs it, migrates every site that has AlphaX HR (or `--site`), builds, restarts, then asks the running web server which version it serves and says plainly if a restart did not take (`--no-restart` for Docker, `--dry-run` to see the steps).
