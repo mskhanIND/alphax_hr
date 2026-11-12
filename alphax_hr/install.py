@@ -9,12 +9,29 @@ def after_install():
 	seed_settings()
 	seed_leave_rules()
 	seed_catalogues()
+	# a new site is ready to use: Saudi leave types, salary components, banks, a shift, and per company a holiday list
+	from alphax_hr import defaults
+
+	defaults.site()
+	for company in frappe.get_all("Company", pluck="name"):
+		defaults.company(company)
 
 
 def after_migrate():
 	seed_gosi_rates()
 	seed_settings()
 	seed_leave_rules()
+	if not frappe.db.count("Employee"):
+		# a site still being set up (AlphaX installed before this step existed): make it ready like a new install;
+		# sites already in use are left alone and use Setup → Prepare defaults
+		try:
+			from alphax_hr import defaults
+
+			defaults.site()
+			for company in frappe.get_all("Company", pluck="name"):
+				defaults.company(company)
+		except Exception:  # noqa: BLE001
+			frappe.log_error(title="AlphaX defaults on migrate")
 	apply_field_rules()
 	from alphax_hr.api.banks import seed as seed_banks
 	from alphax_hr.api.salary import seed_components

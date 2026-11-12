@@ -32,6 +32,7 @@ doc_events = {
 	"Employee": {"validate": ["alphax_hr.employee_rules.validate", "alphax_hr.saudization.validate_employee"],
 				 "on_update": "alphax_hr.logins.on_employee_saved"},
 	"Holiday List": {"on_update": "alphax_hr.week_off.sync_public_holidays"},
+	"Company": {"on_update": "alphax_hr.defaults.on_company_created"},  # after ERPNext made its accounts; idempotent
 	"Leave Type": {
 		"before_rename": "alphax_hr.leave_engine.block_rename",
 		"on_trash": "alphax_hr.leave_engine.block_delete",

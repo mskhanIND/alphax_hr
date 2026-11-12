@@ -2,6 +2,13 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.39.0 — 2026-11-12
+
+- **Ready to use after install.** A new site gets, without any button: the Saudi statutory leave types with their rules (maternity, paternity, marriage, bereavement, sibling bereavement, iddah, examination, Hajj, sick) and Annual Leave, the salary components, Saudi banks, a General Shift, request types, notifications and labour-law catalogues. Leave types that already exist under a common name are linked, never duplicated.
+- **Every new company gets** a holiday list for this year and next (Friday and Saturday off plus Saudi public holidays) as its default, its Payroll Payable account linked, and becomes AlphaX's default company if none is set.
+- **Sites set up before this** (installed, no employees yet) are prepared the same way on the next update. Any site can use *Setup → Prepare defaults*: a card lists what is missing (leave types, components, shift, holiday list per company, banks) and creates it; running it again changes nothing.
+- Checked on a brand-new site (ERPNext + HRMS + AlphaX HR): everything ready after install and after creating the company.
+
 ## 0.38.0 — 2026-11-12
 
 - **Employee logins.** *Employees → Logins* lists active employees without a login, with the e-mail that will be used (editable). *Create logins* creates them in bulk (in the background with progress for large groups): Employee role, linked to the employee, welcome e-mail to set a password. An existing user with that e-mail is linked, never duplicated; employees without an e-mail are listed and skipped. A setting creates the login automatically when a new employee is saved with an e-mail (company or personal e-mail first). Managers need nothing extra: their menu appears once employees report to them.

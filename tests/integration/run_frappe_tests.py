@@ -3142,6 +3142,54 @@ def run(site):
         check("employee logins: list without a login, create in bulk (skips without e-mail, never twice), automatic on save",
               employee_logins_bulk_and_automatic)
 
+        def ready_defaults_on_a_new_site():
+            from alphax_hr import defaults
+            frappe.set_user("Administrator")
+            conf = frappe.get_single("AlphaX HR Settings")
+            keep_rules = [r.as_dict() for r in conf.leave_rules]
+            # pretend the statutory "Hajj Leave" was never set up
+            hajj = [r for r in conf.leave_rules if r.leave_type == "Hajj Leave"]
+            for r in hajj:
+                conf.remove(r)
+            conf.save()
+            hajj_existed = frappe.db.exists("Leave Type", "Hajj Leave")
+            comp = frappe.get_doc({"doctype": "Company", "company_name": "AXT Defaults Co " + frappe.generate_hash(length=4),
+                                   "abbr": "AXD" + frappe.generate_hash(length=2).upper(), "default_currency": "SAR",
+                                   "country": "Saudi Arabia"})
+            try:
+                st = defaults.status()
+                assert not next(i for i in st["items"] if i["key"] == "leave_types")["ok"]
+                comp.insert()  # a new company gets its holiday list by itself
+                hl = frappe.db.get_value("Company", comp.name, "default_holiday_list")
+                assert hl and hl.startswith(comp.abbr), hl
+                doc = frappe.get_doc("Holiday List", hl)
+                assert any(h.weekly_off for h in doc.holidays) and any("Founding" in (h.description or "") or "National" in (h.description or "")
+                                                                       for h in doc.holidays), "Saudi public holidays"
+                fri = [h for h in doc.holidays if getdate(h.holiday_date).weekday() == 4]
+                assert len(fri) >= 100  # Fridays of two years are off
+                res = defaults.prepare()
+                assert any(r.leave_type == "Hajj Leave" for r in frappe.get_single("AlphaX HR Settings").leave_rules)
+                assert next(i for i in res["items"] if i["key"] == "leave_types")["ok"], res["items"]
+                again = defaults.prepare()  # running it again changes nothing
+                assert not again["site"]["leave_types"].get("created") and not again["companies"][comp.name]["holiday_list"].get("created")
+                frappe.set_user(f["emp"])
+                expect_error(lambda: defaults.prepare(), frappe.PermissionError)
+            finally:
+                frappe.set_user("Administrator")
+                if frappe.db.exists("Company", comp.name):
+                    hl = frappe.db.get_value("Company", comp.name, "default_holiday_list")
+                    frappe.db.set_value("Company", comp.name, "default_holiday_list", None)
+                    if hl:
+                        frappe.delete_doc("Holiday List", hl, force=True)
+                    try:
+                        frappe.delete_doc("Company", comp.name, force=True)
+                    except Exception as exc:
+                        print("  NOTE company cleanup:", str(exc)[:120])
+                if not hajj_existed and frappe.db.exists("Leave Type", "Hajj Leave"):
+                    pass  # keep: a real statutory type
+        check("ready defaults: new company gets a Saudi holiday list, missing statutory leave types created, safe to run again",
+              ready_defaults_on_a_new_site)
+
         def mandatory_gaps_do_not_block_other_sections():
             from frappe.custom.doctype.property_setter.property_setter import make_property_setter
             from alphax_hr.api import hr as hr_api

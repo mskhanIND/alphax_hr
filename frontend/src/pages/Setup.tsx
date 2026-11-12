@@ -8,7 +8,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { FieldInput } from '../components/FieldInput'
 import { LinkInput } from '../components/LinkInput'
 import { Button, Card, ErrorBox, Field, Input, PageHeader, Select, Spinner, Stat, Modal } from '../components/ui'
-import { api } from '../lib/api'
+import { api, call } from '../lib/api'
 import { useSession } from '../lib/session'
 import { useI18n } from '../lib/i18n'
 
@@ -346,7 +346,34 @@ export default function Setup() {
               className={clsx('rounded-lg px-3 py-1.5 text-sm', tab === v ? 'bg-brand text-white' : 'text-muted hover:bg-surface')}>{t(tabLabel[v])}</button>
           ))}
         </div>} />
+      {isLead && <ReadyDefaults />}
       {tab === 'hr' && isLead ? <StatusList onSettings={() => setTab('settings')} /> : <SettingsForm />}
     </div>
+  )
+}
+
+/** What a new site needs before HR can work (leave types, components, shift, holiday lists, banks), with one button. */
+function ReadyDefaults() {
+  const { t } = useI18n()
+  const qc = useQueryClient()
+  const q = useQuery<any>({ queryKey: ['ready-defaults'], queryFn: () => call('alphax_hr.defaults.overview') })
+  const go = useMutation({ mutationFn: () => call<any>('alphax_hr.defaults.prepare'), onSuccess: (d) => { qc.setQueryData(['ready-defaults'], d); qc.invalidateQueries() } })
+  const d = go.data ?? q.data
+  if (!d || (d.ready && !go.data)) return null
+  return (
+    <Card>
+      <div className="flex flex-wrap items-center gap-3">
+        {d.ready ? <CheckCircle2 className="size-5 text-emerald-600" /> : <AlertTriangle className="size-5 text-amber-600" />}
+        <div className="flex-1"><div className="font-semibold">{d.ready ? t('Ready to use') : t('Finish the basic setup')}</div>
+          <div className="text-xs text-muted">{t('Saudi leave types, salary components, a shift, a holiday list per company (Friday and Saturday off, public holidays) and banks. Existing records are kept and reused.')}</div></div>
+        {!d.ready && <Button loading={go.isPending} onClick={() => go.mutate()}>{t('Prepare defaults')}</Button>}
+      </div>
+      <ul className="mt-3 grid gap-1 text-sm sm:grid-cols-2">
+        {d.items.map((i: any) => <li key={i.key} className="flex items-start gap-2">
+          {i.ok ? <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" /> : <XCircle className="mt-0.5 size-4 shrink-0 text-amber-600" />}
+          <span>{t(i.label)}{!i.ok && i.detail ? <span className="text-xs text-muted"> · {i.detail}</span> : null}</span></li>)}
+      </ul>
+      {go.error && <div className="mt-2"><ErrorBox error={go.error} /></div>}
+    </Card>
   )
 }
