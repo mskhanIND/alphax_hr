@@ -26,35 +26,103 @@ def _safe(fn, results, key):
 
 
 # ------------------------------------------------------------------ site-wide
+# words that identify a leave type whatever the site called it (English and Arabic); sibling before bereavement
+KEYWORDS = [
+	("Bereavement (Sibling)", ("sibling", "brother", "sister", "شقيق", "أخ ", "الأخ", "الأخت")),
+	("Maternity", ("maternity", "أمومة", "الوضع", "ولادة")),
+	("Paternity", ("paternity", "newborn", "new born", "child birth", "مولود", "أبوة")),
+	("Marriage", ("marriage", "wedding", "زواج")),
+	("Bereavement", ("bereavement", "death", "condolence", "وفاة", "عزاء")),
+	("Iddah (Muslim)", ("iddah", "idda", "عدة", "العدة")),
+	("Examination", ("exam", "examination", "امتحان", "اختبار")),
+	("Hajj", ("hajj", "haj ", "حج")),
+	("Sick", ("sick", "medical", "مرض", "مرضية")),
+]
+ANNUAL_WORDS = ("annual", "vacation", "سنوية", "اعتيادية")
+
+
+def _match(kind, taken):
+	"""An existing leave type that is clearly this kind (one match only, not already used)."""
+	words = dict(KEYWORDS).get(kind)
+	if not words:
+		return None
+	hits = []
+	for lt in frappe.get_all("Leave Type", filters={"is_lwp": 0}, pluck="name"):
+		if lt in taken:
+			continue
+		low = f" {lt.lower()} "
+		if kind == "Bereavement" and any(w in low for w in dict(KEYWORDS)["Bereavement (Sibling)"]):
+			continue
+		if any(w in low for w in words):
+			hits.append(lt)
+	return hits[0] if len(hits) == 1 else None
+
+
+def leave_plan():
+	"""What Prepare defaults would do with leave types: link an existing one, or create the standard one."""
+	from alphax_hr.api.leave_setup import STATUTORY_TYPES
+
+	conf = frappe.get_single("AlphaX HR Settings")
+	mapped = {r.rule for r in conf.leave_rules}
+	taken = {r.leave_type for r in conf.leave_rules} | ({conf.annual_leave_type} if conf.annual_leave_type else set())
+	plan = []
+	for kind, (name, _days) in STATUTORY_TYPES.items():
+		if kind in mapped:
+			continue
+		if frappe.db.exists("Leave Type", name) and name not in taken:
+			plan.append({"kind": kind, "action": "link", "leave_type": name})
+		elif hit := _match(kind, taken):
+			plan.append({"kind": kind, "action": "link", "leave_type": hit})
+		else:
+			plan.append({"kind": kind, "action": "create", "leave_type": name})
+		taken.add(plan[-1]["leave_type"])
+	if not conf.annual_leave_type:
+		hits = [lt for lt in frappe.get_all("Leave Type", filters={"is_lwp": 0}, pluck="name")
+				if lt not in taken and any(w in lt.lower() for w in ANNUAL_WORDS)]
+		used = frappe.db.sql("""select leave_type, count(*) n from `tabLeave Allocation` where docstatus=1 group by leave_type
+			order by n desc limit 1""", as_dict=True)
+		if len(hits) == 1:
+			plan.append({"kind": "Annual", "action": "link", "leave_type": hits[0]})
+		elif used and used[0].leave_type not in taken:  # the type the site already allocates most is its annual leave
+			plan.append({"kind": "Annual", "action": "link", "leave_type": used[0].leave_type})
+		else:
+			plan.append({"kind": "Annual", "action": "create", "leave_type": "Annual Leave"})
+	return plan
+
+
 def leave_types():
-	"""Statutory leave types (mapped to their rules) and Annual Leave."""
+	"""Statutory leave types (mapped to their rules) and Annual Leave: existing ones are linked, missing ones created."""
 	from alphax_hr.api.leave_setup import STATUTORY_TYPES
 	from alphax_hr.install import rule_row, seed_leave_rules
 	from alphax_hr.saudi import leave_rules as lr
 
 	seed_leave_rules()  # first map leave types that already exist under common names
 	conf = frappe.get_single("AlphaX HR Settings")
-	mapped = {r.rule for r in conf.leave_rules}
-	created = []
-	for kind, (name, calendar_days) in STATUTORY_TYPES.items():
-		if kind in mapped:
+	created, linked = [], []
+	days_of = {k: d for k, (_n, d) in STATUTORY_TYPES.items()}
+	for step in leave_plan():
+		kind, name = step["kind"], step["leave_type"]
+		if kind == "Annual":
+			if step["action"] == "create" and not frappe.db.exists("Leave Type", name):
+				frappe.get_doc({"doctype": "Leave Type", "leave_type_name": name, "is_lwp": 0, "allow_negative": 0,
+								"include_holiday": 0, "is_carry_forward": 1}).insert(ignore_permissions=True)
+				created.append(name)
+			else:
+				linked.append(name)
+			conf.annual_leave_type = name
 			continue
-		if not frappe.db.exists("Leave Type", name):
+		if step["action"] == "create" and not frappe.db.exists("Leave Type", name):
 			rule = lr.default_rule(kind)
 			frappe.get_doc({"doctype": "Leave Type", "leave_type_name": name, "is_lwp": 0, "allow_negative": 1,
-							"include_holiday": calendar_days, "max_continuous_days_allowed": int(rule.max_days or 0)}
+							"include_holiday": days_of[kind], "max_continuous_days_allowed": int(rule.max_days or 0)}
 						   ).insert(ignore_permissions=True)
 			created.append(name)
+		else:
+			linked.append(name)
 		conf.append("leave_rules", rule_row(name, kind))
-	if not conf.annual_leave_type:
-		if not frappe.db.exists("Leave Type", "Annual Leave"):
-			frappe.get_doc({"doctype": "Leave Type", "leave_type_name": "Annual Leave", "is_lwp": 0, "allow_negative": 0,
-							"include_holiday": 0, "is_carry_forward": 1}).insert(ignore_permissions=True)
-			created.append("Annual Leave")
-		conf.annual_leave_type = "Annual Leave"
 	conf.flags.ignore_permissions = True
 	conf.save()
-	return {"created": created}
+	return {"created": created, "linked": linked}
 
 
 def shift():
@@ -152,7 +220,8 @@ def status():
 		 "detail": ", ".join(c.name for c in companies if not c.default_holiday_list) or (None if companies else _("No company yet"))},
 		{"key": "banks", "label": _("Saudi banks"), "ok": frappe.db.count("Bank") >= 5, "detail": None},
 	]
-	return {"items": items, "ready": all(i["ok"] for i in items)}
+	return {"items": items, "ready": all(i["ok"] for i in items), "leave_plan": leave_plan(),
+			"in_use": bool(frappe.db.count("Employee"))}
 
 
 @frappe.whitelist()

@@ -3153,6 +3153,16 @@ def run(site):
                 conf.remove(r)
             conf.save()
             hajj_existed = frappe.db.exists("Leave Type", "Hajj Leave")
+            # a site that named its own leave types: they are recognised (English or Arabic) and linked, not duplicated
+            custom = ["إجازة حج AXT", "AXT Death of Brother", "AXT Death of Relative"]
+            for lt in custom:
+                if not frappe.db.exists("Leave Type", lt):
+                    frappe.get_doc({"doctype": "Leave Type", "leave_type_name": lt}).insert()
+            all_std = {"Hajj Leave", "Bereavement Leave", "Bereavement Leave (Sibling)"}
+            assert defaults._match("Hajj", set(all_std)) == "إجازة حج AXT"
+            assert defaults._match("Bereavement (Sibling)", set(all_std)) == "AXT Death of Brother"
+            assert defaults._match("Bereavement", set(all_std)) == "AXT Death of Relative"  # the sibling one is not taken for it
+            assert defaults._match("Hajj", set(all_std) | {"إجازة حج AXT"}) is None
             comp = frappe.get_doc({"doctype": "Company", "company_name": "AXT Defaults Co " + frappe.generate_hash(length=4),
                                    "abbr": "AXD" + frappe.generate_hash(length=2).upper(), "default_currency": "SAR",
                                    "country": "Saudi Arabia"})
@@ -3185,8 +3195,13 @@ def run(site):
                         frappe.delete_doc("Company", comp.name, force=True)
                     except Exception as exc:
                         print("  NOTE company cleanup:", str(exc)[:120])
-                if not hajj_existed and frappe.db.exists("Leave Type", "Hajj Leave"):
-                    pass  # keep: a real statutory type
+                conf2 = frappe.get_single("AlphaX HR Settings")
+                for r in [r for r in conf2.leave_rules if r.leave_type in custom]:
+                    conf2.remove(r)
+                conf2.save()
+                for lt in custom:
+                    if frappe.db.exists("Leave Type", lt):
+                        frappe.delete_doc("Leave Type", lt, force=True)
         check("ready defaults: new company gets a Saudi holiday list, missing statutory leave types created, safe to run again",
               ready_defaults_on_a_new_site)
 

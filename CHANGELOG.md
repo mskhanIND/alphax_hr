@@ -2,6 +2,12 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.39.1 — 2026-11-12
+
+- **No duplicate leave types on sites already in use.** *Prepare defaults* now recognises a site's own leave types by their words in English or Arabic (e.g. "Hajj Vacation", "إجازة حج", "Death of Brother") and links them to the statutory rule instead of creating a standard one beside them; sibling bereavement is told apart from general bereavement. For Annual Leave it links a type named annual / vacation, or the type the site already allocates most, before creating one. Only one clear match is linked; anything unclear is created under the standard name.
+- The card shows, before anything happens, which existing leave type each rule will use and which will be created; on a site with employees it asks to confirm.
+- Unchanged: nothing runs by itself on a site that has employees; holiday list, shift and payroll account are only filled where empty.
+
 ## 0.39.0 — 2026-11-12
 
 - **Ready to use after install.** A new site gets, without any button: the Saudi statutory leave types with their rules (maternity, paternity, marriage, bereavement, sibling bereavement, iddah, examination, Hajj, sick) and Annual Leave, the salary components, Saudi banks, a General Shift, request types, notifications and labour-law catalogues. Leave types that already exist under a common name are linked, never duplicated.
