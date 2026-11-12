@@ -3,7 +3,7 @@ import { Fingerprint, GitBranch,
   BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History, Network, CalendarCheck, Activity, ChevronDown, Inbox, Gavel, ShieldAlert, Receipt, Star, ArrowRightLeft, LayoutGrid, Folder, Download, Megaphone, MapPin, LocateFixed, LifeBuoy, BookOpen, BellRing, Hourglass, HandCoins, BadgePercent, BookOpenCheck, UserPlus } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { NavLink, Link, useLocation } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { api, boot, signOut } from '../lib/api'
 import { useI18n } from '../lib/i18n'
 import { useSession } from '../lib/session'
@@ -294,12 +294,24 @@ function RestartBanner() {
   const s = useSession()
   const server = boot.version
   // only the people who can finish an update (System Managers) see it; employees and HR get no technical banner
-  if (!s.roles?.includes('System Manager') && !s.persona?.system_manager) return null
-  if (!server || server === 'dev' || typeof __APP_VERSION__ === 'undefined' || server === __APP_VERSION__) return null
+  const sm = !!(s.roles?.includes('System Manager') || s.persona?.system_manager)
+  const st = useQuery<any>({ queryKey: ['ops-status'], queryFn: api.opsStatus, enabled: sm, refetchInterval: (q) => (q.state.data?.log && /Update started/.test(q.state.data.log) && !/✓|✗|failed/.test(q.state.data.log) ? 5000 : 30 * 60_000) })
+  const go = useMutation({ mutationFn: api.opsStartUpdate, onSuccess: () => st.refetch() })
+  if (!sm) return null
+  const screens = typeof __APP_VERSION__ === 'undefined' ? null : __APP_VERSION__
+  const restart = server && server !== 'dev' && screens && server !== screens
+  const d = st.data
+  if (!restart && !d?.migrate_pending && !d?.update_available && !go.data) return null
+  const cmd = d?.command ?? `bench alphax-update --site ${boot.site}`
   return (
     <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-      <b>{t('Update not finished')}</b>: {t('the screens are version')} {__APP_VERSION__}, {t('the server is still running')} {server}. {t('Some actions will fail until the server administrator runs')}{' '}
-      <code className="rounded bg-white/70 px-1 font-mono text-xs">bench --site {boot.site} migrate &amp;&amp; bench restart</code>
+      {restart ? <><b>{t('Update not finished')}</b>: {t('the screens are version')} {screens}, {t('the server is still running')} {server}. </>
+        : d?.migrate_pending ? <><b>{t('Update not finished')}</b>: {t('the code is')} {d.running}, {t('the database was last migrated for')} {d.migrated}. </>
+        : d?.update_available ? <><b>{t('A new version is available')}</b>: {d.latest} ({t('you have')} {d.running}). </> : null}
+      {t('Run on the server:')} <code className="rounded bg-white/70 px-1 font-mono text-xs">{cmd}</code>
+      {d?.web_update && <button type="button" onClick={() => go.mutate()} disabled={go.isPending} className="ms-2 rounded-lg bg-amber-700 px-2 py-0.5 text-xs font-semibold text-white">{t('Update now')}</button>}
+      {d?.log && /Update started/.test(d.log) && <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-white/70 p-2 text-[11px]">{d.log}</pre>}
+      {go.error && <div className="mt-1 text-red-700">{String((go.error as any).message ?? go.error)}</div>}
     </div>
   )
 }

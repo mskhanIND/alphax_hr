@@ -69,6 +69,17 @@ React SPA (/alphax)  ──►  alphax_hr API (permission-checked)  ──►  F
 | Attendance devices | HR (set up: HR Manager) | Fingerprint and face devices of any brand. **ZKTeco** (and other ADMS/iClock firmwares) push punches straight to AlphaX: point the device's *Cloud Server* to the site — no software on a PC; a device that connects before it is added waits for HR to enable it; users on the device, model and last contact are shown; commands to the device (upload all logs again, send employees, read info, reboot). **Other brands** (Hikvision event push, Suprema, Anviz, Dahua or a local bridge) post to the push API with a per-device token. **Attendance software** (ZKTeco BioTime, ZKTime/ZKAccess, an ADMS server or own tables on MySQL, PostgreSQL or SQL Server) is read every few minutes; one central database covers all its terminals, each listed with its own status and branch. **Log files** (attlog.dat from USB, CSV) can be imported. Every punch is kept as a device log, matched to the employee by attendance device ID, Employee ID or Iqama, and becomes an Employee Checkin (duplicates skipped); unknown device users are linked to an employee in one click and their punches imported |
 | Compliance | HR | Nitaqat estimate, Iqama/work permit/passport/contract expiry, data-readiness checks (holiday lists, approvers, GOSI dates, Iqama data …) |
 
+
+### Updating
+
+```bash
+cd ~/frappe-bench
+bench alphax-update            # pull, migrate every AlphaX site, build, restart, verify
+bench alphax-update --dry-run  # show the steps only
+```
+
+Docker / containers: `bench alphax-update --no-restart`, then restart the containers.
+
 ## Install
 
 Requirements: Frappe/ERPNext/HRMS v15 (v16 targeted), Node 18+ only if you rebuild the frontend.

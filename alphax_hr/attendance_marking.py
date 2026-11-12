@@ -18,7 +18,7 @@ from collections import defaultdict
 
 import frappe
 from frappe import _
-from frappe.utils import get_datetime, add_days, cint, flt, get_first_day, getdate, nowdate
+from frappe.utils import get_last_day, get_datetime, add_days, cint, flt, get_first_day, getdate, nowdate
 
 from alphax_hr.saudi import attendance as rules
 
@@ -93,7 +93,7 @@ def _submit(employee, day, status, late, early, shift, company):
 	return a.name
 
 
-def mark(employees=None, start=None, end=None):
+def mark(employees=None, start=None, end=None, progress=None):
 	"""Mark the days from ``start`` to ``end`` (default: the re-check window up to yesterday). Returns counts."""
 	conf = _conf()
 	counts = defaultdict(int)
@@ -113,10 +113,21 @@ def mark(employees=None, start=None, end=None):
 	existing, ours = _existing(emps, start, end), _ours()
 	paid = _paid(emps, start, end)
 	month = getdate(get_first_day(start))
+	months = []
+	m = month
+	while m <= end:
+		months.append(m)
+		m = getdate(add_days(get_last_day(m), 1))
+	total, step = len(emps) * len(months), 0
 	while month <= end:
+		if progress:
+			progress(_("Marking attendance for {0}").format(month.strftime("%B %Y")), step, total)
 		data = month_data(str(month), employees=emps, ignore_attendance=set(ours))
 		for row in data["rows"]:
 			emp = row["employee"]
+			step += 1
+			if progress and step % 10 == 0:
+				progress(None, step, total)
 			for cell in row["cells"]:
 				d = getdate(cell["date"])
 				if not start <= d <= end:
@@ -167,7 +178,7 @@ def _paid(emps, start, end):
 	return out
 
 
-def update_period(start, end, employees=None):
+def update_period(start, end, employees=None, progress=None):
 	"""Bring a past period up to date: read punches again from every attendance database, retry punches refused for a
 	reason since fixed (e.g. a missing shift), then mark attendance for the period. Days in submitted salary slips are
 	left alone."""
@@ -177,9 +188,13 @@ def update_period(start, end, employees=None):
 	out = {"from": str(start), "to": str(end), "punches": {}, "retried": {}, "attendance": {}, "sources": []}
 	if start > end:
 		return out
-	for name in frappe.get_all(dv.DEVICE, filters={"enabled": 1, "connection": ["like", "Database pull%"]}, pluck="name"):
+	say = progress or (lambda *a, **k: None)
+	conns = frappe.get_all(dv.DEVICE, filters={"enabled": 1, "connection": ["like", "Database pull%"]}, pluck="name")
+	for i, name in enumerate(conns):
+		say(_("Reading punches from {0} ({1} of {2})").format(name, i + 1, len(conns)), 0, 0)
 		try:
-			res = dv.backfill(frappe.get_doc(dv.DEVICE, name), str(start), f"{end} 23:59:59")
+			res = dv.backfill(frappe.get_doc(dv.DEVICE, name), str(start), f"{end} 23:59:59",
+							  progress=lambda step=None, done=None, total=None: say(None, done, total))
 			out["sources"].append({"device": name, **res})
 			for k, v in res.items():
 				out["punches"][k] = out["punches"].get(k, 0) + v
@@ -188,10 +203,11 @@ def update_period(start, end, employees=None):
 	errs = frappe.get_all(dv.LOG, filters={"status": "Error", "punch_time": ["between", [get_datetime(start),
 							get_datetime(f"{end} 23:59:59")]]}, pluck="name", limit_page_length=50000)
 	if errs:
+		say(_("Retrying {0} refused punches").format(len(errs)), 0, len(errs))
 		frappe.db.set_value(dv.LOG, {"name": ["in", errs]}, "status", "Pending", update_modified=False)
 		out["retried"] = dv.process(errs)
 	frappe.db.commit()
-	out["attendance"] = mark(employees=employees, start=start, end=end)
+	out["attendance"] = mark(employees=employees, start=start, end=end, progress=progress)
 	frappe.cache().set_value("alphax:last_period_update", {"at": str(frappe.utils.now_datetime()), **out})
 	return out
 
@@ -209,11 +225,10 @@ def update_past(start: str, end: str):
 		frappe.throw(_("The end date is before the start date."))
 	if (e - s).days > 62:
 		frappe.throw(_("Update at most two months at a time."))
-	if (e - s).days < 10 or frappe.flags.in_test:
-		return {"queued": False, **update_period(s, e)}
-	frappe.enqueue("alphax_hr.attendance_marking.update_period", queue="long", timeout=7200,
-				   job_id="alphax-update-period", deduplicate=True, start=str(s), end=str(e), enqueue_after_commit=True)
-	return {"queued": True, "from": str(s), "to": str(e)}
+	from alphax_hr import progress
+
+	return progress.launch("period-update", _("Update past days {0} to {1}").format(s, e),
+						   "alphax_hr.attendance_marking.update_period", start=str(s), end=str(e))
 
 
 @frappe.whitelist()

@@ -100,7 +100,7 @@ def ingest(dev, rows, source):
 SHIFT_ERROR = "%shift%"
 
 
-def retry_errors(employees=None, since=None, only_shift=False):
+def retry_errors(employees=None, since=None, only_shift=False, progress=None):
 	"""Try refused punches again (after HR fixed the cause, e.g. assigned a shift). Returns process() counts."""
 	filters = {"status": "Error"}
 	if employees:
@@ -113,12 +113,19 @@ def retry_errors(employees=None, since=None, only_shift=False):
 	if not names:
 		return {"imported": 0, "unmatched": 0, "duplicate": 0, "error": 0}
 	frappe.db.set_value(LOG, {"name": ["in", names]}, "status", "Pending", update_modified=False)
-	return process(names)
+	out = {}
+	for i in range(0, len(names), 500):
+		if progress:
+			progress(_("Importing refused punches"), i, len(names))
+		for k, v in process(names[i:i + 500]).items():
+			out[k] = out.get(k, 0) + v
+		frappe.db.commit()
+	return out
 
 
 def on_shift_assignment(doc, method=None):
 	"""A shift was assigned: punches refused for lack of one in that period are imported now."""
-	if doc.docstatus != 1:
+	if doc.docstatus != 1 or frappe.flags.alphax_no_shift_retry:  # the bulk screen imports them itself
 		return
 	frappe.enqueue("alphax_hr.devices.retry_errors", queue="short", enqueue_after_commit=True, now=frappe.flags.in_test,
 				   employees=[doc.employee], since=doc.start_date, only_shift=True)
@@ -408,7 +415,7 @@ def _file(dev, data):
 	return ingest(dev, [{"user": r[0], "time": r[1], "state": r[2]} for r in data], "Database pull")
 
 
-def backfill(dev, start, end=None, chunk=5000):
+def backfill(dev, start, end=None, chunk=5000, progress=None):
 	"""Read punches between ``start`` and ``end`` again (for history, or a terminal included later). Already imported
 	punches are skipped; the regular pull position is not moved."""
 	since, total = str(get_datetime(start)), {}
@@ -421,6 +428,8 @@ def backfill(dev, start, end=None, chunk=5000):
 		for k, v in _file(dev, data).items():
 			total[k] = total.get(k, 0) + v
 		frappe.db.commit()
+		if progress:
+			progress(_("Read up to {0}").format(str(data[-1][1])[:16]) if data else None, total.get("new", 0) + total.get("skipped", 0), None)
 		if len(data) < chunk:
 			break
 		last = str(get_datetime(data[-1][1]).replace(microsecond=0, tzinfo=None))
@@ -867,8 +876,8 @@ def sync_status(dev, start=None, end=None):
 			"gap": max(available - synced, 0), "terminals": sorted(rows, key=lambda r: -r["available"])}
 
 
-def backfill_job(name, start, end=None):
-	return backfill(frappe.get_doc(DEVICE, name), start, end)
+def backfill_job(name, start, end=None, progress=None):
+	return backfill(frappe.get_doc(DEVICE, name), start, end, progress=progress)
 
 
 def test_connection(dev):

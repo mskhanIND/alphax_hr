@@ -2,6 +2,13 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.36.0 — 2026-11-12
+
+- **`bench alphax-update`: update in one step.** Pulls the code, installs it, migrates every site that has AlphaX HR (or `--site`), builds, restarts, then asks the running web server which version it serves and says plainly if a restart did not take (`--no-restart` for Docker, `--dry-run` to see the steps).
+- **The update banner tells the whole story** (System Managers only): server not restarted, database not migrated for the running code, or a newer version available, with the exact command. Servers whose owner adds `"alphax_web_update": 1` to site_config get an *Update now* button that runs the command in the background and shows its log.
+- **Progress for long jobs.** *Assign shifts and import*, *Update past days* and *Read the missing punches* now run as background jobs with a live progress panel: current step, how far (e.g. 120 / 340), elapsed time, a warning when a job has not started after a minute (background workers stopped) or has not moved for 2 minutes, and the result when done. The window can be closed; reopening it shows the same job.
+- Fix: after assigning shifts the screen reported *Imported: 0* while a background job imported the punches; the import now happens once, in the same job, with the real count.
+
 ## 0.35.0 — 2026-11-12
 
 - **Attendance health** on Attendance devices: the go-live checklist from punches to correct attendance, in order, each with a fix:

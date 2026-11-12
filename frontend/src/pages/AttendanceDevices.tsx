@@ -3,6 +3,7 @@ import clsx from 'clsx'
 import { Activity, AlertTriangle, UserCheck, CalendarCheck, Cpu, Database, Pencil, Plus, RefreshCw, Search, Trash2, Upload, Users } from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { JobProgress } from '../components/JobProgress'
 import { LinkInput } from '../components/LinkInput'
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, Table, Tabs, Textarea } from '../components/ui'
 import { api, uploadFile } from '../lib/api'
@@ -256,7 +257,8 @@ function SyncPanel({ device, can }: { device: any; can: boolean }) {
         </Table>}
         <p className="text-xs text-muted">{t('Reading again never doubles a punch. A terminal you include later: include it, then read the missing punches from the date you need.')}</p>
       </>}
-      {bf.data && <p className="text-sm text-emerald-700">{bf.data.queued ? t('Reading in the background; refresh in a few minutes.') : `${t('New punches')}: ${bf.data.new} · ${t('Imported')}: ${bf.data.imported} · ${t('Unmatched')}: ${bf.data.unmatched}`}</p>}
+      {bf.data && (bf.data.status ? <JobProgress job={`backfill-${device.name}`} onDone={() => qc.invalidateQueries({ queryKey: ['device-sync', device.name] })}>{(r) => r && <p className="mt-1 text-sm text-emerald-700">{t('New punches')}: {r.new ?? 0} · {t('Imported')}: {r.imported ?? 0} · {t('Unmatched')}: {r.unmatched ?? 0}</p>}</JobProgress>
+        : <p className="text-sm text-emerald-700">{t('New punches')}: {bf.data.new} · {t('Imported')}: {bf.data.imported} · {t('Unmatched')}: {bf.data.unmatched}</p>)}
       {bf.error && <ErrorBox error={bf.error} />}
     </div>
   )
@@ -548,13 +550,15 @@ function PastDays({ onClose }: { onClose: () => void }) {
   const [range, setRange] = useState<[string, string]>(PRESETS.ten)
   const last = useQuery<any>({ queryKey: ['period-update'], queryFn: api.lastPeriodUpdate })
   const run = useMutation({ mutationFn: () => api.updatePastAttendance(range[0], range[1]),
-    onSuccess: () => { ['attendance-marking', 'period-update', 'register', 'devices', 'shift-gaps', 'device-logs'].forEach((k) => qc.invalidateQueries({ queryKey: [k] })) } })
-  const r = run.data && !run.data.queued ? run.data : null
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['job', 'period-update'] }) })
+  const job = useQuery<any>({ queryKey: ['job', 'period-update'], queryFn: () => api.jobStatus('period-update') })
+  const refresh = () => ['attendance-marking', 'period-update', 'register', 'devices', 'shift-gaps', 'device-logs', 'attendance-health'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }))
+  const r = job.data?.status === 'done' ? job.data.result : null
   const choose = (k: string) => { setPreset(k); if (PRESETS[k]) setRange(PRESETS[k]) }
   const show = r ?? last.data
   return (
     <Modal open onClose={onClose} title={t('Update past days')}
-      footer={<><Button variant="secondary" onClick={onClose}>{t('Close')}</Button><Button loading={run.isPending} onClick={() => run.mutate()}>{t('Update')}</Button></>}>
+      footer={<><Button variant="secondary" onClick={onClose}>{t('Close')}</Button><Button loading={run.isPending} disabled={['queued', 'running'].includes(job.data?.status)} onClick={() => run.mutate()}>{t('Update')}</Button></>}>
       <div className="flex flex-col gap-4 text-sm">
         <p className="rounded-xl bg-brand-50 p-3 text-xs text-brand">{t('For each day of the period AlphaX reads the punches again from the attendance databases (nothing is doubled), retries punches refused earlier (for example before a shift was assigned) and marks attendance. Attendance entered by HR, attendance requests and leave are kept, and days already paid in a submitted salary slip are not changed.')}</p>
         <div className="flex flex-wrap gap-2">
@@ -565,7 +569,7 @@ function PastDays({ onClose }: { onClose: () => void }) {
           <Field label={t('From')}><Input type="date" value={range[0]} max={iso(yday)} onChange={(e) => { setPreset('custom'); setRange([e.target.value, range[1]]) }} /></Field>
           <Field label={t('To')}><Input type="date" value={range[1]} max={iso(yday)} onChange={(e) => { setPreset('custom'); setRange([range[0], e.target.value]) }} /></Field>
         </div>
-        {run.data?.queued && <p className="text-emerald-700">{t('Running in the background; this can take a few minutes for a whole month. Open this window again to see the result.')}</p>}
+        {(run.data || (job.data && job.data.status !== 'done')) && <JobProgress job="period-update" onDone={refresh} />}
         {run.error && <ErrorBox error={run.error} />}
         {show && (
           <div className="rounded-xl border border-line p-3">
@@ -595,8 +599,10 @@ function ShiftGaps({ can, openSignal = 0 }: { can: boolean; openSignal?: number 
   const [start, setStart] = useState('')
   const fix = useMutation({
     mutationFn: () => api.deviceFixShiftGaps(rows.filter((r: any) => sel[r.employee] ?? true).map((r: any) => r.employee), mode === 'one' ? shift : null, start || earliest, mode === 'default' ? 1 : 0),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['shift-gaps'] }); qc.invalidateQueries({ queryKey: ['devices'] }); qc.invalidateQueries({ queryKey: ['device-logs'] }); setSel({}) },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['job', 'shift-fix'] }); setSel({}) },
   })
+  const existing = useQuery<any>({ queryKey: ['job', 'shift-fix'], queryFn: () => api.jobStatus('shift-fix'), enabled: open })
+  const jobSeen = !!existing.data && (['queued', 'running'].includes(existing.data.status) || !!fix.data)
   const rows: any[] = q.data?.employees ?? []
   if (!rows.length && !fix.data && !open) return null
   const earliest = rows.length ? rows.map((r) => r.first.slice(0, 10)).sort()[0] : ''
@@ -633,9 +639,10 @@ function ShiftGaps({ can, openSignal = 0 }: { can: boolean; openSignal?: number 
               <td className="text-sm">{r.assignment ? `${r.assignment.shift_type} · ${r.assignment.start_date}${r.assignment.end_date ? ` → ${r.assignment.end_date}` : ''}` : <span className="text-amber-700">{t('None')}</span>}</td>
             </tr>)}
           </Table>
-          {fix.data && <div className="text-sm"><span className="text-emerald-700">{t('Shifts assigned')}: {fix.data.created} · {t('Imported')}: {fix.data.imported}</span>
-            {fix.data.error > 0 && <span className="text-amber-700"> · {t('Still refused')}: {fix.data.error}</span>}
-            {fix.data.failed?.length > 0 && <ul className="mt-1 list-disc ps-5 text-amber-800">{fix.data.failed.map((f: any) => <li key={f.employee}>{f.employee}: {f.error}</li>)}</ul>}</div>}
+          {(fix.data || jobSeen) && <JobProgress job="shift-fix" onDone={() => { qc.invalidateQueries({ queryKey: ['shift-gaps'] }); qc.invalidateQueries({ queryKey: ['devices'] }) }}>{(r) => r && <div className="mt-1 text-sm">
+            <span className="text-emerald-700">{t('Shifts assigned')}: {r.created} · {t('Imported')}: {r.imported ?? 0}</span>
+            {r.error > 0 && <span className="text-amber-700"> · {t('Still refused')}: {r.error}</span>}
+            {r.failed?.length > 0 && <ul className="mt-1 list-disc ps-5 text-amber-800">{r.failed.map((f: any) => <li key={f.employee}>{f.employee}: {f.error}</li>)}</ul>}</div>}</JobProgress>}
           {fix.error && <ErrorBox error={fix.error} />}
         </div>
       </Modal>}

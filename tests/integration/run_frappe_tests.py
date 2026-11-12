@@ -3296,6 +3296,21 @@ def run(site):
                 up = am.update_period(min(days), max(days), employees=[emp])
                 assert up["from"] == str(min(days)) and up["attendance"].get("unchanged", 0) >= 2, up
                 expect_error(lambda: am.update_past(str(max(days)), str(min(days))), frappe.ValidationError)
+                from alphax_hr import progress as pg
+                steps = []
+                orig_update = pg.update
+                pg.update = lambda job, step=None, done=None, total=None, status="running": (steps.append((step, done, total)), orig_update(job, step, done, total, status))
+                try:
+                    st = pg.launch("axt-period", "Test", "alphax_hr.attendance_marking.update_period", background=False,
+                                   start=str(min(days)), end=str(max(days)), employees=[emp])
+                finally:
+                    pg.update = orig_update
+                assert st["status"] == "done" and st["result"]["from"] == str(min(days)) and st["finished"], st
+                assert any(s_ and "Marking attendance" in s_ for s_, _d, _t in steps), steps  # the screen sees the steps
+                assert pg.status("axt-period")["status"] == "done"
+                pg.run_method("axt-period2", "alphax_hr.attendance_marking.update_period",  # the background entry point
+                              {"start": str(min(days)), "end": str(max(days)), "employees": [emp]})
+                assert pg.status("axt-period2")["status"] == "done"
                 # payroll on leave basis: absences would be paid -> the check says so and offers the fix
                 frappe.db.set_single_value("Payroll Settings", "payroll_based_on", "Leave")
                 frappe.set_user(f["hr"])

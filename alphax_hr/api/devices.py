@@ -187,13 +187,28 @@ def shift_gaps():
 
 
 @frappe.whitelist(methods=["POST"])
-def fix_shift_gaps(employees: str | list, shift_type: str | None = None, start_date: str | None = None, use_default: int | str = 0):
+def fix_shift_gaps(employees: str | list, shift_type: str | None = None, start_date: str | None = None, use_default: int | str = 0,
+				   background: int | str = 0):
 	"""Assign a shift from ``start_date`` with no end date (or each employee's default shift), then import their refused
-	punches."""
+	punches. With ``background`` it runs as a job the screen follows (alphax_hr.progress)."""
 	require_hr_manager()
+	names = parse_json(employees) or []
+	if not cint(use_default) and not shift_type:
+		frappe.throw(_("Choose a shift type."))
+	if cint(background):
+		from alphax_hr import progress
+
+		return progress.launch("shift-fix", _("Assign shifts and import refused punches"), "alphax_hr.api.devices.assign_and_import",
+							   total=len(names), employees=names, shift_type=shift_type, start_date=start_date,
+							   use_default=cint(use_default))
+	return assign_and_import(names, shift_type, start_date, cint(use_default))
+
+
+def assign_and_import(employees, shift_type=None, start_date=None, use_default=0, progress=None):
 	from alphax_hr.api import shifts
 
-	names = parse_json(employees) or []
+	say = progress or (lambda *a, **k: None)
+	names = list(employees or [])
 	created, failed = [], []
 	if cint(use_default):
 		groups = {}
@@ -207,14 +222,22 @@ def fix_shift_gaps(employees: str | list, shift_type: str | None = None, start_d
 		if not shift_type:
 			frappe.throw(_("Choose a shift type."))
 		groups = {shift_type: names}
-	for st, emps in groups.items():
-		for i in range(0, len(emps), shifts.MAX_ASSIGN):
-			res = shifts.assign(emps[i:i + shifts.MAX_ASSIGN], st, start_date or frappe.utils.today())
-			created += res["created"]
-			failed += res["failed"]
-	frappe.flags.in_test or frappe.db.commit()
-	counts = dv.retry_errors(employees=names, since=start_date, only_shift=True)
-	return {"created": len(created), "failed": failed, **counts}
+	frappe.flags.alphax_no_shift_retry = True  # imported below, in one place, with the real count
+	try:
+		done = 0
+		for st, emps in groups.items():
+			for i in range(0, len(emps), 50):
+				say(_("Assigning {0}").format(st), done, len(names))
+				res = shifts.assign(emps[i:i + 50], st, start_date or frappe.utils.today())
+				created += res["created"]
+				failed += res["failed"]
+				done += len(emps[i:i + 50])
+				frappe.flags.in_test or frappe.db.commit()
+	finally:
+		frappe.flags.alphax_no_shift_retry = False
+	say(_("Importing refused punches"), 0, 0)
+	counts = dv.retry_errors(employees=names, since=start_date, only_shift=True, progress=progress)
+	return {"created": len(created), "failed": failed, "imported": 0, "error": 0, **counts}
 
 
 @frappe.whitelist(methods=["POST"])
@@ -235,18 +258,19 @@ def sync_status(name: str, start: str | None = None, end: str | None = None):
 
 
 @frappe.whitelist(methods=["POST"])
-def backfill(name: str, start: str, end: str | None = None):
+def backfill(name: str, start: str, end: str | None = None, background: int | str = 0):
 	"""Read a period again. Small periods run now; larger ones in the background."""
 	require_hr_manager()
 	doc = frappe.get_doc(dv.DEVICE, name)
 	if doc.connection == dv.TERMINAL and doc.source_device:
 		doc = frappe.get_doc(dv.DEVICE, doc.source_device)
 	status = dv.sync_status(doc, start, end)
-	if status["available"] <= 5000:
+	if status["available"] <= 5000 and not cint(background):
 		return {"queued": False, **dv.backfill(doc, start, end)}
-	frappe.enqueue("alphax_hr.devices.backfill_job", queue="long", timeout=7200, job_id=f"alphax-backfill-{doc.name}",
-				   deduplicate=True, name=doc.name, start=start, end=end, enqueue_after_commit=True)
-	return {"queued": True, "available": status["available"]}
+	from alphax_hr import progress
+
+	return progress.launch(f"backfill-{doc.name}", _("Read missing punches from {0}").format(start),
+						   "alphax_hr.devices.backfill_job", total=status["available"], name=doc.name, start=start, end=end)
 
 
 @frappe.whitelist(methods=["POST"])
