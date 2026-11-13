@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Gavel, Plus } from 'lucide-react'
+import { Gavel, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ActivityDrawer } from '../components/ActivityDrawer'
 import { LinkInput } from '../components/LinkInput'
@@ -67,12 +67,43 @@ function NewPenalty({ open, onClose, seed }: { open: boolean; onClose: () => voi
   )
 }
 
+const ACTIONS = ['Warning', 'Deduction', 'Suspension', 'Termination']
+
+/** One row per occurrence: what happens the 1st, 2nd, 3rd… time within 180 days. */
+function StepsEditor({ steps, onChange }: { steps: any[]; onChange: (v: any[]) => void }) {
+  const { t } = useI18n()
+  const put = (i: number, k: string, v: any) => onChange(steps.map((s, j) => j === i ? { ...s, [k]: v } : s))
+  const cost = (s: any) => s.action === 'Deduction' || s.action === 'Suspension'
+  return (
+    <div className="grid gap-2">
+      <div className="hidden grid-cols-[6rem_1fr_7rem_7rem_2.5rem] gap-2 text-xs text-muted sm:grid">
+        <span>{t('Occurrence')}</span><span>{t('Action')}</span><span>{t('Days of wage')}</span><span>{t('% of a day')}</span><span />
+      </div>
+      {steps.map((s, i) => (
+        <div key={i} className="grid grid-cols-2 items-center gap-2 rounded-xl border border-line p-2 sm:grid-cols-[6rem_1fr_7rem_7rem_2.5rem] sm:border-0 sm:p-0">
+          <span className="text-sm font-medium">{t('Occurrence')} {i + 1}</span>
+          <Select value={s.action} onChange={(e) => onChange(steps.map((x, j) => j === i ? (cost({ action: e.target.value }) ? { ...x, action: e.target.value } : { action: e.target.value }) : x))}>
+            {ACTIONS.map((a) => <option key={a} value={a}>{t(a)}</option>)}
+          </Select>
+          <Input type="number" min={0} max={5} step="0.5" disabled={!cost(s)} value={cost(s) ? s.days ?? '' : ''} placeholder="0"
+            onChange={(e) => put(i, 'days', e.target.value === '' ? undefined : Number(e.target.value))} aria-label={t('Days of wage')} />
+          <Input type="number" min={0} max={100} step="5" disabled={s.action !== 'Deduction'} value={s.action === 'Deduction' ? s.percent ?? '' : ''} placeholder="0"
+            onChange={(e) => put(i, 'percent', e.target.value === '' ? undefined : Number(e.target.value))} aria-label={t('% of a day')} />
+          <Button size="sm" variant="ghost" aria-label={t('Remove')} disabled={steps.length <= 1} onClick={() => onChange(steps.filter((_, j) => j !== i))}><Trash2 className="size-4" /></Button>
+        </div>
+      ))}
+      <div><Button size="sm" variant="secondary" onClick={() => onChange([...steps, { ...(steps[steps.length - 1] ?? { action: 'Warning' }) }])}><Plus className="size-4" />{t('Add occurrence')}</Button></div>
+      <p className="text-xs text-muted">{t('Repeats beyond the last row use the last row. A single violation never costs more than 5 days\' wage, and no more than 5 days a month in total (Art. 72).')}</p>
+    </div>
+  )
+}
+
 function Schedule() {
   const { t, lang } = useI18n()
   const qc = useQueryClient()
   const q = useQuery({ queryKey: ['violation-types', 'all'], queryFn: () => api.violationTypes(1) })
   const [edit, setEdit] = useState<any>(null)
-  const [steps, setSteps] = useState('')
+  const [steps, setSteps] = useState<any[]>([])
   const m = useMutation({ mutationFn: (d: any) => api.saveViolationType(d.name, d.data),
     onSuccess: () => { setEdit(null); qc.invalidateQueries({ queryKey: ['violation-types'] }) } })
   if (q.isLoading) return <Spinner />
@@ -87,15 +118,15 @@ function Schedule() {
             <td>{t(v.category)}</td>
             {Array.from({ length: max }, (_, i) => <td key={i} className="text-sm">{stepText(v.steps[i], t)}</td>)}
             <td><input type="checkbox" checked={!!v.enabled} onChange={() => m.mutate({ name: v.name, data: { enabled: v.enabled ? 0 : 1 } })} aria-label="enabled" /></td>
-            <td><Button size="sm" variant="secondary" onClick={() => { setEdit(v); setSteps(JSON.stringify(v.steps, null, 2)) }}>{t('Edit')}</Button></td>
+            <td><Button size="sm" variant="secondary" onClick={() => { setEdit(v); setSteps(v.steps?.length ? v.steps.map((x: any) => ({ ...x })) : [{ action: 'Warning' }]) }}>{t('Edit')}</Button></td>
           </tr>
         ))}
       </Table>
       <Modal open={!!edit} onClose={() => setEdit(null)} wide title={edit ? vtTitle(edit, lang) : ''}
         footer={<><Button variant="secondary" onClick={() => setEdit(null)}>{t('Cancel')}</Button>
-          <Button loading={m.isPending} onClick={() => { try { m.mutate({ name: edit.name, data: { steps: JSON.parse(steps) } }) } catch { alert(t('The field list is not valid JSON.')) } }}>{t('Save')}</Button></>}>
-        <p className="mb-2 text-sm text-muted">{t('One entry per occurrence: action (Warning, Deduction, Suspension, Termination) with a percent of the daily wage, or days.')}</p>
-        <Textarea rows={12} className="font-mono text-xs" value={steps} onChange={(e) => setSteps(e.target.value)} />
+          <Button loading={m.isPending} onClick={() => m.mutate({ name: edit.name, data: { steps: steps.map((x) => Object.fromEntries(Object.entries(x).filter(([, v]) => v !== undefined && v !== ''))) } })}>{t('Save')}</Button></>}>
+        <p className="mb-3 text-sm text-muted">{t('What happens the first time, the second time, and so on, when the same violation repeats within 180 days.')}</p>
+        <StepsEditor steps={steps} onChange={setSteps} />
         {m.error && <ErrorBox error={m.error} />}
       </Modal>
     </Card>

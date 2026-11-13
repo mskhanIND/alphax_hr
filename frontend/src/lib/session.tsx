@@ -16,6 +16,7 @@ export interface Session {
   brand?: { title: string; tagline: string; logo: string; icon: string; custom: boolean }
   version: string
   gosi_enabled: boolean
+  legacy_hr?: boolean
 }
 
 const Ctx = createContext<Session | null>(null)

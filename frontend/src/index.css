@@ -30,3 +30,4 @@ body { background: var(--color-surface); color: var(--color-ink); font-family: v
 .oc-tree > ul { padding-top: 0; }
 .oc-tree > ul > li { padding-top: 0; }
 .oc-tree > ul > li::before, .oc-tree > ul > li::after { display: none; }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--color-brand); }

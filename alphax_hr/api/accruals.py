@@ -148,7 +148,7 @@ def runs(company: str | None = None):
 													  "leave_balance", "journal_entry", "modified"], order_by="month desc", limit=36)
 	for r in rows:
 		r.month, r.modified = str(r.month), str(r.modified)
-	return {"rows": rows, "companies": frappe.get_list("Company", pluck="name"),
+	return {"rows": rows, "companies": frappe.get_all("Company", pluck="name"),
 			"can_post": bool(set(frappe.get_roles()) & ROLES)}
 
 

@@ -108,7 +108,7 @@ def setup():
 	templates = [_template_dict(n) for n in frappe.get_all("Appraisal Template", pluck="name", order_by="name")]
 	return {"templates": templates,
 			"designations": frappe.get_all("Designation", fields=["name", "appraisal_template"], order_by="name"),
-			"companies": frappe.get_list("Company", pluck="name", order_by="name"),
+			"companies": frappe.get_all("Company", pluck="name", order_by="name"),
 			"departments": frappe.get_all("Department", filters={"is_group": 0}, pluck="name", order_by="name"),
 			"branches": frappe.get_all("Branch", pluck="name", order_by="name"),
 			"can_edit": bool(set(frappe.get_roles()) & {"HR Manager", "System Manager"})}

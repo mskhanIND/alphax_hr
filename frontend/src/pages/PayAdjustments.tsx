@@ -8,15 +8,16 @@ import { api } from '../lib/api'
 import { fmtMoney, fmtMonth, monthStart, todayISO } from '../lib/format'
 import { useI18n } from '../lib/i18n'
 
-function People({ ids, setIds, department, setDepartment }: { ids: string[]; setIds: (v: string[]) => void; department: string; setDepartment: (v: string) => void }) {
+/** Employees picked from the list are added at once; one typed but not added still counts (see withPending). */
+function People({ ids, setIds, department, setDepartment, pick, setPick }: { ids: string[]; setIds: (v: string[]) => void; department: string; setDepartment: (v: string) => void; pick: string; setPick: (v: string) => void }) {
   const { t } = useI18n()
-  const [pick, setPick] = useState('')
+  const add = (v: string) => { if (v && !ids.includes(v)) setIds([...ids, v]); setPick('') }
   return (
     <Field label={t('Employees')} hint={t('Add one or many, or a whole department.')}>
       <div className="flex flex-col gap-2">
         <div className="flex gap-2">
-          <div className="flex-1"><LinkInput doctype="Employee" value={pick} onChange={setPick} placeholder={t('Employee ID or name')} /></div>
-          <Button size="sm" variant="secondary" disabled={!pick} onClick={() => { if (!ids.includes(pick)) setIds([...ids, pick]); setPick('') }}><Plus className="size-4" />{t('Add')}</Button>
+          <div className="flex-1"><LinkInput doctype="Employee" value={pick} onChange={setPick} onSelect={add} placeholder={t('Employee ID or name')} /></div>
+          <Button size="sm" variant="secondary" disabled={!pick} onClick={() => add(pick)}><Plus className="size-4" />{t('Add')}</Button>
         </div>
         <div className="flex flex-wrap gap-1.5">
           {ids.map((e) => <span key={e} className="flex items-center gap-1 rounded-full bg-surface px-2.5 py-1 text-xs">{e}<button aria-label={t('Remove')} onClick={() => setIds(ids.filter((x) => x !== e))}><X className="size-3" /></button></span>)}
@@ -32,9 +33,10 @@ function NewAdjustment({ meta, onClose }: { meta: any; onClose: () => void }) {
   const qc = useQueryClient()
   const [d, setD] = useState<any>({ kind: 'Earning', category: 'Bonus', amount_type: 'Amount', amount: '', payroll_month: monthStart(todayISO()), reason: '', consent: 0, salary_component: '' })
   const [ids, setIds] = useState<string[]>([])
+  const [pick, setPick] = useState('')
   const [department, setDepartment] = useState('')
   const set = (k: string, v: unknown) => { pv.reset(); setD({ ...d, [k]: v }) }
-  const payload = { ...d, employees: ids, department: department || undefined }
+  const payload = { ...d, employees: pick && !ids.includes(pick) ? [...ids, pick] : ids, department: department || undefined }
   const pv = useMutation({ mutationFn: () => api.previewPayAdjustment(payload) })
   const m = useMutation({ mutationFn: () => api.createPayAdjustment(payload), onSuccess: () => { qc.invalidateQueries({ queryKey: ['pay-adjustments'] }); onClose() } })
   const cats: string[] = meta.categories[d.kind]
@@ -67,7 +69,7 @@ function NewAdjustment({ meta, onClose }: { meta: any; onClose: () => void }) {
         <Field label={t('Salary component')} hint={t('Blank: the default in Settings')}>
           <Select value={d.salary_component} onChange={(e) => set('salary_component', e.target.value)}><option value="">—</option>{comps.map((c: any) => <option key={c.name}>{c.name}</option>)}</Select>
         </Field>
-        <People ids={ids} setIds={(v) => { pv.reset(); setIds(v) }} department={department} setDepartment={(v) => { pv.reset(); setDepartment(v) }} />
+        <People ids={ids} setIds={(v) => { pv.reset(); setIds(v) }} department={department} setDepartment={(v) => { pv.reset(); setDepartment(v) }} pick={pick} setPick={(v) => { pv.reset(); setPick(v) }} />
       </div>
       {d.kind === 'Deduction' && meta.needs_consent.includes(d.category) && (
         <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" className="size-4 accent-[var(--color-brand)]" checked={!!d.consent} onChange={(e) => set('consent', e.target.checked ? 1 : 0)} />
@@ -95,8 +97,9 @@ function Increment({ onClose }: { onClose: () => void }) {
   const { t, lang } = useI18n()
   const [d, setD] = useState<any>({ mode: 'percent_all', value: 5, from_date: monthStart(todayISO()), reason: '' })
   const [ids, setIds] = useState<string[]>([])
+  const [pick, setPick] = useState('')
   const [department, setDepartment] = useState('')
-  const payload = { ...d, employees: ids, department: department || undefined }
+  const payload = { ...d, employees: pick && !ids.includes(pick) ? [...ids, pick] : ids, department: department || undefined }
   const pv = useMutation({ mutationFn: () => api.salaryIncrement(payload, 0) })
   const m = useMutation({ mutationFn: () => api.salaryIncrement(payload, 1) })
   const set = (k: string, v: unknown) => { pv.reset(); setD({ ...d, [k]: v }) }
@@ -112,7 +115,7 @@ function Increment({ onClose }: { onClose: () => void }) {
         <Field label={t('Value')}><Input type="number" min={0} value={d.value} onChange={(e) => set('value', Number(e.target.value))} /></Field>
         <Field label={t('From')}><Input type="date" value={d.from_date} onChange={(e) => set('from_date', e.target.value)} /></Field>
       </div>
-      <People ids={ids} setIds={(v) => { pv.reset(); setIds(v) }} department={department} setDepartment={(v) => { pv.reset(); setDepartment(v) }} />
+      <People ids={ids} setIds={(v) => { pv.reset(); setIds(v) }} department={department} setDepartment={(v) => { pv.reset(); setDepartment(v) }} pick={pick} setPick={(v) => { pv.reset(); setPick(v) }} />
       <Field label={t('Reason')}><Textarea rows={2} value={d.reason} onChange={(e) => set('reason', e.target.value)} /></Field>
       {(pv.error || m.error) && <ErrorBox error={pv.error || m.error} />}
       {res && (
@@ -135,7 +138,7 @@ function DeductionStatus() {
   const q = useQuery({ queryKey: ['deduction-status', emp, month], queryFn: () => api.deductionStatus(emp, month), enabled: !!emp, retry: false })
   const d = q.data
   return (
-    <Card title={t('Deduction limits for one employee')} subtitle={t('Everything deducted in a month against Art. 91, 92 and 93 before you add more')}>
+    <Card title={t('How much more can be deducted?')} subtitle={t('Before adding a deduction, pick the employee and month: AlphaX adds up everything already deducted (penalties, loans, damages, other deductions) and shows the room left. By law the total cannot pass half the wage (Art. 91–93); a loan instalment is at most 10% unless the employee agreed in writing, and damages at most 5 days\' wage a month.')}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label={t('Employee')}><LinkInput doctype="Employee" value={emp} onChange={setEmp} /></Field>
         <Field label={t('Month')}><Input type="month" value={month.slice(0, 7)} onChange={(e) => setMonth(`${e.target.value}-01`)} /></Field>

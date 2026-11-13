@@ -2,6 +2,21 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.40.0 — 2026-11-13
+
+Tester feedback round (Shaik).
+
+- **No more "no permission for Company".** Pick lists (Company, Department, Designation, Branch, Employment Type, Grade, Holiday List, Shift Type, Leave Type, Salary Component, Request Type) are read for anyone allowed into the screen, without needing desk permission on the list itself. Employees, Appraisal templates, Bulk actions, Accruals and Payroll control no longer fail on a new site. New sites also give HR Manager / HR User read access to those lists (only where none exists).
+- **Dropdowns open under the field**, with keyboard support and a "Nothing found" line, instead of the browser's suggestion list opening at the side.
+- **Bonus / deduction / increment:** an employee picked from the list is added at once; one typed but not yet added still counts when you Check or Post.
+- **Violations schedule:** *Edit* now shows one row per occurrence (action, days of wage, % of a day) with add/remove, instead of raw JSON.
+- **Requests:** search by name, employee ID, request type or details.
+- **Menu:** the ☰ button on desktop hides the side menu for a full-width workspace (remembered per browser).
+- **Opened records** have a clear Back button; opened from a notification it returns to Approvals.
+- **Cut-over readiness** shows in the menu only when an old HR app (or its documents) is on the site. The health-check group "Removed HR apps" is now "Saving HR records" (broken scripts and fields that stop HR records from saving).
+- The deduction-limits card explains what it does: "How much more can be deducted?"
+- Checkboxes use the brand colour.
+
 ## 0.39.1 — 2026-11-12
 
 - **No duplicate leave types on sites already in use.** *Prepare defaults* now recognises a site's own leave types by their words in English or Arabic (e.g. "Hajj Vacation", "إجازة حج", "Death of Brother") and links them to the statutory rule instead of creating a standard one beside them; sibling bereavement is told apart from general bereavement. For Annual Leave it links a type named annual / vacation, or the type the site already allocates most, before creating one. Only one clear match is linked; anything unclear is created under the standard name.

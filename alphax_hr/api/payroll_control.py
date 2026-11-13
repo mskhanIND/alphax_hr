@@ -487,7 +487,7 @@ def _out(doc, with_checklist=True):
 @frappe.whitelist()
 def companies():
 	require_hr()
-	return frappe.get_list("Company", pluck="name", order_by="name asc")
+	return frappe.get_all("Company", pluck="name", order_by="name asc")
 
 
 @frappe.whitelist()

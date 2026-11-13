@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileText, MessageCircle, Plus } from 'lucide-react'
+import { FileText, MessageCircle, Plus, Search } from 'lucide-react'
 import { useState } from 'react'
 import { ActivityDrawer } from '../components/ActivityDrawer'
 import { RequestForm, typeTitle } from '../components/RequestForm'
@@ -65,6 +65,7 @@ export default function Requests() {
   const [forEmp, setForEmp] = useState('')
   const [act, setAct] = useState<{ row: any; action: string } | null>(null)
   const [comment, setComment] = useState('')
+  const [find, setFind] = useState('')
   const qc = useQueryClient()
   const types = useQuery({ queryKey: ['request-types'], queryFn: () => api.requestTypes() })
   const q = useQuery({ queryKey: ['requests', status, rtype, overdue], queryFn: () => api.allRequests({ status, request_type: rtype, overdue: overdue ? 1 : 0 }), enabled: tab === 'list' })
@@ -75,9 +76,12 @@ export default function Requests() {
     onSuccess: () => { setAct(null); setComment(''); qc.invalidateQueries({ queryKey: ['requests'] }); qc.invalidateQueries({ queryKey: ['inbox'] }) },
   })
   const typeOf = (n: string) => types.data?.find((x) => x.name === n)
+  const needle = find.trim().toLowerCase()
+  const rows = (q.data?.rows ?? []).filter((r: any) => !needle || [r.employee_name, r.employee, r.name, r.request_type, typeTitle(typeOf(r.request_type), lang, r.request_type), r.reason, detailsText(r.details)]
+    .some((x) => String(x ?? '').toLowerCase().includes(needle)))
   return (
     <div>
-      <PageHeader title={t('Requests')} subtitle={q.data ? `${q.data.rows.length} ${t('requests')}` : undefined}
+      <PageHeader title={t('Requests')} subtitle={q.data ? `${rows.length} ${t('requests')}` : undefined}
         actions={<div className="flex gap-2">
           <div className="flex rounded-xl border border-line p-0.5" role="tablist">
             {(['list', 'types'] as const).map((v) => (
@@ -90,6 +94,10 @@ export default function Requests() {
       {tab === 'types' ? <TypeSettings /> : (
         <>
           <div className="mb-4 flex flex-wrap items-center gap-2">
+            <div className="relative w-full sm:w-64">
+              <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+              <Input className="ps-9" type="search" value={find} onChange={(e) => setFind(e.target.value)} placeholder={t('Search name, ID or request')} aria-label={t('Search')} />
+            </div>
             {STATUSES.map((s) => (
               <Button key={s} size="sm" variant={status === s ? 'primary' : 'secondary'} onClick={() => setStatus(s)}>
                 {t(s === 'open' ? 'Open' : s)}{s !== 'open' && q.data?.counts?.[s] ? ` · ${q.data.counts[s]}` : ''}
@@ -102,11 +110,11 @@ export default function Requests() {
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={overdue} onChange={(e) => setOverdue(e.target.checked)} />{t('Overdue only')}</label>
           </div>
           <Card>
-            {q.isLoading ? <Spinner /> : q.error ? <ErrorBox error={q.error} onRetry={() => q.refetch()} /> : !q.data?.rows.length ? (
+            {q.isLoading ? <Spinner /> : q.error ? <ErrorBox error={q.error} onRetry={() => q.refetch()} /> : !rows.length ? (
               <Empty title={t('No requests')} icon={<FileText />}>{t('Nothing matches these filters.')}</Empty>
             ) : (
               <ul className="divide-y divide-line">
-                {q.data.rows.map((r: any) => (
+                {rows.map((r: any) => (
                   <li key={r.name} className="flex flex-wrap items-center gap-3 py-3">
                     <button type="button" className="flex min-w-0 flex-1 items-center gap-3 text-start" onClick={() => setTrail(r.name)} title={t('Show activity')}>
                       <Avatar name={r.employee_name} size={36} />

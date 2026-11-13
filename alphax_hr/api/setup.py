@@ -499,7 +499,7 @@ def save_test(doctype="Employee"):
 
 
 def _leftover_checks(rows):
-	g = _("Removed HR apps")
+	g = _("Saving HR records")
 	scripts = broken_server_scripts()
 	_check(rows, g, "broken_scripts", ERROR if scripts else OK, len(scripts),
 		   "; ".join(f"{x['name']} ({x['doctype']}: {', '.join(x['fields'])})" for x in scripts[:6]) or None,

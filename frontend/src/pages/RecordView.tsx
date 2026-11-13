@@ -22,8 +22,11 @@ export default function RecordView() {
     mutationFn: (action: string) => api.act(doctype, name, action, comment || undefined),
     onSuccess: () => { setPending(null); setComment(''); qc.invalidateQueries({ queryKey: ['record', doctype, name] }); qc.invalidateQueries({ queryKey: ['inbox'] }) },
   })
-  if (q.isLoading) return <Spinner />
-  if (q.error) return <ErrorBox error={q.error} onRetry={() => q.refetch()} />
+  // opened from a notification or a shared link there is no page to go back to: go to the approvals list instead
+  const back = () => ((window.history.state?.idx ?? 0) > 0 ? nav(-1) : nav('/approvals'))
+  const backBtn = <Button size="sm" variant="secondary" className="self-start" onClick={back}><ArrowLeft className="size-4 flip-rtl" />{t('Back')}</Button>
+  if (q.isLoading) return <div className="flex flex-col gap-5">{backBtn}<Spinner /></div>
+  if (q.error) return <div className="flex flex-col gap-5">{backBtn}<ErrorBox error={q.error} onRetry={() => q.refetch()} /></div>
   const d = q.data
   const openable = new Set<string>(d.openable)
   const linkTo = (f: any) => {
@@ -35,7 +38,7 @@ export default function RecordView() {
   const negative = (a: string) => /reject|decline|cancel/i.test(a)
   return (
     <div className="flex flex-col gap-5">
-      <button onClick={() => nav(-1)} className="inline-flex items-center gap-1 self-start text-sm text-muted hover:text-ink"><ArrowLeft className="size-4 flip-rtl" />{t('Back')}</button>
+      {backBtn}
       <PageHeader title={d.title} subtitle={`${t(d.doctype)} · ${d.name}`}
         actions={<div className="flex flex-wrap items-center gap-2">
           <Badge tone={statusTone(d.status)}>{t(d.status)}</Badge>

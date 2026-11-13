@@ -718,9 +718,33 @@ def lookup(doctype: str, txt: str = "", filters: str | dict | list | None = None
 	employee_links = {df.options for df in frappe.get_meta("Employee").fields if df.fieldtype == "Link" and df.options}
 	if doctype not in LOOKUP_DOCTYPES | employee_links:
 		frappe.throw(_("Lookup not allowed."), frappe.PermissionError)
+	if doctype in REFERENCE_LISTS:
+		return _reference_lookup(doctype, str(txt or "")[:80], parse_json(filters))
 	from frappe.desk.search import search_link
 
 	return search_link(doctype, txt=str(txt or "")[:80], filters=parse_json(filters), page_length=20)
+
+
+# Lists of names HR picks from (no personal data): HR users may see them even where the site never gave HR roles read
+# access to them (a new ERPNext site gives HR no access to Company, for example).
+REFERENCE_LISTS = {"Company", "Department", "Designation", "Branch", "Employment Type", "Employee Grade", "Holiday List",
+				   "Shift Type", "Gender", "Leave Type", "Salary Component", "AlphaX Request Type"}
+
+
+def _reference_lookup(doctype, txt, filters=None):
+	meta = frappe.get_meta(doctype)
+	title = meta.title_field if meta.title_field and meta.has_field(meta.title_field) else None
+	where = dict(filters) if isinstance(filters, dict) else {}
+	if meta.has_field("disabled"):
+		where.setdefault("disabled", 0)
+	or_filters = {"name": ["like", f"%{txt}%"]}
+	if title:
+		or_filters[title] = ["like", f"%{txt}%"]
+	fields = ["name"] + ([title] if title else []) + (["company"] if meta.has_field("company") else [])
+	rows = frappe.get_all(doctype, filters=where, or_filters=or_filters if txt else None, fields=fields,
+						  order_by="name asc", limit=30)
+	return [{"value": r.name, "description": " · ".join(str(x) for x in (r.get(title) if title and r.get(title) != r.name else None,
+																		  r.get("company")) if x)} for r in rows]
 
 
 @frappe.whitelist()

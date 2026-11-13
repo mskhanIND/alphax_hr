@@ -56,6 +56,15 @@ def _legacy_apps():
 	return [a for a in frappe.get_installed_apps() if a in LEGACY_APPS or "central" in a.lower()]
 
 
+def has_legacy() -> bool:
+	"""True when another HR app is installed or left its documents/modules behind: only then is the cut-over page useful."""
+	if _legacy_apps():
+		return True
+	if frappe.db.exists("Module Def", {"name": ["in", list(LEGACY_MODULES)]}):
+		return True
+	return any(_exists(dt) for dt in (*LEGACY_REQUESTS, *WARNING_DOCTYPES))
+
+
 def _item(key, label, status, detail=None, count=None, action=None, link=None):
 	return {"key": key, "label": label, "status": status, "detail": detail, "count": count, "action": action, "link": link}
 

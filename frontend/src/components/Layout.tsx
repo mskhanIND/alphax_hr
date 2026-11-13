@@ -118,7 +118,7 @@ export function useNav(): { group: string; items: NavItem[] }[] {
           ? [{ to: '/setup', label: t('HR status & setup'), icon: <Activity className="size-5" /> }] : []),
         { to: '/leave-setup', label: t('Leave setup'), icon: <Settings2 className="size-5" /> },
         { to: '/notifications-setup', label: t('Notifications'), icon: <BellRing className="size-5" /> },
-        ...(s.persona.hr_manager ? [{ to: '/cutover', label: t('Cut-over readiness'), icon: <ArrowRightLeft className="size-5" /> }] : []),
+        ...(s.persona.hr_manager && s.legacy_hr ? [{ to: '/cutover', label: t('Cut-over readiness'), icon: <ArrowRightLeft className="size-5" /> }] : []),
         { to: '/activity', label: t('Activity log'), icon: <History className="size-5" /> },
       ],
     })
@@ -242,9 +242,12 @@ export function Layout({ children }: { children: ReactNode }) {
   const { t, lang, setLang } = useI18n()
   const s = useSession()
   const [open, setOpen] = useState(false)
+  // desktop: the menu can be folded away for a full-width workspace; remembered per browser
+  const [folded, setFolded] = useState(() => { try { return localStorage.getItem('alphax-menu-folded') === '1' } catch { return false } })
+  const fold = () => setFolded((f) => { try { localStorage.setItem('alphax-menu-folded', f ? '0' : '1') } catch { /* private mode */ } return !f })
   return (
     <div className="flex min-h-full">
-      <aside className="sticky top-0 hidden h-screen print:!hidden w-64 shrink-0 flex-col gap-6 overflow-y-auto bg-brand px-3 py-5 lg:flex">
+      <aside className={`sticky top-0 hidden h-screen print:!hidden w-64 shrink-0 flex-col gap-6 overflow-y-auto bg-brand px-3 py-5 ${folded ? '' : 'lg:flex'}`}>
         <Brand />
         <NavList />
       </aside>
@@ -260,6 +263,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex h-16 print:hidden items-center gap-3 border-b border-line bg-white/90 px-4 backdrop-blur sm:px-6">
           <button className="rounded-lg p-2 hover:bg-surface lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu"><Menu /></button>
+          <button className="hidden rounded-lg p-2 hover:bg-surface lg:block" onClick={fold} aria-label={folded ? t('Show menu') : t('Hide menu')} title={folded ? t('Show menu') : t('Hide menu')}><Menu /></button>
           <div className="flex-1" />
           <InstallButton />
           <NotificationBell />
@@ -282,7 +286,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <LogOut className="size-5 flip-rtl" />
           </button>
         </header>
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 pt-6 pb-24 sm:px-6 lg:pb-6"><RestartBanner />{children}</main>
+        <main className={`mx-auto w-full flex-1 ${folded ? 'max-w-none lg:px-8' : 'max-w-7xl'} px-4 pt-6 pb-24 sm:px-6 lg:pb-6`}><RestartBanner />{children}</main>
       </div>
       <TabBar />
     </div>

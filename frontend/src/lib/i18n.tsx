@@ -2045,6 +2045,19 @@ const ar: Record<string, string> = {
   "Print": "طباعة",
   "Save to employee's file": "حفظ في ملف الموظف",
   "Saved as an attachment on the employee.": "تم الحفظ كمرفق في ملف الموظف.",
+  "Show list": "عرض القائمة",
+  "Nothing found": "لا توجد نتائج",
+  "How much more can be deducted?": "كم يمكن خصمه بعد؟",
+  "Before adding a deduction, pick the employee and month: AlphaX adds up everything already deducted (penalties, loans, damages, other deductions) and shows the room left. By law the total cannot pass half the wage (Art. 91–93); a loan instalment is at most 10% unless the employee agreed in writing, and damages at most 5 days' wage a month.": "قبل إضافة خصم، اختر الموظف والشهر: يجمع AlphaX كل ما خُصم بالفعل (الجزاءات والسلف والأضرار والخصومات الأخرى) ويعرض المتبقي المسموح. نظامًا لا يتجاوز مجموع الخصم نصف الأجر (المواد 91–93)؛ وقسط السلفة 10% كحد أقصى ما لم يوافق الموظف كتابيًا، والأضرار أجر 5 أيام كحد أقصى في الشهر.",
+  "Days of wage": "أيام من الأجر",
+  "% of a day": "% من أجر يوم",
+  "Add occurrence": "إضافة تكرار",
+  "Repeats beyond the last row use the last row. A single violation never costs more than 5 days' wage, and no more than 5 days a month in total (Art. 72).": "التكرار بعد آخر صف يأخذ حكم آخر صف. المخالفة الواحدة لا تتجاوز أجر 5 أيام، ولا يتجاوز المجموع 5 أيام في الشهر (المادة 72).",
+  "What happens the first time, the second time, and so on, when the same violation repeats within 180 days.": "ما يُطبق في المرة الأولى والثانية وهكذا عند تكرار المخالفة نفسها خلال 180 يومًا.",
+  "Show menu": "إظهار القائمة",
+  "Hide menu": "إخفاء القائمة",
+  "Search name, ID or request": "ابحث بالاسم أو الرقم أو الطلب",
+  "Search": "بحث",
 }
 
 // Machine keys returned by the API need readable English too.

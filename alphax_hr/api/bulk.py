@@ -64,7 +64,7 @@ def _field_specs():
 @frappe.whitelist()
 def options():
 	require_hr()
-	return {"fields": _field_specs(), "companies": frappe.get_list("Company", pluck="name"),
+	return {"fields": _field_specs(), "companies": frappe.get_all("Company", pluck="name"),
 			"departments": frappe.get_all("Department", filters={"is_group": 0}, pluck="name", order_by="name"),
 			"branches": frappe.get_all("Branch", pluck="name", order_by="name"),
 			"designations": frappe.get_all("Designation", pluck="name", order_by="name")}

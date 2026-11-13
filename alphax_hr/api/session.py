@@ -59,7 +59,16 @@ def boot():
 		"desk": may_use_desk() and bool(set(frappe.get_roles()) & desk_roles()) or frappe.session.user == "Administrator",
 		"version": alphax_hr.__version__,
 		"gosi_enabled": bool(conf.gosi_enabled),
+		"legacy_hr": _legacy_hr(),
 	}
+
+
+def _legacy_hr():
+	try:
+		from alphax_hr.api.cutover import has_legacy
+		return has_legacy()
+	except Exception:
+		return False
 
 
 def _is_named_approver(user):

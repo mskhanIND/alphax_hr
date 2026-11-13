@@ -1321,7 +1321,8 @@ def run(site):
             # Letter: manager not needed -> HR approves -> PDF letter attached, completed
             r = rq.create("Salary Certificate", {"addressed_to": "Al Rajhi Bank", "purpose": "Bank"})
             assert r["status"] == "Pending HR", r
-            # Visa: manager first, then HR
+            # Visa: manager first, then HR (the Iqama must outlast the trip; fixtures persist between runs)
+            frappe.db.set_value("Employee", frappe.db.get_value("Employee", {"user_id": frappe.session.user}), "alphax_iqama_expiry", add_days(nowdate(), 365))
             v = rq.create("Exit & Re-entry Visa", {"visa_type": "Single", "from_date": add_days(nowdate(), 10),
                                                     "to_date": add_days(nowdate(), 30)})
             assert v["status"] == "Pending Manager"

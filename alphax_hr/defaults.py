@@ -146,9 +146,34 @@ def catalogues():
 	return {"done": True}
 
 
+# lists HR picks from on every form; on a fresh ERPNext site HR roles cannot read some of them (Company, Branch…)
+REFERENCE_READ = ("Company", "Department", "Designation", "Branch", "Employment Type", "Employee Grade", "Holiday List")
+HR_READERS = ("HR Manager", "HR User")
+
+
+def reference_read():
+	"""Read-only access for HR roles on the reference lists (adds a permission row only where none exists)."""
+	from frappe.permissions import add_permission
+
+	added = []
+	for dt in REFERENCE_READ:
+		if not frappe.db.exists("DocType", dt):
+			continue
+		for role in HR_READERS:
+			has = frappe.db.exists("Custom DocPerm", {"parent": dt, "role": role, "permlevel": 0}) or (
+				not frappe.db.exists("Custom DocPerm", {"parent": dt}) and frappe.db.exists("DocPerm", {"parent": dt, "role": role, "permlevel": 0}))
+			if has or not frappe.db.exists("Role", role):
+				continue
+			add_permission(dt, role, 0, "read")
+			added.append(f"{dt}: {role}")
+	if added:
+		frappe.clear_cache()
+	return {"added": added}
+
+
 def site():
 	out = {}
-	for key, fn in (("catalogues", catalogues), ("leave_types", leave_types), ("shift", shift)):
+	for key, fn in (("catalogues", catalogues), ("leave_types", leave_types), ("shift", shift), ("reference_read", reference_read)):
 		_safe(fn, out, key)
 	return out
 
