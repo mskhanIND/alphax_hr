@@ -2,6 +2,24 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.41.0 — 2026-11-15
+
+Tester feedback round (Ahmed).
+
+- **Leave allocation** (new, under Leave): every allocation for the year with given / used / left, search and filters; *Give leave* to chosen employees, a department or everyone (checked first, never doubled for the same period); cancel an unused allocation. This year's annual leave can be given to everyone who still needs it in one click.
+- **Annual leave always appears** in the employee's leave form; without a balance it says so instead of the type missing. New employees get this service year's annual leave as soon as they are created when automatic allocation is on (on by default for new sites).
+- **Roster: Remove shift** for the selected employees over a period — they go back to their default shift; days before and after are kept.
+- **GOSI contribution rates** shown in Settings → Payroll, GOSI & loans (new / old system / non-Saudi, the row in force highlighted), with add and edit.
+- **Build a team** (My team, for HR): pick a manager and members; they report to the manager, who can also become their leave / expense / shift approver.
+- **My documents:** employees add their own documents (Iqama, passport, certificates…), view PDFs and pictures inside the app, and remove what they added.
+- **Expense claims** no longer fail with "Set the default account for the Expense Claim Type": each company gets a default account per claim type (also in *Prepare defaults* and the readiness list).
+- **Check-in** refused by a site rule that needs a shift assignment now explains it to the employee in plain words.
+- **Services:** *Change shift* and *My loans* tiles.
+- Department filters no longer list ERPNext's root "All Departments" next to "All departments".
+- New work locations start with the default company.
+- Sign-in page: line icons instead of emojis and a cleaner layout; other emojis in the app replaced with icons.
+- Leave setup moved under Leave in the menu.
+
 ## 0.40.0 — 2026-11-13
 
 Tester feedback round (Shaik).

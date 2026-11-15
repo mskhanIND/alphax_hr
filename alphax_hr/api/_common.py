@@ -101,3 +101,14 @@ def require_salary_structure(employee, on, hint=None):
 		frappe.throw(_("{0} has no salary structure on {1}, so this cannot go through payroll. {2}").format(
 			frappe.db.get_value("Employee", employee, "employee_name") or employee, frappe.utils.formatdate(on), hint or ""),
 			title=_("No salary structure"))
+
+
+def real_departments(names) -> list[str]:
+	"""Department names for a filter list, without ERPNext's root ("All Departments"): choosing it filters nothing,
+	and it sat next to our own "All departments" option as a duplicate."""
+	names = [n for n in dict.fromkeys(names) if n]
+	if not names:
+		return []
+	roots = set(frappe.get_all("Department", filters={"name": ["in", names], "parent_department": ["in", ["", None]], "is_group": 1}, pluck="name"))
+	roots |= {n for n in names if n.strip().lower().startswith("all departments")}
+	return [n for n in names if n not in roots]

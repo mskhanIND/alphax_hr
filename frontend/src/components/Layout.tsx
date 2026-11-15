@@ -1,6 +1,6 @@
 import clsx from 'clsx'
 import { Fingerprint, GitBranch,
-  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History, Network, CalendarCheck, Activity, ChevronDown, Inbox, Gavel, ShieldAlert, Receipt, Star, ArrowRightLeft, LayoutGrid, Folder, Download, Megaphone, MapPin, LocateFixed, LifeBuoy, BookOpen, BellRing, Hourglass, HandCoins, BadgePercent, BookOpenCheck, UserPlus } from 'lucide-react'
+  BadgeCheck, CalendarDays, CalendarRange, Clock, FileText, Home, Landmark, LogOut, Menu, Scale, ShieldCheck, User, Users, Wallet, X, Settings2, CalendarClock, History, Network, CalendarCheck, Activity, ChevronDown, Inbox, Gavel, ShieldAlert, Receipt, Star, ArrowRightLeft, LayoutGrid, Folder, Download, Megaphone, MapPin, LocateFixed, LifeBuoy, BookOpen, BellRing, Hourglass, HandCoins, BadgePercent, BookOpenCheck, UserPlus, CalendarPlus } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { NavLink, Link, useLocation } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
@@ -97,6 +97,8 @@ export function useNav(): { group: string; items: NavItem[] }[] {
       group: t('Leave'),
       items: [
         { to: '/leave-balances', label: t('Leave balances'), icon: <CalendarCheck className="size-5" /> },
+        { to: '/leave-allocation', label: t('Leave allocation'), icon: <CalendarPlus className="size-5" /> },
+        { to: '/leave-setup', label: t('Leave setup'), icon: <Settings2 className="size-5" /> },
       ],
     })
     groups.push({
@@ -116,7 +118,6 @@ export function useNav(): { group: string; items: NavItem[] }[] {
       items: [
         ...(s.persona.hr_manager || s.persona.system_manager
           ? [{ to: '/setup', label: t('HR status & setup'), icon: <Activity className="size-5" /> }] : []),
-        { to: '/leave-setup', label: t('Leave setup'), icon: <Settings2 className="size-5" /> },
         { to: '/notifications-setup', label: t('Notifications'), icon: <BellRing className="size-5" /> },
         ...(s.persona.hr_manager && s.legacy_hr ? [{ to: '/cutover', label: t('Cut-over readiness'), icon: <ArrowRightLeft className="size-5" /> }] : []),
         { to: '/activity', label: t('Activity log'), icon: <History className="size-5" /> },

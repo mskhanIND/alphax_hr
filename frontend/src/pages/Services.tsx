@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { LifeBuoy, UserPen, Briefcase, CalendarDays, CalendarRange, Clock, FileText, Folder, LogOut, Plane, Receipt, Star, Timer, Wallet } from 'lucide-react'
+import { CalendarClock, HandCoins, LifeBuoy, UserPen, Briefcase, CalendarDays, CalendarRange, Clock, FileText, Folder, LogOut, Plane, Receipt, Star, Timer, Wallet } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { RequestForm, typeTitle } from '../components/RequestForm'
@@ -38,6 +38,8 @@ export default function Services() {
           <Tile icon={<CalendarDays className="size-5" />} label={t('Apply for leave')} to="/me/leave" />
           <Tile icon={<CalendarRange className="size-5" />} label={t('Vacation plan')} to="/me/vacation-plan" />
           <Tile icon={<Clock className="size-5" />} label={t('Attendance & corrections')} to="/me/attendance" />
+          <Tile icon={<CalendarClock className="size-5" />} label={t('Change shift')} to="/me/attendance#shift" />
+          <Tile icon={<HandCoins className="size-5" />} label={t('My loans')} to="/me/loans" />
           <Tile icon={<Receipt className="size-5" />} label={t('Expense claim')} to="/me/expenses" />
           <Tile icon={<Wallet className="size-5" />} label={t('My Payslips')} to="/me/payslips" />
           <Tile icon={<Folder className="size-5" />} label={t('My documents')} to="/me/documents" />

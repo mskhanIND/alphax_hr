@@ -1,11 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
-import { Phone, Users } from 'lucide-react'
+import { Phone, UserPlus, Users } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Avatar, Badge, Card, Empty, ErrorBox, PageHeader, Spinner, Stat, FilterNote } from '../components/ui'
+import { TeamBuilder } from '../components/TeamBuilder'
+import { Avatar, Button, Badge, Card, Empty, ErrorBox, PageHeader, Spinner, Stat, FilterNote } from '../components/ui'
 import { api } from '../lib/api'
 import { fmtTime } from '../lib/format'
 import { useI18n } from '../lib/i18n'
+import { useSession } from '../lib/session'
 
 const STATE: Record<string, { label: string; tone: string }> = {
   in: { label: 'Checked in', tone: 'green' }, out: { label: 'Checked out', tone: 'gray' },
@@ -17,6 +19,8 @@ export default function MyTeam() {
   const [show, setShow] = useState('')
   const pick = (k: string) => setShow((x: string) => (x === k ? '' : k))
   const navigate = useNavigate()
+  const s = useSession()
+  const [build, setBuild] = useState(false)
   const q = useQuery({ queryKey: ['my-team'], queryFn: api.myTeam, refetchInterval: 60_000 })
   if (q.isLoading) return <Spinner />
   if (q.error) return <ErrorBox error={q.error} />
@@ -24,8 +28,10 @@ export default function MyTeam() {
   const shown = team.filter((m: any) => !show || m.state === show)
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader title={t('My team')} subtitle={t('Who is in today')} />
-      {!team.length ? <Card><Empty title={t('No team members')} icon={<Users />}>{t('People who report to you appear here.')}</Empty></Card> : (
+      <PageHeader title={t('My team')} subtitle={t('Who is in today')}
+        actions={s.persona.hr && <Button variant="secondary" onClick={() => setBuild(true)}><UserPlus className="size-4" />{t('Build a team')}</Button>} />
+      {build && <TeamBuilder onClose={() => setBuild(false)} />}
+      {!team.length ? <Card><Empty title={t('No team members')} icon={<Users />}>{t('People who report to you appear here.')}{s.persona.hr ? ` ${t('HR: use Build a team to choose a manager and the people who report to them.')}` : ''}</Empty></Card> : (
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Stat label={t('Checked in')} value={summary.in} tone="brand" onClick={() => pick('in')} active={show === 'in'} />

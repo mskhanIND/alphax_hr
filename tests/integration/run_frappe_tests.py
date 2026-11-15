@@ -135,11 +135,14 @@ def setup_fixtures():
     e_emp = employee("Eman", emp, 0, approver=mgr)
     e_emp2 = employee("Omar", emp2, 0, approver=mgr, joining="2025-03-01")
     lt = ensure("Leave Type", {"leave_type_name": "AXT Annual"}, {"max_continuous_days_allowed": 0}).name
+    # this year and next: tests book leave weeks ahead, which crosses into January late in the year
     for e in (e_emp, e_emp2):
-        if not frappe.db.exists("Leave Allocation", {"employee": e, "leave_type": lt, "docstatus": 1}):
-            frappe.get_doc({"doctype": "Leave Allocation", "employee": e, "leave_type": lt,
-                            "from_date": f"{year}-01-01", "to_date": f"{year}-12-31",
-                            "new_leaves_allocated": 21}).insert(ignore_permissions=True).submit()
+        for y in (year, year + 1):
+            if not frappe.db.exists("Leave Allocation", {"employee": e, "leave_type": lt, "docstatus": 1,
+                                                         "from_date": ["<=", f"{y}-12-31"], "to_date": [">=", f"{y}-01-01"]}):
+                frappe.get_doc({"doctype": "Leave Allocation", "employee": e, "leave_type": lt,
+                                "from_date": f"{y}-01-01", "to_date": f"{y}-12-31",
+                                "new_leaves_allocated": 21}).insert(ignore_permissions=True).submit()
     # Reset transactional test data so the suite is repeatable.
     if frappe.db.exists("DocType", "AlphaX Attendance Policy"):
         frappe.db.delete("AlphaX Attendance Policy")  # policies change how the register counts lateness
@@ -1322,9 +1325,11 @@ def run(site):
             r = rq.create("Salary Certificate", {"addressed_to": "Al Rajhi Bank", "purpose": "Bank"})
             assert r["status"] == "Pending HR", r
             # Visa: manager first, then HR (the Iqama must outlast the trip; fixtures persist between runs)
-            frappe.db.set_value("Employee", frappe.db.get_value("Employee", {"user_id": frappe.session.user}), "alphax_iqama_expiry", add_days(nowdate(), 365))
+            _me = frappe.db.get_value("Employee", {"user_id": frappe.session.user})
+            frappe.db.set_value("Employee", _me, "alphax_iqama_expiry", add_days(nowdate(), 365))
             v = rq.create("Exit & Re-entry Visa", {"visa_type": "Single", "from_date": add_days(nowdate(), 10),
                                                     "to_date": add_days(nowdate(), 30)})
+            frappe.db.set_value("Employee", _me, "alphax_iqama_expiry", add_days(nowdate(), 20))  # the fixture's "expiring soon"
             assert v["status"] == "Pending Manager"
             assert {x["name"] for x in rq.mine()} >= {r["name"], v["name"]}
             # Employee cannot approve own request or tamper through the REST layer
@@ -1504,7 +1509,9 @@ def run(site):
             # a waiting leave request is a blocker
             lt = f["lt"]
             day = getdate(get_last_day(month))
-            while day.weekday() in (4, 5):
+            # a working day this month without leave already booked by an earlier test (depends on today's date)
+            while day.weekday() in (4, 5) or frappe.db.exists("Leave Application", {"employee": f["e_emp"], "docstatus": ["<", 2],
+                                                                                 "from_date": ["<=", day], "to_date": [">=", day]}):
                 day = getdate(add_days(day, -1))
             la = frappe.get_doc({"doctype": "Leave Application", "employee": f["e_emp"], "leave_type": lt, "from_date": day,
                                  "to_date": day, "leave_approver": f["mgr"], "status": "Open"})
@@ -3490,7 +3497,7 @@ def run(site):
                 orig = am._paid
                 am._paid = lambda e_, s_, t_: {emp: [(min(days), max(days))]}
                 try:
-                    assert am.mark(employees=[emp], start=min(days), end=max(days)).get("paid") == len(days)
+                    _pr = am.mark(employees=[emp], start=min(days), end=max(days)); assert _pr.get("paid") == (max(days) - min(days)).days + 1, (_pr, days)  # every day in the range, gaps included
                 finally:
                     am._paid = orig
                 up = am.update_period(min(days), max(days), employees=[emp])
@@ -3845,6 +3852,74 @@ def run(site):
             accruals.cancel(second["name"]); accruals.cancel(first["name"])
             assert frappe.db.get_value("Journal Entry", first["journal_entry"], "docstatus") == 2
         check("accruals: end-of-service and leave provisions re-measured monthly, true-up journal entries, ordered cancel", accruals_flow)
+
+        print("\n== Ahmed's round: leave allocation, roster removal, GOSI rates, teams, documents, expense accounts")
+        def ahmed_round():
+            from alphax_hr.api import ess, hr as hr_api, leave_alloc, payroll as pay_api, shifts
+            from alphax_hr import defaults
+            from alphax_hr.api._common import real_departments
+            frappe.set_user("Administrator")
+            # department filter never lists ERPNext's root next to "All departments"
+            root = frappe.db.get_value("Department", {"parent_department": ["in", ["", None]], "is_group": 1}, "name")
+            if root:
+                assert root not in real_departments([root, "X"])
+            # leave allocation: preview, create once, never twice, cancel
+            frappe.set_user(f["hr"])
+            year = getdate(nowdate()).year
+            lt = frappe.db.get_value("Leave Type", {"is_lwp": 0, "name": ["not in", [frappe.db.get_single_value("AlphaX HR Settings", "annual_leave_type") or ""]]}, "name")
+            span = {"leave_type": lt, "from_date": f"{year + 3}-01-01", "to_date": f"{year + 3}-12-31", "days": 4, "employees": [f["e_emp2"]]}
+            pv = leave_alloc.allocate({**span, "dry_run": 1})
+            assert pv["create"] == 1, pv
+            res = leave_alloc.allocate(span)
+            assert len(res["created"]) == 1 and not res["failed"], res
+            again = leave_alloc.allocate(span)
+            assert not again["created"] and again["skipped"], again
+            rows = leave_alloc.allocations(year + 3, lt)["rows"]
+            row = next(r for r in rows if r.employee == f["e_emp2"])
+            assert row.left == 4, row
+            leave_alloc.cancel(row.name)
+            assert frappe.db.get_value("Leave Allocation", row.name, "docstatus") == 2
+            # annual leave always offered to the employee, flagged when there is no balance
+            frappe.set_user(f["emp2"])
+            annual = frappe.db.get_single_value("AlphaX HR Settings", "annual_leave_type")
+            if annual:
+                assert any(x["leave_type"] == annual for x in ess.leave_types())
+            # roster: remove an assigned shift inside a week; the parts outside are kept
+            frappe.set_user("Administrator")
+            st = frappe.db.get_value("Shift Type", {}, "name")
+            base = add_days(nowdate(), 400)
+            frappe.set_user(f["hr"])
+            made = shifts.assign([f["e_emp2"]], st, base, add_days(base, 20))
+            if made["created"]:
+                out = shifts.remove([f["e_emp2"]], add_days(base, 5), add_days(base, 9))
+                assert out["removed"] and not out["failed"], out
+                live = frappe.get_all("Shift Assignment", filters={"employee": f["e_emp2"], "docstatus": 1, "start_date": [">=", base]},
+                                      fields=["start_date", "end_date"], order_by="start_date")
+                assert [str(x.end_date) for x in live][0] == str(add_days(base, 4)) and str(live[-1].start_date) == str(add_days(base, 10)), live
+                shifts.remove([f["e_emp2"]], base, add_days(base, 20))
+            # GOSI rates listed with totals; HR manager can add one
+            r = pay_api.gosi_rates()
+            assert r["rows"] and all("employer_total" in x for x in r["rows"])
+            # teams: members report to the manager
+            frappe.set_user("Administrator")
+            before = frappe.db.get_value("Employee", f["e_emp2"], ["reports_to", "leave_approver"], as_dict=True)
+            frappe.set_user(f["hr"])
+            t = hr_api.set_team(f["e_mgr"], [f["e_emp2"]], 0)
+            assert t["done"] == [f["e_emp2"]] and frappe.db.get_value("Employee", f["e_emp2"], "reports_to") == f["e_mgr"]
+            frappe.set_user("Administrator")
+            frappe.db.set_value("Employee", f["e_emp2"], "reports_to", before.reports_to)
+            # employee adds a document to their own file and can remove only their own
+            frappe.set_user(f["emp2"])
+            fd = frappe.get_doc({"doctype": "File", "file_name": "iqama.txt", "content": "x", "is_private": 1}).insert(ignore_permissions=True)
+            added = ess.attach_my_document(fd.name, "Iqama / ID")
+            assert added["file_name"].startswith("Iqama or ID - ")
+            assert any(x["name"] == fd.name and x["mine"] for x in ess.my_documents()["files"])
+            ess.remove_my_document(fd.name)
+            # every expense claim type gets an account for the company; idempotent
+            frappe.set_user("Administrator")
+            defaults.expense_accounts(COMPANY)
+            assert not defaults.expense_accounts(COMPANY)["types"]
+        check("Ahmed's round: leave allocation once per period, remove shifts in a range, GOSI rates, teams, own documents, expense accounts", ahmed_round)
 
         print("\n== /alphax page")
         def www_page():

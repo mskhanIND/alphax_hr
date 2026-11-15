@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, BadgeCheck, CalendarDays, Inbox, Megaphone, ShieldAlert, ChevronRight, LayoutGrid, Receipt, ShieldCheck, Smartphone, Users, Wallet, X } from 'lucide-react'
+import { AlertTriangle, BadgeCheck, CalendarDays, Inbox, Megaphone, ShieldAlert, ChevronRight, LayoutGrid, Receipt, ShieldCheck, Smartphone, Users, Wallet, X, Pin } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { useInstall } from '../lib/pwa'
 import { Link } from 'react-router-dom'
@@ -155,7 +155,7 @@ function Announcements() {
             <button type="button" className="flex w-full items-start gap-3 py-2.5 text-start" onClick={() => setOpen(a)}>
               <Megaphone className={`mt-0.5 size-4 shrink-0 ${a.priority === 'Important' ? 'text-red-600' : 'text-brand'}`} />
               <span className="min-w-0 flex-1">
-                <span className="block font-medium">{title(a)}{a.pinned ? ' 📌' : ''}</span>
+                <span className="block font-medium">{title(a)}{a.pinned ? <Pin className="ms-1 inline size-3.5 text-gold" /> : null}</span>
                 <span className="line-clamp-2 text-sm text-muted">{body(a)}</span>
               </span>
               <span className="shrink-0 text-xs text-muted">{fmtDate(a.publish_on, lang)}</span>

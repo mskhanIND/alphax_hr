@@ -180,7 +180,13 @@ def leave_types():
 	for leave_type, rule in rules.items():
 		if (not rule.gender or not gender or rule.gender == gender) and frappe.db.exists("Leave Type", leave_type):
 			names.add(leave_type)
-	return [{"leave_type": n, "rule": rule_to_dict(rules.get(n))} for n in sorted(names)]
+	# annual leave is always listed: without an allocation the form says so instead of the type silently missing
+	annual = frappe.db.get_single_value("AlphaX HR Settings", "annual_leave_type")
+	allocated = {b["leave_type"] for b in balances["balances"]}
+	if annual and frappe.db.exists("Leave Type", annual):
+		names.add(annual)
+	return [{"leave_type": n, "rule": rule_to_dict(rules.get(n)),
+			 "no_allocation": n == annual and n not in allocated} for n in sorted(names)]
 
 
 # Fields AlphaX fills itself on a Leave Application; anything else the site makes mandatory is asked for.
@@ -495,7 +501,17 @@ def check_in(log_type: str, latitude: float | str | None = None, longitude: floa
 		if near:
 			doc.alphax_location, doc.alphax_distance_m, doc.alphax_outside = near["name"], near["distance"], 0 if near["inside"] else 1
 	doc.flags.ignore_permissions = True  # the employee checks in for themselves only
-	doc.insert()  # HRMS shift validation applies
+	try:
+		doc.insert()  # HRMS shift validation applies
+	except frappe.ValidationError as exc:
+		msg = frappe.utils.strip_html(str(exc))
+		if "shift" in msg.lower() and "assign" in msg.lower():
+			# a rule on this site (another app or a server script) wants a shift assignment for every punch
+			frappe.clear_messages()
+			frappe.throw(_("You have no shift assigned for today, so this site does not accept the check-in yet. "
+						   "Please ask HR to assign your shift (Roster), or to turn off that rule in Attendance health."),
+						 title=_("No shift for today"))
+		raise
 	return today_status()
 
 
@@ -678,6 +694,14 @@ def submit_expense(expense_type: str, amount: float | str, expense_date: str, de
 		frappe.throw(_("The expense date cannot be in the future."))
 	if not frappe.db.exists("Expense Claim Type", expense_type):
 		frappe.throw(_("Unknown expense type."))
+	if not frappe.db.exists("Expense Claim Account", {"parent": expense_type, "parenttype": "Expense Claim Type", "company": emp.company}) \
+			or not frappe.get_cached_value("Company", emp.company, "default_expense_claim_payable_account"):
+		from alphax_hr.defaults import expense_accounts
+		expense_accounts(emp.company)  # fill the company's default accounts once, instead of refusing the employee
+		frappe.clear_document_cache("Company", emp.company)
+		if not frappe.db.exists("Expense Claim Account", {"parent": expense_type, "parenttype": "Expense Claim Type", "company": emp.company}):
+			frappe.throw(_("Expense claims cannot be filed yet: the company has no expense account for {0}. Please ask HR or finance to set it.").format(expense_type),
+						 title=_("Not set up yet"))
 	doc = frappe.get_doc({
 		"doctype": "Expense Claim", "employee": employee, "company": emp.company, "posting_date": nowdate(),
 		"expense_approver": _expense_approver(emp), "approval_status": "Draft",
@@ -718,13 +742,47 @@ def my_documents():
 			docs.append({"document": label, "expiry": str(emp.get(field)), "days_left": days,
 						 "state": "expired" if days < 0 else "soon" if days <= 60 else "valid"})
 	files = frappe.get_all("File", filters={"attached_to_doctype": "Employee", "attached_to_name": employee, "is_folder": 0},
-						   fields=["name", "file_name", "file_url", "creation"], order_by="creation desc", limit_page_length=100)
+						   fields=["name", "file_name", "file_url", "creation", "owner", "file_size"], order_by="creation desc", limit_page_length=100)
+	for f in files:
+		f["mine"] = f.pop("owner") == frappe.session.user
 	letters = []
 	if frappe.db.exists("DocType", "AlphaX Request"):
 		letters = frappe.get_all("AlphaX Request", filters={"employee": employee, "letter": ["is", "set"]},
 								 fields=["name", "request_type", "letter", "modified"], order_by="modified desc")
-	return {"documents": docs, "files": [{**f, "creation": str(f.creation)} for f in files],
+	return {"documents": docs, "kinds": DOCUMENT_KINDS, "files": [{**f, "creation": str(f.creation)} for f in files],
 			"letters": [{**r, "modified": str(r.modified)} for r in letters]}
+
+
+DOCUMENT_KINDS = ("Iqama / ID", "Passport", "Certificate", "Medical", "Contract", "Other")
+
+
+@frappe.whitelist(methods=["POST"])
+def attach_my_document(file_name: str, kind: str = "Other"):
+	"""Put a file the employee just uploaded onto their own employee record (HR sees it in the profile).
+	Only the uploader's own, still unattached private file can be moved; the name gets the document kind in front."""
+	employee = current_employee()
+	f = frappe.get_doc("File", file_name)
+	if f.owner != frappe.session.user or f.attached_to_doctype:
+		frappe.throw(_("This file cannot be added."), frappe.PermissionError)
+	kind = kind if kind in DOCUMENT_KINDS else "Other"
+	f.attached_to_doctype, f.attached_to_name, f.is_private = "Employee", employee, 1
+	prefix = kind.replace(" / ", " or ")  # a file name cannot hold "/"
+	if not (f.file_name or "").startswith(f"{prefix} - "):
+		f.file_name = f"{prefix} - {f.file_name}"[:140]
+	f.flags.ignore_permissions = True
+	f.save()
+	return {"name": f.name, "file_name": f.file_name, "file_url": f.file_url}
+
+
+@frappe.whitelist(methods=["POST"])
+def remove_my_document(file_name: str):
+	"""An employee can remove a file they uploaded themselves (not files HR added)."""
+	employee = current_employee()
+	f = frappe.get_doc("File", file_name)
+	if f.owner != frappe.session.user or f.attached_to_doctype != "Employee" or f.attached_to_name != employee:
+		frappe.throw(_("Only files you added yourself can be removed."), frappe.PermissionError)
+	frappe.delete_doc("File", f.name, ignore_permissions=True)
+	return {"ok": True}
 
 
 # --------------------------------------------------------------- my team

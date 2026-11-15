@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BadgeCheck } from 'lucide-react'
+import { BadgeCheck, Paperclip } from 'lucide-react'
 import { useState } from 'react'
 import { Avatar, Badge, Button, Card, Empty, ErrorBox, Modal, PageHeader, Spinner, Textarea } from '../components/ui'
 import { ActivityDrawer } from '../components/ActivityDrawer'
@@ -74,7 +74,7 @@ export default function Approvals() {
                   {(r.description || r.reason || r.remark) && <div className="mt-0.5 line-clamp-1 text-sm text-ink/80">“{r.description || r.reason || r.remark}”</div>}
                   {(r.alphax_event_date || r.alphax_relation) && <div className="mt-0.5 text-xs text-muted">{[r.alphax_relation && t(r.alphax_relation), r.alphax_event_date && `${t('Event date')}: ${fmtDate(r.alphax_event_date, lang)}`].filter(Boolean).join(' · ')}</div>}
                   {r.alphax_sick_breakdown && <div className="mt-0.5 text-xs font-medium text-amber-800">{r.alphax_sick_breakdown}</div>}
-                  {r.attachments > 0 && <div className="mt-0.5 text-xs text-muted">📎 {r.attachments}</div>}
+                  {r.attachments > 0 && <div className="mt-0.5 text-xs text-muted"><Paperclip className="inline size-3.5" /> {r.attachments}</div>}
                 </div>
                 </button>
                 {(r.doctype === 'AlphaX Request' || r.doctype === 'Leave Application') && <div className="w-full ps-[52px] sm:order-last"><ApprovalChain doctype={r.doctype} name={r.name} /></div>}

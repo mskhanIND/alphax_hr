@@ -35,7 +35,7 @@ export interface LeaveRule {
   min_service_days: number | null
   lifetime_limit: number | null
 }
-export interface LeaveTypeOption { leave_type: string; rule: LeaveRule | null }
+export interface LeaveTypeOption { leave_type: string; rule: LeaveRule | null; no_allocation?: boolean }
 
 export class ApiError extends Error {
   status: number
@@ -138,9 +138,16 @@ export const api = {
   activityFeed: (args: Record<string, unknown>) => call(A + 'activity.feed', args),
   leaveSummary: (employee?: string) => call(A + 'leave_ledger.summary', employee ? { employee } : {}),
   leaveWorkforce: (args: Record<string, unknown>) => call(A + 'leave_ledger.workforce', args),
+  gosiRates: () => call<any>(A + 'payroll.gosi_rates'),
+  saveGosiRate: (data: Record<string, unknown>) => call<any>(A + 'payroll.save_gosi_rate', { data }),
+  setTeam: (manager: string, employees: string[], approvers = 1) => call<any>(A + 'hr.set_team', { manager, employees, approvers }),
+  leaveAllocations: (args: Record<string, unknown>) => call(A + 'leave_alloc.allocations', args),
+  allocateLeave: (data: Record<string, unknown>) => call<any>(A + 'leave_alloc.allocate', { data }),
+  cancelLeaveAllocation: (name: string) => call(A + 'leave_alloc.cancel', { name }),
   roster: (args: Record<string, unknown>) => call(A + 'shifts.roster', args),
   assignShift: (args: Record<string, unknown>) => call(A + 'shifts.assign', args),
   setWeekOff: (args: Record<string, unknown>) => call(A + 'shifts.set_week_off', args),
+  removeShift: (args: Record<string, unknown>) => call(A + 'shifts.remove', args),
   toggleWeekOff: (employee: string, date: string) => call(A + 'shifts.toggle_week_off', { employee, date }),
   endAssignment: (name: string, end_date?: string) => call(A + 'shifts.end_assignment', { name, end_date }),
   attendanceRegister: (args: Record<string, unknown>) => call(A + 'attendance.register', args),
@@ -394,6 +401,8 @@ export const api = {
   submitExpense: (args: Record<string, unknown>) => call<{ name: string; approver?: string }>(A + 'ess.submit_expense', args),
   withdrawExpense: (name: string) => call(A + 'ess.withdraw_expense', { name }),
   myDocuments: () => call<any>(A + 'ess.my_documents'),
+  attachMyDocument: (file_name: string, kind: string) => call<any>(A + 'ess.attach_my_document', { file_name, kind }),
+  removeMyDocument: (file_name: string) => call<any>(A + 'ess.remove_my_document', { file_name }),
   myTeam: () => call<any>(A + 'ess.my_team'),
   cutoverReadiness: () => call<any>(A + 'cutover.readiness'),
   importLegacy: (kind: string, dry_run: number) => call<any>(A + 'cutover.import_legacy', { kind, dry_run }),

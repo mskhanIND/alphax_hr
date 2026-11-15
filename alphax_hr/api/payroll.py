@@ -138,3 +138,53 @@ def eosb(employee: str, exit_date: str | None = None, reason: str = eosb_rules.T
 	data.update({"employee": doc.name, "employee_name": doc.employee_name, "date_of_joining": str(doc.date_of_joining),
 				 "exit_date": str(exit_on), "wage_source": source, "reasons": list(eosb_rules.REASONS)})
 	return data
+
+
+# ------------------------------------------------------------------ GOSI rate table
+RATE_FIELDS = ("employee_pension", "employer_pension", "employee_saned", "employer_saned", "employer_hazard")
+
+
+@frappe.whitelist()
+def gosi_rates():
+	"""The contribution percentages AlphaX uses, per system and date (seeded from the official schedule)."""
+	require_hr()
+	if not frappe.db.exists("DocType", "GOSI Contribution Rate"):
+		return {"rows": [], "can_edit": False}
+	if not frappe.db.count("GOSI Contribution Rate"):
+		from alphax_hr.install import seed_gosi_rates
+		seed_gosi_rates()
+	rows = frappe.get_all("GOSI Contribution Rate", fields=["name", "system", "effective_from", *RATE_FIELDS, "notes"],
+						  order_by="system asc, effective_from asc")
+	today = getdate(nowdate())
+	current = {}
+	for r in rows:
+		r["employee_total"] = flt(r.employee_pension) + flt(r.employee_saned)
+		r["employer_total"] = flt(r.employer_pension) + flt(r.employer_saned) + flt(r.employer_hazard)
+		if getdate(r.effective_from) <= today:
+			current[r.system] = r.name
+	for r in rows:
+		r["current"] = current.get(r.system) == r.name
+	return {"rows": rows, "can_edit": bool(set(frappe.get_roles()) & {"HR Manager", "System Manager"}),
+			"systems": ["New", "Legacy", "Non-Saudi"]}
+
+
+@frappe.whitelist(methods=["POST"])
+def save_gosi_rate(data: str | dict):
+	"""Add a rate row (GOSI publishes a change) or correct one. Percentages, e.g. 9.75."""
+	from alphax_hr.api._common import parse_json, require_hr_manager
+
+	require_hr_manager()
+	d = frappe._dict(parse_json(data) or {})
+	if d.system not in ("New", "Legacy", "Non-Saudi") or not d.effective_from:
+		frappe.throw(_("Choose the system and the date the rate starts."))
+	for f in RATE_FIELDS:
+		if not 0 <= flt(d.get(f)) <= 30:
+			frappe.throw(_("Each percentage must be between 0 and 30."))
+	doc = frappe.get_doc("GOSI Contribution Rate", d.name) if d.name else frappe.new_doc("GOSI Contribution Rate")
+	doc.system, doc.effective_from = d.system, d.effective_from
+	for f in RATE_FIELDS:
+		doc.set(f, flt(d.get(f)))
+	if d.notes is not None:
+		doc.notes = str(d.notes)[:500]
+	doc.save(ignore_permissions=True)
+	return gosi_rates()

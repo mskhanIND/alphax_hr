@@ -30,7 +30,8 @@ after_migrate = "alphax_hr.install.after_migrate"
 
 doc_events = {
 	"Employee": {"validate": ["alphax_hr.employee_rules.validate", "alphax_hr.saudization.validate_employee"],
-				 "on_update": "alphax_hr.logins.on_employee_saved"},
+				 "on_update": "alphax_hr.logins.on_employee_saved",
+				 "after_insert": "alphax_hr.leave_engine.on_employee_created"},
 	"Holiday List": {"on_update": "alphax_hr.week_off.sync_public_holidays"},
 	"Company": {"on_update": "alphax_hr.defaults.on_company_created"},  # after ERPNext made its accounts; idempotent
 	"Leave Type": {

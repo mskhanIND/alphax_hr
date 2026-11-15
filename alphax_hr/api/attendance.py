@@ -8,7 +8,7 @@ from frappe import _
 from frappe.utils import add_days, cint, get_datetime, get_first_day, get_last_day, getdate, nowdate
 
 from alphax_hr.api import shifts as sh
-from alphax_hr.api._common import require_hr
+from alphax_hr.api._common import require_hr, real_departments
 from alphax_hr.api._wages import wages
 from alphax_hr.saudi import attendance as rules
 
@@ -297,7 +297,7 @@ def live(date: str | None = None, department: str | None = None):
 	summary = {k: sum(1 for r in rows if r["state"] == k) for k in ("in", "out", "not_in", "on_leave")}
 	summary["outside"] = sum(1 for r in rows if r["outside"])
 	return {"date": str(day), "rows": rows, "summary": summary,
-			"departments": sorted({e.department for e in emps if e.department}),
+			"departments": real_departments(sorted({e.department for e in emps if e.department})),
 			"locations": frappe.get_all("AlphaX Work Location", filters={"enabled": 1}, fields=["name", "latitude", "longitude", "radius_m"])
 			if frappe.db.exists("DocType", "AlphaX Work Location") else []}
 

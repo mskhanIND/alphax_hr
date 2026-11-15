@@ -5,11 +5,14 @@ import { LinkInput } from '../components/LinkInput'
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, Modal, PageHeader, Spinner, Table } from '../components/ui'
 import { api } from '../lib/api'
 import { useI18n } from '../lib/i18n'
+import { useSession } from '../lib/session'
 
 function Form({ initial, onClose }: { initial: any; onClose: () => void }) {
   const { t } = useI18n()
   const qc = useQueryClient()
-  const [f, setF] = useState<any>(initial ?? { radius_m: 150, enabled: 1 })
+  const s = useSession()
+  // a new location starts with the default company; clear it to make the location count for all companies
+  const [f, setF] = useState<any>(initial ?? { radius_m: 150, enabled: 1, company: s.company || '' })
   const [locErr, setLocErr] = useState('')
   const set = (k: string, v: any) => setF((s: any) => ({ ...s, [k]: v }))
   const m = useMutation({ mutationFn: () => api.saveWorkLocation(f, initial?.name), onSuccess: () => { qc.invalidateQueries({ queryKey: ['work-locations'] }); onClose() } })

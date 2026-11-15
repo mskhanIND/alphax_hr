@@ -171,9 +171,17 @@ def reference_read():
 	return {"added": added}
 
 
+def annual_auto():
+	"""On a site without employees yet, allocate annual leave automatically (HR can turn it off in Leave setup)."""
+	if frappe.db.count("Employee"):
+		return {"kept": True}
+	frappe.db.set_single_value("AlphaX HR Settings", "annual_auto_allocate", 1)
+	return {"on": True}
+
+
 def site():
 	out = {}
-	for key, fn in (("catalogues", catalogues), ("leave_types", leave_types), ("shift", shift), ("reference_read", reference_read)):
+	for key, fn in (("catalogues", catalogues), ("leave_types", leave_types), ("shift", shift), ("reference_read", reference_read), ("annual_auto", annual_auto)):
 		_safe(fn, out, key)
 	return out
 
@@ -212,9 +220,48 @@ def payroll_account(company):
 	return {"missing": True}
 
 
+def _expense_account(company):
+	"""The company's default expense account, else a general expense ledger in its chart."""
+	acc = frappe.db.get_value("Company", company, "default_expense_account") if frappe.get_meta("Company").has_field("default_expense_account") else None
+	if acc:
+		return acc
+	for words in (["Miscellaneous Expenses"], ["Administrative Expenses"], ["Office Maintenance Expenses"]):
+		acc = frappe.db.get_value("Account", {"company": company, "account_name": ["in", words], "is_group": 0, "disabled": 0}, "name")
+		if acc:
+			return acc
+	return frappe.db.get_value("Account", {"company": company, "root_type": "Expense", "is_group": 0, "disabled": 0}, "name")
+
+
+def expense_accounts(company):
+	"""Every expense claim type gets an account for this company (HRMS refuses a claim without one), and the
+	company an expense-claim payable account. Only empty places are filled; accounts already set are kept."""
+	if not frappe.db.exists("DocType", "Expense Claim Type"):
+		return {"skipped": True}
+	acc = _expense_account(company)
+	filled = []
+	if acc:
+		for t in frappe.get_all("Expense Claim Type", pluck="name"):
+			if frappe.db.exists("Expense Claim Account", {"parent": t, "parenttype": "Expense Claim Type", "company": company}):
+				continue
+			doc = frappe.get_doc("Expense Claim Type", t)
+			doc.append("accounts", {"company": company, "default_account": acc})
+			doc.save(ignore_permissions=True)
+			filled.append(t)
+	payable = None
+	if frappe.get_meta("Company").has_field("default_expense_claim_payable_account") and \
+			not frappe.db.get_value("Company", company, "default_expense_claim_payable_account"):
+		payable = frappe.db.get_value("Account", {"company": company, "is_group": 0, "disabled": 0, "account_type": "Payable",
+												 "account_name": ["in", ["Expense Claims Payable", "Employee Payable", "Payroll Payable"]]}, "name") \
+			or frappe.db.get_value("Company", company, "default_payable_account")
+		if payable:
+			frappe.db.set_value("Company", company, "default_expense_claim_payable_account", payable)
+	return {"types": filled, "account": acc, "payable": payable}
+
+
 def company(name):
 	out = {}
-	for key, fn in (("holiday_list", lambda: holiday_list(name)), ("payroll_account", lambda: payroll_account(name))):
+	for key, fn in (("holiday_list", lambda: holiday_list(name)), ("payroll_account", lambda: payroll_account(name)),
+					("expense_accounts", lambda: expense_accounts(name))):
 		_safe(fn, out, key)
 	if not frappe.db.get_single_value("AlphaX HR Settings", "default_company"):
 		frappe.db.set_single_value("AlphaX HR Settings", "default_company", name)
@@ -226,6 +273,17 @@ def on_company_created(doc, method=None):
 
 
 # ------------------------------------------------------------------ status and API
+def _expense_gaps(companies):
+	if not frappe.db.exists("DocType", "Expense Claim Type"):
+		return []
+	types = frappe.get_all("Expense Claim Type", pluck="name")
+	gaps = []
+	for c in companies:
+		have = set(frappe.get_all("Expense Claim Account", filters={"parenttype": "Expense Claim Type", "company": c.name}, pluck="parent"))
+		gaps += [f"{c.name}: {t}" for t in types if t not in have][:5]
+	return gaps
+
+
 def status():
 	"""What a new site still lacks, for Setup & health."""
 	conf = frappe.get_single("AlphaX HR Settings")
@@ -244,6 +302,8 @@ def status():
 		 "ok": bool(companies) and all(c.default_holiday_list for c in companies),
 		 "detail": ", ".join(c.name for c in companies if not c.default_holiday_list) or (None if companies else _("No company yet"))},
 		{"key": "banks", "label": _("Saudi banks"), "ok": frappe.db.count("Bank") >= 5, "detail": None},
+		{"key": "expense_accounts", "label": _("An account for every expense claim type"), "ok": not _expense_gaps(companies),
+		 "detail": ", ".join(_expense_gaps(companies)) or None},
 	]
 	return {"items": items, "ready": all(i["ok"] for i in items), "leave_plan": leave_plan(),
 			"in_use": bool(frappe.db.count("Employee"))}

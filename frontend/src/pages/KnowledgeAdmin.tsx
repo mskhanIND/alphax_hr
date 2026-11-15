@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BookOpen, Plus } from 'lucide-react'
+import { BookOpen, Plus, ThumbsUp, ThumbsDown } from 'lucide-react'
 import { useState } from 'react'
 import { Badge, Button, Card, Empty, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner, Table, Textarea } from '../components/ui'
 import { api, uploadFile } from '../lib/api'
@@ -51,7 +51,7 @@ export default function KnowledgeAdmin() {
             {q.data.map((a: any) => (
               <tr key={a.name}>
                 <td className="py-2 font-medium">{a.title} {!a.published && <Badge>{t('Draft')}</Badge>}{a.pinned ? <> <Badge tone="blue">{t('Pinned')}</Badge></> : null}</td>
-                <td>{t(a.category)}</td><td>{a.views || 0}</td><td className="text-sm">👍 {a.helpful || 0} · 👎 {a.not_helpful || 0}</td>
+                <td>{t(a.category)}</td><td>{a.views || 0}</td><td className="text-sm"><span className="inline-flex items-center gap-1"><ThumbsUp className="size-3.5" />{a.helpful || 0} · <ThumbsDown className="size-3.5" />{a.not_helpful || 0}</span></td>
                 <td className="whitespace-nowrap"><Button size="sm" variant="secondary" onClick={() => setEdit(a)}>{t('Edit')}</Button>
                   <Button size="sm" variant="secondary" loading={del.isPending && del.variables === a.name} onClick={() => del.mutate(a.name)}>{t('Delete')}</Button></td>
               </tr>

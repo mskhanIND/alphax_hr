@@ -296,7 +296,9 @@ def employees(search: str | None = None, status: str = "Active", department: str
 	total = frappe.get_list("Employee", filters=filters, or_filters=or_filters, fields=["count(name) as n"])[0].n
 	departments = [d.department for d in frappe.get_list("Employee", filters={"department": ["is", "set"]},
 				   fields=["department"], group_by="department", order_by="department asc", page_length=500)]
-	return {"rows": rows, "total": total, "start": start, "page_length": page_length, "departments": departments}
+	from alphax_hr.api._common import real_departments
+
+	return {"rows": rows, "total": total, "start": start, "page_length": page_length, "departments": real_departments(departments)}
 
 
 @frappe.whitelist()
@@ -846,3 +848,36 @@ def _remove_unused_salary_setup(employee):
 		if doc.docstatus == 1:
 			doc.cancel()
 		frappe.delete_doc("Salary Structure", ss.name)
+
+
+@frappe.whitelist(methods=["POST"])
+def set_team(manager: str, employees: str | list, approvers: int | str = 1):
+	"""Make the chosen employees report to `manager` (a team). With approvers on, the manager also approves their
+	leave, expenses and shift requests — the usual Saudi set-up. Nothing else on the employee changes."""
+	require_hr()
+	names = parse_json(employees, []) if isinstance(employees, str) else employees
+	if not manager or not frappe.db.exists("Employee", manager):
+		frappe.throw(_("Choose the team manager."))
+	if not names:
+		frappe.throw(_("Choose at least one team member."))
+	user = frappe.db.get_value("Employee", manager, "user_id")
+	done, failed = [], []
+	for emp in names:
+		if emp == manager:
+			continue
+		frappe.db.savepoint("alphax_team")
+		try:
+			doc = frappe.get_doc("Employee", emp)
+			doc.check_permission("write")
+			doc.reports_to = manager
+			if cint(approvers) and user:
+				for f in ("leave_approver", "expense_approver", "shift_request_approver"):
+					if doc.meta.has_field(f):
+						doc.set(f, user)
+			doc.save()
+			done.append(emp)
+		except Exception as exc:
+			frappe.db.rollback(save_point="alphax_team")
+			frappe.clear_messages()
+			failed.append({"employee": emp, "error": frappe.utils.strip_html(str(exc))[:300]})
+	return {"done": done, "failed": failed, "manager_has_login": bool(user)}

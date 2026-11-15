@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import clsx from 'clsx'
-import { CalendarClock, CalendarOff, ChevronLeft, ChevronRight } from 'lucide-react'
+import { CalendarClock, CalendarOff, ChevronLeft, ChevronRight, CalendarX } from 'lucide-react'
 import { useState } from 'react'
 import { Button, Card, ErrorBox, Field, Input, Modal, PageHeader, Select, Spinner } from '../components/ui'
 import { api } from '../lib/api'
@@ -26,6 +26,7 @@ export default function Roster() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [dialog, setDialog] = useState(false)
   const [offDialog, setOffDialog] = useState(false)
+  const [removeDialog, setRemoveDialog] = useState(false)
   const toggle1 = useMutation({ mutationFn: ({ employee, date }: { employee: string; date: string }) => api.toggleWeekOff(employee, date),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['roster'] }) })
   const q = useQuery<any>({ queryKey: ['roster', start, days, department], queryFn: () => api.roster({ start, days, department }) })
@@ -45,6 +46,7 @@ export default function Roster() {
     <div className="flex flex-col gap-5">
       <PageHeader title={t('Roster')} subtitle={t('Who works which shift. Assigned shifts override the default shift.')}
         actions={<div className="flex gap-2">
+          <Button variant="secondary" disabled={!selected.size} onClick={() => setRemoveDialog(true)} title={t('Select employees first')}><CalendarX className="size-4" />{t('Remove shift')}</Button>
           <Button variant="secondary" disabled={!selected.size} onClick={() => setOffDialog(true)}><CalendarOff className="size-4" />{t('Set week-off')}</Button>
           <Button disabled={!selected.size} onClick={() => setDialog(true)}><CalendarClock className="size-4" />{t('Assign shift')}{selected.size ? ` (${selected.size})` : ''}</Button>
         </div>} />
@@ -128,12 +130,51 @@ export default function Roster() {
           </>
         )}
       </Card>
+      {removeDialog && <RemoveDialog employees={[...selected]} names={(q.data?.rows ?? []).filter((r: any) => selected.has(r.employee)).map((r: any) => r.employee_name)}
+        defaultStart={start} defaultEnd={addDaysISO(start, days - 1)}
+        onClose={() => setRemoveDialog(false)} onDone={() => { qc.invalidateQueries({ queryKey: ['roster'] }) }} />}
       {offDialog && <WeekOffDialog employees={[...selected]} defaultStart={start}
         onClose={() => setOffDialog(false)} onDone={() => { qc.invalidateQueries({ queryKey: ['roster'] }) }} />}
       {dialog && <AssignDialog employees={[...selected]} names={(q.data?.rows ?? []).filter((r: any) => selected.has(r.employee)).map((r: any) => r.employee_name)}
         shiftTypes={q.data?.shift_types ?? []} defaultStart={start}
         onClose={() => setDialog(false)} onDone={() => { qc.invalidateQueries({ queryKey: ['roster'] }); setSelected(new Set()) }} />}
     </div>
+  )
+}
+
+function RemoveDialog({ employees, names, defaultStart, defaultEnd, onClose, onDone }: {
+  employees: string[]; names: string[]; defaultStart: string; defaultEnd: string; onClose: () => void; onDone: () => void
+}) {
+  const { t } = useI18n()
+  const [form, setForm] = useState({ start_date: defaultStart, end_date: defaultEnd })
+  const m = useMutation({ mutationFn: () => api.removeShift({ employees, ...form }), onSuccess: () => onDone() })
+  const res: any = m.data
+  return (
+    <Modal open onClose={onClose} title={t('Remove shift')}>
+      {res ? (
+        <div className="flex flex-col gap-3 text-sm">
+          <p className="text-emerald-700">{t('Removed')}: {res.removed.length}</p>
+          {!res.removed.length && !res.failed.length && <p className="text-muted">{t('No assigned shifts in this period; these days already use the default shift.')}</p>}
+          {res.failed.length > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
+              <ul className="list-disc ps-5">{res.failed.map((f: any, i: number) => <li key={i}><b>{f.employee}</b>: {f.error}</li>)}</ul>
+            </div>
+          )}
+          <Button onClick={onClose}>{t('Close')}</Button>
+        </div>
+      ) : (
+        <form className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); m.mutate() }}>
+          <p className="text-sm text-muted">{names.slice(0, 6).join(', ')}{names.length > 6 ? ` +${names.length - 6}` : ''}</p>
+          <p className="text-sm">{t('Assigned shifts in this period are taken off; these days go back to each employee\'s default shift. Days before and after are kept.')}</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={t('From')}><Input type="date" required value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} /></Field>
+            <Field label={t('To')}><Input type="date" required min={form.start_date} value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} /></Field>
+          </div>
+          {m.error && <ErrorBox error={m.error} />}
+          <Button type="submit" variant="danger" loading={m.isPending}>{t('Remove shift')}</Button>
+        </form>
+      )}
+    </Modal>
   )
 }
 

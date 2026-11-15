@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Lock } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Badge, Button, Card, ErrorBox, Field, Input, PageHeader, Spinner } from '../components/ui'
 import { api } from '../lib/api'
@@ -87,7 +87,7 @@ function AnnualCard({ annual, canEdit, onSaved }: { annual: any; canEdit: boolea
       <div className="flex flex-wrap items-center gap-3 rounded-xl bg-surface p-3">
         <span className="text-sm text-muted">{t('Leave type')}</span>
         {annual.annual_leave_type ? (
-          <span className="font-semibold">{annual.annual_leave_type} <span className="ms-1 text-xs font-normal text-muted">🔒 {t('fixed name')}</span></span>
+          <span className="font-semibold">{annual.annual_leave_type} <span className="ms-1 text-xs font-normal text-muted"><Lock className="inline size-3" /> {t('fixed name')}</span></span>
         ) : canEdit ? (
           <Button size="sm" loading={setupType.isPending} onClick={() => setupType.mutate()}>{t('Set up Annual Leave')}</Button>
         ) : <span className="text-sm text-amber-800">{t('Not set up yet')}</span>}

@@ -171,6 +171,46 @@ def end_assignment(name: str, end_date: str | None = None):
 	return {"name": doc.name, "docstatus": doc.docstatus}
 
 
+@frappe.whitelist(methods=["POST"])
+def remove(employees: str | dict | list, start_date: str, end_date: str):
+	"""Take assigned shifts off the chosen employees for a period; they fall back to their default shift.
+	Assignments inside the period are cancelled; ones that run past it are cut (history before is kept,
+	the part after is re-created unchanged)."""
+	require_hr()
+	if not frappe.has_permission("Shift Assignment", "cancel"):
+		frappe.throw(_("You need permission to cancel shift assignments (HR Manager)."), frappe.PermissionError)
+	names = parse_json(employees, [])
+	if not names or not isinstance(names, list):
+		frappe.throw(_("Choose at least one employee."))
+	start, end = getdate(start_date), getdate(end_date)
+	if date_diff(end, start) < 0:
+		frappe.throw(_("End date is before the start date."))
+	done, failed = [], []
+	for emp, items in assignments(names, start, end).items():
+		for a_from, a_to, shift_type, name in items:
+			frappe.db.savepoint("alphax_unshift")
+			try:
+				doc = frappe.get_doc("Shift Assignment", name)
+				before = a_from < start
+				after = a_to is None or a_to > end
+				if before:
+					doc.end_date = add_days(start, -1)  # editable after submit; keeps the history before the period
+					doc.save()
+				else:
+					doc.cancel()
+				if after:
+					rest = frappe.get_doc({"doctype": "Shift Assignment", "employee": emp, "shift_type": shift_type,
+										   "company": doc.company, "start_date": add_days(end, 1), "end_date": a_to, "status": "Active"})
+					rest.insert()
+					rest.submit()
+				done.append({"employee": emp, "assignment": name})
+			except Exception as exc:
+				frappe.db.rollback(save_point="alphax_unshift")
+				frappe.clear_messages()
+				failed.append({"employee": emp, "error": frappe.utils.strip_html(str(exc))[:300]})
+	return {"removed": done, "failed": failed}
+
+
 @frappe.whitelist()
 def set_week_off(employees: str | dict | list, weekdays: str | dict | list, start_date: str, end_date: str, replace: int | str = 1):
 	"""Roster: chosen weekdays become week-offs for these employees in the date range."""

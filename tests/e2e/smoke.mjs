@@ -206,6 +206,8 @@ try {
     await step('phone: my documents and expenses', async () => {
       await page.goto(`${BASE}/alphax/me/documents`)
       await page.getByRole('heading', { name: 'مستنداتي' }).waitFor()
+      await page.getByRole('button', { name: 'إضافة مستند' }).waitFor()
+      await page.screenshot({ path: `${OUT}/26b-phone-documents.png`, fullPage: true })
       await page.goto(`${BASE}/alphax/me/expenses`)
       await page.getByRole('heading', { name: 'مصروفاتي' }).waitFor()
       await page.screenshot({ path: `${OUT}/26c-phone-expenses.png`, fullPage: true })
@@ -476,6 +478,24 @@ try {
       await page.screenshot({ path: `${OUT}/11b-leave-setup.png`, fullPage: true })
     })
 
+    await step('leave allocation: annual strip, list and give-leave dialog', async () => {
+      await page.goto(`${BASE}/alphax/leave-allocation`)
+      await page.getByRole('heading', { name: 'Leave allocation' }).waitFor()
+      await page.getByRole('button', { name: 'Give leave' }).click()
+      const dlg = page.getByRole('dialog').filter({ hasText: 'Every active employee' })
+      await dlg.waitFor()
+      await page.screenshot({ path: `${OUT}/11c-leave-allocation.png`, fullPage: true })
+      await dlg.getByRole('button', { name: 'Cancel' }).click()
+    })
+    await step('roster: remove shift and GOSI rates in settings', async () => {
+      await page.goto(`${BASE}/alphax/roster`)
+      await page.getByRole('button', { name: 'Remove shift' }).waitFor()
+      await page.goto(`${BASE}/alphax/setup#settings`)
+      await page.getByText('Payroll, GOSI & loans', { exact: true }).first().click()
+      await page.getByText('Contribution rates').waitFor()
+      await page.getByText('In force').first().waitFor()
+      await page.screenshot({ path: `${OUT}/11d-gosi-rates.png`, fullPage: true })
+    })
     await step('HR completes the request and the letter is issued', async () => {
       await page.goto(`${BASE}/alphax/requests`)
       await page.locator('select').first().selectOption('Salary Certificate')
@@ -518,7 +538,7 @@ try {
       await page.getByRole('dialog').filter({ hasText: 'New loan or salary advance' }).getByRole('button', { name: 'Cancel' }).click()
       await page.screenshot({ path: `${OUT}/23d-loans.png`, fullPage: true })
       await page.goto(`${BASE}/alphax/payroll/adjustments`)
-      await page.getByText('Deduction limits for one employee').waitFor()
+      await page.getByText('How much more can be deducted?').waitFor()
       await page.getByRole('button', { name: 'Bonus or deduction' }).click()
       const dlg = page.getByRole('dialog').filter({ hasText: 'Category' })
       await dlg.getByRole('button', { name: 'Deduction', exact: true }).click()

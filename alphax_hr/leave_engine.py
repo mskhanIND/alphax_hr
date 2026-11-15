@@ -312,6 +312,18 @@ def apply_annual_allocations(on=None, employees=None):
 	return plan
 
 
+def on_employee_created(doc, method=None):
+	"""A new employee gets this service year's annual leave at once when automatic allocation is on
+	(instead of waiting for the night job), so Annual Leave shows in their leave form from day one."""
+	conf = _settings()
+	if not conf or not cint(conf.annual_auto_allocate) or not conf.annual_leave_type or doc.status != "Active":
+		return
+	try:
+		apply_annual_allocations(employees=[doc.name])
+	except Exception:
+		frappe.log_error(title=f"AlphaX annual allocation for {doc.name}")
+
+
 def daily_annual_allocation():
 	conf = _settings()
 	if not conf or not cint(conf.annual_auto_allocate) or not conf.annual_leave_type:

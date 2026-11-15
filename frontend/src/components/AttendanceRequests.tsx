@@ -60,7 +60,8 @@ function ShiftForm({ onDone }: { onDone: () => void }) {
 export function AttendanceRequests() {
   const { t, lang } = useI18n()
   const qc = useQueryClient()
-  const [open, setOpen] = useState<'correction' | 'shift' | null>(null)
+  // Services links here with #shift / #correction to open that form straight away
+  const [open, setOpen] = useState<'correction' | 'shift' | null>(() => (['#shift', '#correction'].includes(window.location.hash) ? window.location.hash.slice(1) as 'shift' | 'correction' : null))
   const [permit, setPermit] = useState<string | null>(null)
   const [sent, setSent] = useState(false)
   const q = useQuery<any[]>({ queryKey: ['myRequests'], queryFn: api.myRequests })

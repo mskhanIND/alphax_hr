@@ -6,6 +6,7 @@ import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { FieldInput } from '../components/FieldInput'
+import { GosiRates } from '../components/GosiRates'
 import { LinkInput } from '../components/LinkInput'
 import { Button, Card, ErrorBox, Field, Input, PageHeader, Select, Spinner, Stat, Modal } from '../components/ui'
 import { api, call } from '../lib/api'
@@ -273,6 +274,7 @@ function SettingsForm() {
               {sec.key === 'payslip_section' && <PayslipActions can={can} />}
               {sec.key === 'checkin_section' && <p className="mt-4 text-sm"><Link className="text-brand underline" to="/work-locations">{t('Work locations (check-in areas)')}</Link></p>}
               {sec.key === 'notify_section' && <p className="mt-4 text-sm"><Link className="text-brand underline" to="/notifications-setup">{t('Who is told about what')}</Link></p>}
+              {sec.key === 'gosi_section' && <GosiRates />}
               {sec.key === 'gosi_section' && (
                 <div className="mt-5 border-t border-line pt-4">
                   <div className="mb-1 text-sm font-medium">{t('Salary component mapping')}</div>
@@ -300,7 +302,6 @@ function SettingsForm() {
                 <Link to="/roster"><Button variant="secondary">{t('Roster & week-offs')}</Button></Link>
                 <Link to="/notifications-setup"><Button variant="secondary">{t('Notifications')}</Button></Link>
                 <Link to="/compliance"><Button variant="secondary">{t('Data readiness')}</Button></Link>
-                <a href="/app/gosi-contribution-rate" target="_blank" rel="noreferrer"><Button variant="secondary">{t('GOSI rates')}</Button></a>
                 <Link to="/holiday-lists"><Button variant="secondary">{t('Holiday lists')}</Button></Link>
                 <a href="/app/alphax-hr-settings" target="_blank" rel="noreferrer"><Button variant="secondary">{t('System health (Desk)')}</Button></a>
               </div>

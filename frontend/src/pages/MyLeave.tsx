@@ -22,6 +22,7 @@ function ApplyForm({ onDone, again }: { onDone: (warnings: string[]) => void; ag
   const extraMissing = (extraSpec.data?.fields ?? []).filter((f: any) =>
     (f.fieldtype === 'Attach' || f.fieldtype === 'Attach Image') ? !extraFiles[f.fieldname] : isEmpty(extra[f.fieldname]))
   const rule = types.data?.find((x) => x.leave_type === form.leave_type)?.rule ?? null
+  const noAllocation = !!types.data?.find((x) => x.leave_type === form.leave_type)?.no_allocation
   const qc = useQueryClient()
   const m = useMutation({
     mutationFn: async () => {
@@ -62,6 +63,9 @@ function ApplyForm({ onDone, again }: { onDone: (warnings: string[]) => void; ag
           {(types.data ?? []).map((lt) => <option key={lt.leave_type} value={lt.leave_type}>{lt.leave_type}</option>)}
         </Select>
       </Field>
+      {noAllocation && (
+        <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{t('You have no annual leave balance yet for this service year. HR gives it in Leave allocation; ask HR if it is missing.')}</div>
+      )}
       {rule && (
         <div className="rounded-xl bg-brand-50 p-3 text-sm text-brand-700">
           {t('Saudi Labor Law rule')}: {rule.max_days ? `${t('up to')} ${rule.max_days} ${t('days')}` : t('no fixed limit')}
@@ -110,7 +114,7 @@ function ApplyForm({ onDone, again }: { onDone: (warnings: string[]) => void; ag
         <p className="text-xs text-muted">{t('Filled automatically')}: {extraSpec.data.auto.map((a) => `${a.label} (${t('next working day after the leave')})`).join(', ')}</p>
       )}
       {m.error && <ErrorBox error={m.error} />}
-      <Button type="submit" loading={m.isPending} disabled={extraMissing.length > 0}>{t('Submit request')}</Button>
+      <Button type="submit" loading={m.isPending} disabled={extraMissing.length > 0 || noAllocation}>{t('Submit request')}</Button>
     </form>
   )
 }
