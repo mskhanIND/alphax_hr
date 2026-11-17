@@ -2,6 +2,14 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.42.0 — 2026-11-18
+
+- **Report a problem** (new): a small button at the bottom of every page. The user writes what went wrong (and optionally what they were trying to do); a picture of the page is taken automatically (can be removed or replaced). The page, app version, site, login, roles, browser and the error messages shown in the last 30 minutes are added automatically, so testers no longer need to fill in a report template.
+- **My reports** (Services → My reports): each report with its status (Received, Being worked on, Question for you, Fixed - please check, Answered, Reopened, Closed) and the conversation with the AlphaX team. Testers answer questions there and press *Pass* or *Fail* after a fix. HR managers can see everyone's reports.
+- Reports are kept on the site (AlphaX Feedback). When the site is connected to a private GitHub repository (two site settings, see docs/REPORT_A_PROBLEM.md) each report also becomes a ticket for the development team, with the screenshot; replies and status come back into the app. Reports that cannot be sent are retried every hour.
+- The button can be switched off in Settings → Testing and feedback.
+- Team calendar: previous / next month buttons have labels for screen readers.
+
 ## 0.41.1 — 2026-11-17
 
 Tester feedback (Ahmed, round 2).

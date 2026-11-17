@@ -3938,6 +3938,83 @@ def run(site):
             assert not defaults.expense_accounts(COMPANY)["types"]
         check("Ahmed's round: leave allocation once per period, remove shifts in a range, GOSI rates, teams, own documents, expense accounts", ahmed_round)
 
+        print("\n== Report a problem")
+        def report_problem():
+            from alphax_hr.api import feedback
+            frappe.set_user("Administrator")
+            frappe.db.set_single_value("AlphaX HR Settings", "report_button", 1)
+            frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
+            calls = []
+            def fake_gh(method, path, token, **kw):
+                calls.append((method, path, kw.get("json")))
+                if path.endswith("/issues") and method == "POST":
+                    return {"number": 41, "html_url": "https://github.com/o/r/issues/41"}
+                if "/contents/" in path:
+                    return {"content": {"html_url": "https://github.com/o/r/blob/main/x.png"}}
+                if path.endswith("/issues/41") and method == "GET":
+                    return {"state": "open", "labels": [{"name": "retest"}]}
+                if path.endswith("/comments") or "/comments?" in path:
+                    return [{"body": "Fixed in v0.42.0 <!-- note -->", "created_at": "2026-11-18T10:00:00Z"},
+                            {"body": feedback.TESTER_MARK + " tester text", "created_at": "2026-11-18T11:00:00Z"}]
+                return {}
+            real_gh, real_conf = feedback._gh, frappe.conf.copy()
+            feedback._gh = fake_gh
+            frappe.conf.alphax_feedback_repo, frappe.conf.alphax_feedback_token = "o/r", "t"
+            try:
+                frappe.set_user(f["emp"])
+                assert session.boot()["report_button"] is True, "boot flag"
+                expect_error(lambda: feedback.submit("  "), frappe.ValidationError)
+                png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+                r = feedback.submit("Save says not permitted", doing="apply leave", page="/me/leave?x=1",
+                                    last_error="ess.apply_leave (403)\nNot permitted", screenshot=png)
+                doc = frappe.get_doc("AlphaX Feedback", r["name"])
+                assert doc.reporter == f["emp"] and doc.github_issue == 41 and doc.screenshot and doc.app_version, doc.as_dict()
+                issue = next(c for c in calls if c[1].endswith("/issues") and c[0] == "POST")[2]
+                assert "Not permitted" in issue["body"] and "[" + frappe.local.site + "] /me/leave" in issue["title"] and "x.png?raw=true" in issue["body"], issue
+                assert r["name"] in [x["name"] for x in feedback.mine()], "mine"
+                d = feedback.detail(r["name"])
+                assert d["status"] == "Fixed - please check" and [(x["text"], x["mine"]) for x in d["replies"]] == [("Fixed in v0.42.0", False), ("tester text", True)], d
+                expect_error(lambda: feedback.retest(r["name"], "Fail"), frappe.ValidationError)
+                frappe.set_user(f["emp2"])
+                expect_error(lambda: feedback.detail(r["name"]), frappe.PermissionError)
+                assert r["name"] not in [x["name"] for x in feedback.mine()], "emp2 mine"
+                frappe.set_user(f["emp"])
+                calls.clear()
+                feedback.reply(r["name"], "It was the Annual type")
+                assert any("Tester answer" in (c[2] or {}).get("body", "") for c in calls), calls
+                feedback.retest(r["name"], "Pass")
+                assert frappe.db.get_value("AlphaX Feedback", r["name"], "status") == "Closed", "closed"
+                assert any(c[0] == "PATCH" and c[2] == {"state": "closed"} for c in calls), calls
+                # not connected: kept on the site, sent by the hourly job later
+                frappe.conf.alphax_feedback_repo = ""
+                r2 = feedback.submit("Second problem")
+                assert not frappe.db.get_value("AlphaX Feedback", r2["name"], "github_issue"), "r2 not sent"
+                frappe.conf.alphax_feedback_repo = "o/r"
+                frappe.set_user("Administrator")
+                feedback.hourly()
+                assert frappe.db.get_value("AlphaX Feedback", r2["name"], "github_issue") == 41, "r2 sent hourly"
+                # GitHub down: report kept, error noted, never raised to the user
+                def down(*a, **k):
+                    raise RuntimeError("GitHub 503")
+                feedback._gh = down
+                frappe.set_user(f["emp"])
+                r3 = feedback.submit("Third problem")
+                assert "503" in frappe.db.get_value("AlphaX Feedback", r3["name"], "relay_error")
+                # switched off
+                frappe.set_user("Administrator")
+                frappe.db.set_single_value("AlphaX HR Settings", "report_button", 0)
+                frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
+                frappe.set_user(f["emp"])
+                expect_error(lambda: feedback.submit("x y z"), frappe.PermissionError)
+            finally:
+                feedback._gh = real_gh
+                frappe.conf.clear(); frappe.conf.update(real_conf)
+                frappe.set_user("Administrator")
+                frappe.db.set_single_value("AlphaX HR Settings", "report_button", 1)
+                frappe.clear_document_cache("AlphaX HR Settings", "AlphaX HR Settings")
+                frappe.db.delete("AlphaX Feedback", {"reporter": f["emp"]})
+        check("report a problem: context saved, sent as ticket, replies shown, Pass closes, only the reporter sees it, kept when GitHub is down, can be switched off", report_problem)
+
         print("\n== /alphax page")
         def www_page():
             from alphax_hr.www import alphax as page

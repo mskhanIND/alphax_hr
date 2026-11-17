@@ -6,6 +6,9 @@ import { I18nProvider } from './lib/i18n'
 import App from './App'
 import './index.css'
 import { registerServiceWorker } from './lib/pwa'
+import { installErrorTrail } from './lib/trail'
+
+installErrorTrail()
 
 registerServiceWorker()
 

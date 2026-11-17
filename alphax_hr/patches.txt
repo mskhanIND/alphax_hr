@@ -2,3 +2,4 @@
 
 [post_model_sync]
 alphax_hr.patches.passport_release_to_hr
+alphax_hr.patches.report_button_on

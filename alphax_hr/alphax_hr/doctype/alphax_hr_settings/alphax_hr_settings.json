@@ -5,7 +5,7 @@
  "custom": 0,
  "engine": "InnoDB",
  "creation": "2026-11-02 00:00:00.000000",
- "modified": "2026-11-02 00:00:00.000000",
+ "modified": "2026-11-18 00:00:00.000000",
  "owner": "Administrator",
  "modified_by": "Administrator",
  "field_order": [
@@ -114,7 +114,9 @@
   "leave_expense_account",
   "leave_provision_account",
   "documents_section",
-  "document_alert_days"
+  "document_alert_days",
+  "feedback_section",
+  "report_button"
  ],
  "fields": [
   {
@@ -151,7 +153,7 @@
    "fieldname": "app_icon",
    "fieldtype": "Attach Image",
    "label": "App icon",
-   "description": "Square image (at least 512×512 PNG) for the browser tab and the phone home screen. Blank: the logo."
+   "description": "Square image (at least 512\u00d7512 PNG) for the browser tab and the phone home screen. Blank: the logo."
   },
   {
    "fieldname": "brand_login",
@@ -297,7 +299,7 @@
    "label": "Annual Leave Type",
    "options": "Leave Type",
    "read_only": 1,
-   "description": "Set once from AlphaX → Leave setup. The leave type cannot be renamed or deleted while it is in use here."
+   "description": "Set once from AlphaX \u2192 Leave setup. The leave type cannot be renamed or deleted while it is in use here."
   },
   {
    "fieldname": "annual_auto_allocate",
@@ -764,6 +766,18 @@
    "fieldtype": "Int",
    "label": "Alert Before Expiry (days)",
    "default": "60"
+  },
+  {
+   "fieldname": "feedback_section",
+   "fieldtype": "Section Break",
+   "label": "Testing and feedback"
+  },
+  {
+   "fieldname": "report_button",
+   "fieldtype": "Check",
+   "label": "Show the Report a problem button",
+   "default": "1",
+   "description": "A small button on every page. Users describe a problem in two lines; the page, version, login and the last error are added automatically."
   }
  ],
  "permissions": [

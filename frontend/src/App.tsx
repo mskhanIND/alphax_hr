@@ -37,6 +37,7 @@ const Cutover = lazy(() => import('./pages/Cutover'))
 const Services = lazy(() => import('./pages/Services'))
 const MyExpenses = lazy(() => import('./pages/MyExpenses'))
 const MyDocuments = lazy(() => import('./pages/MyDocuments'))
+const MyReports = lazy(() => import('./pages/MyReports'))
 const MyTeam = lazy(() => import('./pages/MyTeam'))
 const MyPerformance = lazy(() => import('./pages/MyPerformance'))
 const AttendancePolicies = lazy(() => import('./pages/AttendancePolicies'))
@@ -89,6 +90,7 @@ export default function App() {
             <Route path="/me/services" element={<Guard when={emp}><Services /></Guard>} />
             <Route path="/me/expenses" element={<Guard when={emp}><MyExpenses /></Guard>} />
             <Route path="/me/documents" element={<Guard when={emp}><MyDocuments /></Guard>} />
+            <Route path="/me/reports" element={<MyReports />} />
             <Route path="/me/performance" element={<Guard when={emp}><MyPerformance /></Guard>} />
             <Route path="/me/vacation-plan" element={<Guard when={emp}><VacationPlan /></Guard>} />
             <Route path="/vacation-planner" element={<Guard when={mgr}><VacationPlanner /></Guard>} />

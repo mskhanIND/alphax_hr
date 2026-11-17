@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { CalendarClock, HandCoins, LifeBuoy, UserPen, Briefcase, CalendarDays, CalendarRange, Clock, FileText, Folder, LogOut, Plane, Receipt, Star, Timer, Wallet } from 'lucide-react'
+import { Bug, CalendarClock, HandCoins, LifeBuoy, UserPen, Briefcase, CalendarDays, CalendarRange, Clock, FileText, Folder, LogOut, Plane, Receipt, Star, Timer, Wallet } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { RequestForm, typeTitle } from '../components/RequestForm'
 import { Card, PageHeader, Spinner } from '../components/ui'
 import { api, type RequestType } from '../lib/api'
 import { useI18n } from '../lib/i18n'
+import { useSession } from '../lib/session'
 
 function Tile({ icon, label, hint, to, onClick, disabled }: { icon: ReactNode; label: string; hint?: string; to?: string; onClick?: () => void; disabled?: boolean }) {
   const cls = 'flex min-h-24 flex-col items-start gap-2 rounded-2xl border border-line bg-white p-4 text-start transition ' +
@@ -26,6 +27,7 @@ const CATEGORY_ICON: Record<string, ReactNode> = {
 /** Every self-service in one place: the employee's "app home" for requests. */
 export default function Services() {
   const { t, lang } = useI18n()
+  const session = useSession()
   const types = useQuery({ queryKey: ['request-types'], queryFn: () => api.requestTypes() })
   const [open, setOpen] = useState<string | null>(null)
   const groups: Record<string, RequestType[]> = {}
@@ -46,6 +48,7 @@ export default function Services() {
           <Tile icon={<UserPen className="size-5" />} label={t('Update my details')} to="/me/profile" />
           <Tile icon={<LifeBuoy className="size-5" />} label={t('Help centre')} to="/me/help" />
           <Tile icon={<Star className="size-5" />} label={t('My performance')} to="/me/performance" />
+          {session.report_button && <Tile icon={<Bug className="size-5" />} label={t('My reports')} hint={t('Problems you reported')} to="/me/reports" />}
         </div>
       </Card>
       {types.isLoading ? <Spinner /> : CATEGORY_ORDER.filter((c) => groups[c]?.length).map((c) => (

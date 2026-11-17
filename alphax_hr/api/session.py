@@ -60,6 +60,7 @@ def boot():
 		"version": alphax_hr.__version__,
 		"gosi_enabled": bool(conf.gosi_enabled),
 		"legacy_hr": _legacy_hr(),
+		"report_button": bool(conf.get("report_button")),
 	}
 
 

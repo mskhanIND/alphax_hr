@@ -10,6 +10,7 @@ import { useSession } from '../lib/session'
 import { useInstall } from '../lib/pwa'
 import { Avatar } from './ui'
 import NotificationBell from './NotificationBell'
+import ReportProblem from './ReportProblem'
 
 interface NavItem { to: string; label: string; icon: ReactNode; badge?: number }
 
@@ -290,6 +291,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <main className={`mx-auto w-full flex-1 ${folded ? 'max-w-none lg:px-8' : 'max-w-7xl'} px-4 pt-6 pb-24 sm:px-6 lg:pb-6`}><RestartBanner />{children}</main>
       </div>
       <TabBar />
+      <ReportProblem />
     </div>
   )
 }

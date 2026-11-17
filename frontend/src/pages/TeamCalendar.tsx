@@ -22,8 +22,8 @@ export default function TeamCalendar() {
       <Card
         title={fmtMonth(month, lang)}
         action={<div className="flex gap-1">
-          <Button variant="secondary" size="sm" onClick={() => setMonth(shiftMonth(month, -1))}><ChevronLeft className="size-4 flip-rtl" /></Button>
-          <Button variant="secondary" size="sm" onClick={() => setMonth(shiftMonth(month, 1))}><ChevronRight className="size-4 flip-rtl" /></Button>
+          <Button variant="secondary" size="sm" aria-label={t('Previous month')} onClick={() => setMonth(shiftMonth(month, -1))}><ChevronLeft className="size-4 flip-rtl" /></Button>
+          <Button variant="secondary" size="sm" aria-label={t('Next month')} onClick={() => setMonth(shiftMonth(month, 1))}><ChevronRight className="size-4 flip-rtl" /></Button>
         </div>}
       >
         {q.isLoading ? <Spinner /> : q.error ? <ErrorBox error={q.error} /> : !Object.keys(people).length ? <Empty title={t('All caught up')} /> : (

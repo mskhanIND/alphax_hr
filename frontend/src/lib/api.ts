@@ -1,4 +1,5 @@
 // Thin client for Frappe whitelisted methods (same-origin, session cookie + CSRF).
+import { recordError } from './trail'
 
 export interface Boot {
   user: string
@@ -95,13 +96,23 @@ export async function call<T = any>(method: string, args: Record<string, unknown
   if (res.status === 401 || (res.status === 403 && body?.exc_type === 'AuthenticationError')) {
     window.location.href = '/login?redirect-to=' + encodeURIComponent(window.location.pathname)
   }
-  if (!res.ok) throw extractError(body, res.status)
+  if (!res.ok) {
+    const err = extractError(body, res.status)
+    if (!method.endsWith('feedback.submit')) recordError(`${method.replace('alphax_hr.api.', '')} (${res.status}${err.type ? ' ' + err.type : ''})`, err.message)
+    throw err
+  }
   return body?.message as T
 }
 
 const A = 'alphax_hr.api.'
 export const api = {
   boot: () => call(A + 'session.boot'),
+  // in-app problem reports
+  reportProblem: (data: Record<string, unknown>) => call<any>(A + 'feedback.submit', data),
+  myReports: (everyone = false) => call<any[]>(A + 'feedback.mine', everyone ? { everyone: 1 } : {}),
+  reportDetail: (name: string) => call<any>(A + 'feedback.detail', { name }),
+  retestReport: (name: string, result: 'Pass' | 'Fail', note: string) => call<any>(A + 'feedback.retest', { name, result, note }),
+  replyReport: (name: string, text: string) => call<any>(A + 'feedback.reply', { name, text }),
   setLanguage: (lang: string) => call(A + 'session.set_language', { lang }),
   // self-service
   profile: () => call(A + 'ess.my_profile'),

@@ -1,0 +1,209 @@
+{
+ "doctype": "DocType",
+ "name": "AlphaX Feedback",
+ "module": "AlphaX HR",
+ "custom": 0,
+ "engine": "InnoDB",
+ "creation": "2026-11-18 00:00:00.000000",
+ "modified": "2026-11-18 00:00:00.000000",
+ "owner": "Administrator",
+ "modified_by": "Administrator",
+ "field_order": [
+  "title",
+  "status",
+  "reporter",
+  "cb1",
+  "page",
+  "app_version",
+  "site",
+  "roles",
+  "details_section",
+  "doing",
+  "went_wrong",
+  "last_error",
+  "recent_pages",
+  "device",
+  "screenshot",
+  "tracking_section",
+  "github_issue",
+  "github_url",
+  "relay_error",
+  "relay_attempts",
+  "cb2",
+  "retest",
+  "retest_note",
+  "retest_on"
+ ],
+ "fields": [
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Received\nBeing worked on\nQuestion for you\nFixed - please check\nAnswered\nReopened\nClosed",
+   "default": "Received",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "reporter",
+   "fieldtype": "Link",
+   "label": "Reported by",
+   "options": "User",
+   "read_only": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "page",
+   "fieldtype": "Data",
+   "label": "Page",
+   "read_only": 1
+  },
+  {
+   "fieldname": "app_version",
+   "fieldtype": "Data",
+   "label": "App version",
+   "read_only": 1
+  },
+  {
+   "fieldname": "site",
+   "fieldtype": "Data",
+   "label": "Site",
+   "read_only": 1
+  },
+  {
+   "fieldname": "roles",
+   "fieldtype": "Small Text",
+   "label": "Roles",
+   "read_only": 1
+  },
+  {
+   "fieldname": "details_section",
+   "fieldtype": "Section Break",
+   "label": "What happened"
+  },
+  {
+   "fieldname": "doing",
+   "fieldtype": "Small Text",
+   "label": "What they were trying to do",
+   "read_only": 1
+  },
+  {
+   "fieldname": "went_wrong",
+   "fieldtype": "Small Text",
+   "label": "What went wrong",
+   "reqd": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Code",
+   "label": "Errors shown recently",
+   "read_only": 1
+  },
+  {
+   "fieldname": "recent_pages",
+   "fieldtype": "Small Text",
+   "label": "Pages visited before",
+   "read_only": 1
+  },
+  {
+   "fieldname": "device",
+   "fieldtype": "Small Text",
+   "label": "Browser and screen",
+   "read_only": 1
+  },
+  {
+   "fieldname": "screenshot",
+   "fieldtype": "Attach Image",
+   "label": "Screenshot",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tracking_section",
+   "fieldtype": "Section Break",
+   "label": "Tracking"
+  },
+  {
+   "fieldname": "github_issue",
+   "fieldtype": "Int",
+   "label": "Ticket number",
+   "read_only": 1
+  },
+  {
+   "fieldname": "github_url",
+   "fieldtype": "Data",
+   "label": "Ticket link",
+   "options": "URL",
+   "read_only": 1
+  },
+  {
+   "fieldname": "relay_error",
+   "fieldtype": "Small Text",
+   "label": "Could not send yet",
+   "read_only": 1
+  },
+  {
+   "fieldname": "relay_attempts",
+   "fieldtype": "Int",
+   "label": "Send attempts",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cb2",
+   "fieldtype": "Column Break",
+   "label": ""
+  },
+  {
+   "fieldname": "retest",
+   "fieldtype": "Select",
+   "label": "Tester check",
+   "options": "\nPass\nFail",
+   "read_only": 1
+  },
+  {
+   "fieldname": "retest_note",
+   "fieldtype": "Small Text",
+   "label": "Tester remarks",
+   "read_only": 1
+  },
+  {
+   "fieldname": "retest_on",
+   "fieldtype": "Datetime",
+   "label": "Checked on",
+   "read_only": 1
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "HR Manager",
+   "read": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1,
+ "states": [],
+ "autoname": "format:FB-{#####}",
+ "title_field": "title"
+}

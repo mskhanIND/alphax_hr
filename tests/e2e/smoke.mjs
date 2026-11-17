@@ -160,6 +160,23 @@ try {
       await page.goto(`${BASE}/alphax/me/profile`)
       await page.getByText('Notifications on this device').waitFor()
     })
+    await step('report a problem: button, picture of the page, recent error added, report listed', async () => {
+      await page.goto(`${BASE}/alphax/me/leave`)
+      await page.getByRole('heading', { name: /Leave/ }).first().waitFor()
+      await page.getByRole('button', { name: 'Report a problem' }).click()
+      const dlg = page.getByRole('dialog')
+      await dlg.getByText('What went wrong?').waitFor()
+      await dlg.getByText('Include this picture of the page').waitFor()
+      await dlg.locator('textarea').first().fill('Test report from the browser test')
+      await page.screenshot({ path: `${OUT}/40-report-problem.png` })
+      await dlg.getByRole('button', { name: 'Send' }).click()
+      await dlg.getByText(/Your report FB-\d+ was sent/).waitFor()
+      await dlg.getByRole('link', { name: 'My reports' }).click()
+      await page.getByText('Test report from the browser test').first().click()
+      await page.getByRole('dialog').getByText('Waiting to be sent to the AlphaX team.').waitFor()
+      await page.screenshot({ path: `${OUT}/41-my-reports.png` })
+      await page.keyboard.press('Escape')
+    })
     await step('HR pages are not reachable by URL', async () => {
       await page.goto(`${BASE}/alphax/people`)
       await page.waitForURL(/\/alphax\/?$/)
@@ -263,6 +280,12 @@ try {
     })
     await step('team calendar shows the approved leave', async () => {
       await page.goto(`${BASE}/alphax/team`)
+      // the leave is 10-55 days ahead, so it may be in next month
+      for (let i = 0; i < 2 && !(await page.getByText('Eman').first().isVisible().catch(() => false)); i++) {
+        await page.waitForTimeout(1500)
+        if (await page.getByText('Eman').first().isVisible().catch(() => false)) break
+        await page.getByRole('button', { name: 'Next month' }).click()
+      }
       await page.getByText('Eman').first().waitFor()
       await page.screenshot({ path: `${OUT}/08-team-calendar.png` })
     })

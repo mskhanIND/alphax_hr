@@ -17,6 +17,7 @@ export interface Session {
   version: string
   gosi_enabled: boolean
   legacy_hr?: boolean
+  report_button?: boolean
 }
 
 const Ctx = createContext<Session | null>(null)
