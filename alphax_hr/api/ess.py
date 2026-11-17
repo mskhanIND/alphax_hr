@@ -22,9 +22,9 @@ SELF_EDITABLE = {"cell_number", "personal_email", "person_to_be_contacted", "eme
 
 
 def _employee_doc():
-	doc = frappe.get_doc("Employee", current_employee())
-	doc.check_permission("read")
-	return doc
+	# the signed-in user's own linked record: always readable to them, even where the site's Employee permissions
+	# (user permissions, a custom role set-up) would not let them open it in the desk
+	return frappe.get_doc("Employee", current_employee())
 
 
 @frappe.whitelist()

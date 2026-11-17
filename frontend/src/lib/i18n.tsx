@@ -2130,6 +2130,12 @@ const ar: Record<string, string> = {
   "Every active employee": "كل الموظفين النشطين",
   "Certificate": "شهادة",
   "Medical": "طبي",
+  "Your user is not linked to an employee": "حسابك غير مرتبط بسجل موظف",
+  "Self-service pages (profile, leave, payslips) need an employee record linked to your login.": "صفحات الخدمة الذاتية (الملف الشخصي والإجازات وقسائم الرواتب) تحتاج إلى سجل موظف مرتبط بحسابك.",
+  "If you are an employee too, choose your record. If it does not exist yet, add it in Employees first.": "إن كنت موظفًا أيضًا فاختر سجلك. وإن لم يكن موجودًا بعد فأضفه أولًا من «الموظفون».",
+  "My employee record": "سجلي كموظف",
+  "Link to my user": "ربط بحسابي",
+  "Please ask HR to link your login to your employee record.": "يرجى التواصل مع الموارد البشرية لربط حسابك بسجل الموظف.",
 }
 
 // Machine keys returned by the API need readable English too.

@@ -484,7 +484,14 @@ try {
       await page.getByRole('button', { name: 'Give leave' }).click()
       const dlg = page.getByRole('dialog').filter({ hasText: 'Every active employee' })
       await dlg.waitFor()
-      await page.screenshot({ path: `${OUT}/11c-leave-allocation.png`, fullPage: true })
+      // the employee list opens on top of the dialog, not clipped inside it
+      await dlg.getByPlaceholder('Employee ID or name').click()
+      const lb = page.getByRole('listbox')
+      await lb.waitFor()
+      const box = await lb.boundingBox()
+      if (!box || box.height < 30) throw new Error('employee list is hidden behind the dialog')
+      await page.screenshot({ path: `${OUT}/11c-leave-allocation.png` })
+      await page.keyboard.press('Escape')
       await dlg.getByRole('button', { name: 'Cancel' }).click()
     })
     await step('roster: remove shift and GOSI rates in settings', async () => {

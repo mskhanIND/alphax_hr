@@ -9,6 +9,9 @@ import { Avatar, Badge, Button, Card, ErrorBox, Field, Input, PageHeader, Spinne
 import { api } from '../lib/api'
 import { fmtDate } from '../lib/format'
 import { useI18n } from '../lib/i18n'
+import { useSession } from '../lib/session'
+import { LinkInput } from '../components/LinkInput'
+import { Link } from 'react-router-dom'
 
 /** Details only HR may change (documents, marital status, bank): the employee asks, HR checks and applies. */
 function ChangeRequest() {
@@ -69,7 +72,41 @@ function ChangeRequest() {
   )
 }
 
+/** A login with no employee record (often the HR manager on a new site): say so, and let HR link themselves. */
+function NoEmployee() {
+  const { t } = useI18n()
+  const s = useSession()
+  const qc = useQueryClient()
+  const [emp, setEmp] = useState('')
+  const m = useMutation({ mutationFn: () => api.linkMyUser(emp), onSuccess: () => { qc.invalidateQueries(); window.location.reload() } })
+  return (
+    <div className="flex flex-col gap-5">
+      <PageHeader title={t('My Profile')} />
+      <Card title={t('Your user is not linked to an employee')}
+        subtitle={t('Self-service pages (profile, leave, payslips) need an employee record linked to your login.')}>
+        {s.persona.hr ? (
+          <div className="grid gap-3 sm:max-w-md">
+            <p className="text-sm">{t('If you are an employee too, choose your record. If it does not exist yet, add it in Employees first.')}</p>
+            <Field label={t('My employee record')}><LinkInput doctype="Employee" value={emp} onChange={setEmp} /></Field>
+            <div className="flex gap-2">
+              <Button disabled={!emp} loading={m.isPending} onClick={() => m.mutate()}>{t('Link to my user')}</Button>
+              <Link to="/employees"><Button variant="secondary">{t('Employees')}</Button></Link>
+            </div>
+            {m.error && <ErrorBox error={m.error} />}
+          </div>
+        ) : <p className="text-sm text-muted">{t('Please ask HR to link your login to your employee record.')}</p>}
+      </Card>
+    </div>
+  )
+}
+
 export default function MyProfile() {
+  const s = useSession()
+  if (!s.employee) return <NoEmployee />
+  return <Profile />
+}
+
+function Profile() {
   const { t, lang } = useI18n()
   const q = useQuery<any>({ queryKey: ['profile'], queryFn: api.profile })
   const qc = useQueryClient()

@@ -3915,6 +3915,23 @@ def run(site):
             assert added["file_name"].startswith("Iqama or ID - ")
             assert any(x["name"] == fd.name and x["mine"] for x in ess.my_documents()["files"])
             ess.remove_my_document(fd.name)
+            # HR without an employee record links their own login; never takes a record that has one
+            frappe.set_user("Administrator")
+            from frappe.utils import random_string
+            u = frappe.get_doc({"doctype": "User", "email": f"hrlink{random_string(5)}@example.com", "first_name": "HR Link",
+                                "send_welcome_email": 0, "roles": [{"role": "HR Manager"}]}).insert(ignore_permissions=True)
+            spare = frappe.get_doc({"doctype": "Employee", "first_name": "Link", "last_name": random_string(5), "gender": frappe.db.get_value("Gender", {}, "name"),
+                                    "date_of_birth": "1990-01-01", "date_of_joining": "2024-01-01", "company": COMPANY, "status": "Active"}).insert(ignore_permissions=True, ignore_mandatory=True)
+            frappe.set_user(u.name)
+            try:
+                hr_api.link_my_user(f["e_emp2"])
+                raise AssertionError("took an employee that already has a login")
+            except frappe.ValidationError:
+                pass
+            hr_api.link_my_user(spare.name)
+            assert frappe.db.get_value("Employee", spare.name, "user_id") == u.name
+            assert ess.my_profile()["name"] == spare.name
+            frappe.set_user("Administrator")
             # every expense claim type gets an account for the company; idempotent
             frappe.set_user("Administrator")
             defaults.expense_accounts(COMPANY)

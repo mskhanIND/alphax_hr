@@ -881,3 +881,22 @@ def set_team(manager: str, employees: str | list, approvers: int | str = 1):
 			frappe.clear_messages()
 			failed.append({"employee": emp, "error": frappe.utils.strip_html(str(exc))[:300]})
 	return {"done": done, "failed": failed, "manager_has_login": bool(user)}
+
+
+@frappe.whitelist(methods=["POST"])
+def link_my_user(employee: str):
+	"""HR staff who are employees themselves link their own login to their employee record (common on a new site
+	where the HR manager's user was made before the employee). Only a record without a login can be taken."""
+	require_hr()
+	user = frappe.session.user
+	if frappe.db.get_value("Employee", {"user_id": user}, "name"):
+		frappe.throw(_("Your user is already linked to an employee."))
+	if not frappe.db.exists("Employee", employee):
+		frappe.throw(_("Choose your employee record."))
+	if frappe.db.get_value("Employee", employee, "user_id"):
+		frappe.throw(_("This employee already has a login. Ask the system manager to change it."))
+	doc = frappe.get_doc("Employee", employee)
+	doc.user_id = user
+	doc.flags.ignore_mandatory = True  # only the login changes; an empty custom field elsewhere must not block it
+	doc.save()
+	return {"employee": doc.name}

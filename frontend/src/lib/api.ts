@@ -140,6 +140,7 @@ export const api = {
   leaveWorkforce: (args: Record<string, unknown>) => call(A + 'leave_ledger.workforce', args),
   gosiRates: () => call<any>(A + 'payroll.gosi_rates'),
   saveGosiRate: (data: Record<string, unknown>) => call<any>(A + 'payroll.save_gosi_rate', { data }),
+  linkMyUser: (employee: string) => call<any>(A + 'hr.link_my_user', { employee }),
   setTeam: (manager: string, employees: string[], approvers = 1) => call<any>(A + 'hr.set_team', { manager, employees, approvers }),
   leaveAllocations: (args: Record<string, unknown>) => call(A + 'leave_alloc.allocations', args),
   allocateLeave: (data: Record<string, unknown>) => call<any>(A + 'leave_alloc.allocate', { data }),

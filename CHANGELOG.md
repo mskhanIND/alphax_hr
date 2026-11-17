@@ -2,6 +2,13 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.41.1 — 2026-11-17
+
+Tester feedback (Ahmed, round 2).
+
+- **Pick lists inside dialogs are no longer hidden.** The employee list in *New request* (and every other search list) is drawn on top of the page, so a dialog or card that scrolls cannot cut it off; near the bottom of the window it opens upwards. Escape closes the list without closing the dialog.
+- **My Profile:** the signed-in employee's own record always opens, even where the site's Employee permissions would block it in the desk. A login without an employee record (often the HR manager on a new site) now gets a clear page instead of an error, and HR can link their login to their own employee record from there.
+
 ## 0.41.0 — 2026-11-15
 
 Tester feedback round (Ahmed).
