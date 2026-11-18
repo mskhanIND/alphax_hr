@@ -74,7 +74,8 @@ React SPA (/alphax)  ──►  alphax_hr API (permission-checked)  ──►  F
 
 ```bash
 cd ~/frappe-bench
-bench alphax-update            # pull, migrate every AlphaX site, build, restart, verify
+bench alphax-update            # back up, pull, migrate every AlphaX site, build, restart, verify
+bench alphax-update --with-files   # also back up uploaded files
 bench alphax-update --dry-run  # show the steps only
 ```
 

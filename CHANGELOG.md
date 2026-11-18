@@ -2,6 +2,11 @@
 
 All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 
+## 0.42.1 — 2026-11-18
+
+- **`bench alphax-update` backs up before it migrates.** Each site's database is backed up first (`--with-files` adds uploaded files); if a backup fails, nothing is migrated. It stops early when less than 2 GB of disk is free, and prints how to go back to the previous version. `--no-backup` skips it (not recommended).
+- Development and test tools are now kept in the repository (`dev/`), so the test bench can be rebuilt after a reset. Releases are tagged (`vX.Y.Z`).
+
 ## 0.42.0 — 2026-11-18
 
 - **Report a problem** (new): a small button at the bottom of every page. The user writes what went wrong (and optionally what they were trying to do); a picture of the page is taken automatically (can be removed or replaced). The page, app version, site, login, roles, browser and the error messages shown in the last 30 minutes are added automatically, so testers no longer need to fill in a report template.
