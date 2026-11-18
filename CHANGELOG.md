@@ -5,7 +5,7 @@ All notable changes to AlphaX HR. Versions follow `alphax_hr/__init__.py`.
 ## 0.42.1 — 2026-11-18
 
 - **`bench alphax-update` backs up before it migrates.** Each site's database is backed up first (`--with-files` adds uploaded files); if a backup fails, nothing is migrated. It stops early when less than 2 GB of disk is free, and prints how to go back to the previous version. `--no-backup` skips it (not recommended).
-- Development and test tools are now kept in the repository (`dev/`), so the test bench can be rebuilt after a reset. Releases are tagged (`vX.Y.Z`).
+- Development and test tools are now kept in the repository (`dev/`), so the test bench can be rebuilt after a reset. Every release commit starts with its version (`v0.42.1: …`), so any version can be found with `git log --oneline --grep '^v0.41.1:'`.
 
 ## 0.42.0 — 2026-11-18
 

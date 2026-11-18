@@ -17,4 +17,5 @@ after a machine or workspace reset. Paths assume the code at `/home/claude/alpha
 | `hint_scan.py`, `add_hints.py`, `wl_scan.py`, `nosemgrep.py` | Code scans (hints, whitelisted methods, semgrep exceptions). |
 
 Release routine: bump `alphax_hr/__init__.py` and `frontend/package.json`, CHANGELOG entry, `npm run build`,
-both suites green, commit, tag `vX.Y.Z`, push `main` and `main:version-15` and the tag.
+both suites green, commit with a message starting `vX.Y.Z:`, push `main` and `main:version-15`.
+To find a release later: `git log --oneline --grep '^v0.41.1:'`; to go back on a server: `git -C apps/alphax_hr checkout <commit>`, restore the backup taken by `bench alphax-update`, `bench restart`.
